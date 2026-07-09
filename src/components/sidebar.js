@@ -1,0 +1,80 @@
+import { auth } from '../lib/auth';
+import { router } from '../lib/router';
+
+export function renderSidebar(currentUser) {
+  const sidebar = document.createElement('aside');
+  sidebar.className = 'w-64 bg-white border-r border-[#d9d9dd] flex flex-col h-full shrink-0 select-none';
+
+  const currentHash = window.location.hash || '#dashboard';
+  const isAdmin = currentUser?.profile?.role === 'super_admin';
+
+  const menuItems = [
+    { label: 'DASHBOARD', hash: '#dashboard', icon: '📊' },
+    { label: 'TABLA DE LEADS', hash: '#leads-table', icon: '📋' },
+    { label: 'PIPELINE KANBAN', hash: '#leads-kanban', icon: '🗂️' },
+    { label: 'POR EMPRESA', hash: '#leads-by-company', icon: '🏢' },
+  ];
+
+  if (isAdmin) {
+    menuItems.push({ label: 'CONFIGURACIÓN', hash: '#settings', icon: '⚙️' });
+  }
+
+  let menuHtml = menuItems
+    .map(item => {
+      const isActive = currentHash === item.hash;
+      return `
+        <a href="${item.hash}" class="flex items-center gap-3 px-4 py-3 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          isActive 
+            ? 'bg-primary text-white' 
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <span>${item.icon}</span>
+          <span>${item.label}</span>
+        </a>
+      `;
+    })
+    .join('');
+
+  sidebar.innerHTML = `
+    <!-- Top Brand -->
+    <div class="px-6 py-6 border-b border-[#d9d9dd] flex flex-col gap-1">
+      <span class="font-mono text-[10px] tracking-[0.2em] text-coral font-bold uppercase">NEGOZONA</span>
+      <h1 class="text-sm font-semibold font-display text-primary tracking-tight">CRM Expansión</h1>
+    </div>
+
+    <!-- Navigation links -->
+    <div class="flex-1 px-4 py-6 flex flex-col gap-1.5 overflow-y-auto">
+      ${menuHtml}
+    </div>
+
+    <!-- Bottom User Info -->
+    <div class="p-4 border-t border-[#d9d9dd] flex items-center justify-between gap-3 bg-neutral-50">
+      <div class="flex items-center gap-2 overflow-hidden">
+        <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
+          ${currentUser?.profile?.avatar_url 
+            ? `<img src="${currentUser.profile.avatar_url}" class="w-8 h-8 rounded-full object-cover" />` 
+            : (currentUser?.profile?.full_name || currentUser?.email || 'U').charAt(0).toUpperCase()}
+        </div>
+        <div class="flex flex-col overflow-hidden">
+          <span class="text-xs font-semibold text-primary truncate font-sans">${currentUser?.profile?.full_name || 'Usuario'}</span>
+          <span class="text-[10px] text-muted font-mono tracking-wider uppercase">${currentUser?.profile?.role === 'super_admin' ? 'Admin' : 'Comercial'}</span>
+        </div>
+      </div>
+      <button id="logout-btn" class="p-1.5 rounded-full hover:bg-neutral-200 text-[#616161] hover:text-primary transition-colors text-xs" title="Cerrar sesión">
+        🚪
+      </button>
+    </div>
+  `;
+
+  // Attach logout handler
+  sidebar.querySelector('#logout-btn').addEventListener('click', async () => {
+    try {
+      await auth.logout();
+      router.navigate('#login');
+    } catch (err) {
+      alert('Error cerrando sesión: ' + err.message);
+    }
+  });
+
+  return sidebar;
+}
