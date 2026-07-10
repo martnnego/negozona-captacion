@@ -51,9 +51,14 @@ class Router {
         this.onRouteChanged(routeKey, userSession);
       }
 
-      // Show skeleton preloader immediately while async renderFn runs
+      // Show skeleton preloader immediately
       this.appContainer.innerHTML = '';
       this.appContainer.appendChild(buildPageSkeleton());
+
+      // Yield to the browser so it actually paints the skeleton before we
+      // start building the real page DOM. Without this, sync renderFns
+      // resolve in the same JS task and the skeleton is never drawn.
+      await new Promise(resolve => requestAnimationFrame(resolve));
 
       // Execute the page renderer
       const view = await renderFn(userSession);
