@@ -9,7 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export async function fetchAllLeads(selectColumns = '*') {
+export async function fetchAllLeads(selectColumns = '*', options = {}) {
   let allLeads = [];
   let from = 0;
   const pageSize = 1000;
@@ -17,12 +17,17 @@ export async function fetchAllLeads(selectColumns = '*') {
 
   while (hasMore) {
     const to = from + pageSize - 1;
-    const { data, error } = await supabase
+    let query = supabase
       .from('leads')
       .select(selectColumns)
       .order('id', { ascending: true })
       .range(from, to);
 
+    if (options.from_date) {
+      query = query.gte('created_at', options.from_date);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
 
     if (data && data.length > 0) {
@@ -38,4 +43,12 @@ export async function fetchAllLeads(selectColumns = '*') {
   }
 
   return allLeads;
+}
+
+/** Returns an ISO date string N days ago, or null if days = 0 (= all time). */
+export function getFromDate(days) {
+  if (!days || days === 0) return null;
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
 }

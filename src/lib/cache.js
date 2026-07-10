@@ -1,4 +1,4 @@
-import { supabase, fetchAllLeads } from './supabase';
+import { supabase, fetchAllLeads, getFromDate } from './supabase';
 
 class CacheManager {
   constructor() {
@@ -7,10 +7,13 @@ class CacheManager {
     this.leads = [];
     this.isLoaded = false;
     this.listeners = new Set();
+    // Default: last 180 days. 0 = all time.
+    this.dateWindowDays = parseInt(localStorage.getItem('cache_date_window') || '180');
   }
 
   async loadAll() {
     try {
+      const from_date = getFromDate(this.dateWindowDays);
       const [stagesRes, profilesRes, leadsData] = await Promise.all([
         supabase
           .from('pipeline_stages')
@@ -20,7 +23,10 @@ class CacheManager {
           .from('profiles')
           .select('*')
           .eq('is_active', true),
-        fetchAllLeads('id, created_at, first_name, last_name, email, phone, company, position, linkedin_url, country, source, source_detail, pipeline_stage_id, industry, investment, branches, assigned_to, valoracion, medio_contacto, fecha_ultimo_contacto, fecha_carga, motivo_descarte, notes, updated_at')
+        fetchAllLeads(
+          'id, created_at, first_name, last_name, email, phone, company, position, linkedin_url, country, source, source_detail, pipeline_stage_id, industry, investment, branches, assigned_to, valoracion, medio_contacto, fecha_ultimo_contacto, fecha_carga, motivo_descarte, notes, updated_at',
+          { from_date }
+        )
       ]);
 
       if (stagesRes.error) throw stagesRes.error;
@@ -38,12 +44,21 @@ class CacheManager {
 
       this.leads = leadsData || [];
       this.isLoaded = true;
-      console.log('Cache initialized successfully, loaded', this.leads.length, 'leads');
+      console.log(`Cache initialized: ${this.leads.length} leads (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'})`);
       this.triggerChange();
     } catch (err) {
       console.error('Error loading metadata cache:', err);
     }
   }
+
+  /** Change the date window and reload the leads from Supabase. */
+  async setDateWindow(days) {
+    this.dateWindowDays = days;
+    localStorage.setItem('cache_date_window', String(days));
+    this.isLoaded = false;
+    await this.loadAll();
+  }
+
 
   getStage(id) {
     return this.stages.get(id);

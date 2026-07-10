@@ -11,6 +11,7 @@ export async function renderDashboard(currentUser) {
 
   // State
   let selectedCountry = localStorage.getItem('dash_filter_country') || 'All';
+  let dashPeriodDays = parseInt(localStorage.getItem('dash_period_days') || '0');
   let leadsData = [];
   let recentActivities = [];
   
@@ -26,21 +27,34 @@ export async function renderDashboard(currentUser) {
         <p class="text-xs text-muted-slate mt-1 font-sans">Panel de control y métricas clave del pipeline</p>
       </div>
 
-      <!-- Country Quick Filter -->
-      <div class="flex items-center gap-1.5 overflow-x-auto py-1">
-        ${['All', 'Argentina', 'España', 'México', 'Uruguay', 'Chile']
-          .map(country => `
-            <button 
-              data-country="${country}" 
-              class="country-btn px-3 py-1.5 border rounded-full font-mono text-[10px] font-bold tracking-wider uppercase transition-all duration-150 ${
-                selectedCountry === country 
-                  ? 'bg-primary border-primary text-white' 
-                  : 'bg-white border-[#d9d9dd] text-[#616161] hover:text-primary hover:border-primary'
-              }"
-            >
-              ${country === 'All' ? 'TODOS' : country.toUpperCase()}
-            </button>
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <!-- Period Pills -->
+        <div class="flex items-center gap-1">
+          ${[{label:'30d', val:30}, {label:'90d', val:90}, {label:'180d', val:180}, {label:'Todo', val:0}].map(p => `
+            <button data-period="${p.val}" class="dash-period-btn px-3 py-1.5 border rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+              dashPeriodDays === p.val
+                ? 'bg-primary border-primary text-white'
+                : 'bg-white border-[#d9d9dd] text-[#616161] hover:text-primary hover:border-primary'
+            }">${p.label}</button>
           `).join('')}
+        </div>
+
+        <!-- Country Quick Filter -->
+        <div class="flex items-center gap-1.5 overflow-x-auto py-1">
+          ${['All', 'Argentina', 'España', 'México', 'Uruguay', 'Chile']
+            .map(country => `
+              <button 
+                data-country="${country}" 
+                class="country-btn px-3 py-1.5 border rounded-full font-mono text-[10px] font-bold tracking-wider uppercase transition-all duration-150 ${
+                  selectedCountry === country 
+                    ? 'bg-primary border-primary text-white' 
+                    : 'bg-white border-[#d9d9dd] text-[#616161] hover:text-primary hover:border-primary'
+                }"
+              >
+                ${country === 'All' ? 'TODOS' : country.toUpperCase()}
+              </button>
+            `).join('')}
+        </div>
       </div>
     </div>
 
@@ -110,6 +124,21 @@ export async function renderDashboard(currentUser) {
     });
   });
 
+  // Period pills
+  container.querySelectorAll('.dash-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dashPeriodDays = parseInt(btn.dataset.period);
+      localStorage.setItem('dash_period_days', String(dashPeriodDays));
+      container.querySelectorAll('.dash-period-btn').forEach(b => {
+        b.classList.remove('bg-primary', 'border-primary', 'text-white');
+        b.classList.add('bg-white', 'border-[#d9d9dd]', 'text-[#616161]');
+      });
+      btn.classList.add('bg-primary', 'border-primary', 'text-white');
+      btn.classList.remove('bg-white', 'border-[#d9d9dd]', 'text-[#616161]');
+      calculateAndRender();
+    });
+  });
+
   // Fetch leads and activities
   async function loadData() {
     try {
@@ -132,10 +161,18 @@ export async function renderDashboard(currentUser) {
   }
 
   function calculateAndRender() {
+    // Apply period filter first (from cache in memory)
+    let periodLeads = leadsData;
+    if (dashPeriodDays > 0) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - dashPeriodDays);
+      periodLeads = leadsData.filter(l => new Date(l.created_at) >= cutoff);
+    }
+
     // Filter by Country if not 'All'
     const filteredLeads = selectedCountry === 'All' 
-      ? leadsData 
-      : leadsData.filter(l => l.country === selectedCountry);
+      ? periodLeads 
+      : periodLeads.filter(l => l.country === selectedCountry);
 
     // Calculate metrics
     const totalLeads = filteredLeads.length;

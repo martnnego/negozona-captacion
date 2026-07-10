@@ -24,6 +24,8 @@ export function renderLeadsTable(currentUser) {
   let rowsPerPage = parseInt(localStorage.getItem('table_rows_per_page')) || 25;
   let sortColumn = 'created_at';
   let sortAscending = false;
+  // Period filter: 30, 90, 180 days, or 0 = all time
+  let periodDays = parseInt(localStorage.getItem('table_period_days') || '0');
 
   let activeFilters = {
     search: '',
@@ -45,8 +47,19 @@ export function renderLeadsTable(currentUser) {
         <p class="text-xs text-muted-slate mt-1">Gestión administrativa y asignación de leads de expansión</p>
       </div>
       
-      <!-- Actions panel -->
-      <div class="flex items-center gap-3 select-none">
+      <!-- Period Filter + Actions -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 select-none">
+        <!-- Period Pills -->
+        <div class="flex items-center gap-1" id="period-pills">
+          ${[{label:'30 días', val:30}, {label:'90 días', val:90}, {label:'180 días', val:180}, {label:'Todo', val:0}].map(p => `
+            <button data-period="${p.val}" class="period-btn px-3 py-1.5 border rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+              periodDays === p.val
+                ? 'bg-primary border-primary text-white'
+                : 'bg-white border-[#d9d9dd] text-[#616161] hover:text-primary hover:border-primary'
+            }">${p.label}</button>
+          `).join('')}
+        </div>
+        <div class="flex items-center gap-3">
         <button id="import-csv-btn" class="px-4 py-2 border border-[#d9d9dd] text-[#616161] hover:text-primary hover:border-primary text-[10px] font-mono font-bold uppercase rounded-full bg-white transition-all tracking-wider focus:outline-none">
           📥 Importar CSV
         </button>
@@ -56,6 +69,7 @@ export function renderLeadsTable(currentUser) {
         <button id="add-lead-btn" class="px-4 py-2 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 shadow-xs flex items-center gap-1.5 focus:outline-none">
           <span>+ Nuevo Lead</span>
         </button>
+        </div>
       </div>
     </div>
 
@@ -137,6 +151,24 @@ export function renderLeadsTable(currentUser) {
   // Trigger loading
   loadData();
 
+  // Period filter pills
+  container.querySelectorAll('.period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      periodDays = parseInt(btn.dataset.period);
+      localStorage.setItem('table_period_days', String(periodDays));
+      // Update pill styles
+      container.querySelectorAll('.period-btn').forEach(b => {
+        b.classList.remove('bg-primary', 'border-primary', 'text-white');
+        b.classList.add('bg-white', 'border-[#d9d9dd]', 'text-[#616161]');
+      });
+      btn.classList.add('bg-primary', 'border-primary', 'text-white');
+      btn.classList.remove('bg-white', 'border-[#d9d9dd]', 'text-[#616161]');
+      // Reset page and reload
+      currentPage = 1;
+      loadData();
+    });
+  });
+
   async function loadData() {
     try {
       await Promise.all([
@@ -201,6 +233,12 @@ export function renderLeadsTable(currentUser) {
       }
       if (activeFilters.valoracion) {
         query = query.eq('valoracion', activeFilters.valoracion);
+      }
+      // Period filter
+      if (periodDays > 0) {
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - periodDays);
+        query = query.gte('created_at', fromDate.toISOString());
       }
 
       // Sort
@@ -567,6 +605,12 @@ export function renderLeadsTable(currentUser) {
       }
       if (activeFilters.valoracion) {
         query = query.eq('valoracion', activeFilters.valoracion);
+      }
+      // Apply same period filter as table
+      if (periodDays > 0) {
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - periodDays);
+        query = query.gte('created_at', fromDate.toISOString());
       }
 
       query = query.order(sortColumn, { ascending: sortAscending });
