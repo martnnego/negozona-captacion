@@ -11,7 +11,7 @@ export async function renderDashboard(currentUser) {
 
   // State
   let selectedCountry = localStorage.getItem('dash_filter_country') || 'All';
-  let dashPeriodDays = parseInt(localStorage.getItem('dash_period_days') || '0');
+  let dashPeriodDays = parseInt(localStorage.getItem('dash_period_days') || '30');
   let leadsData = [];
   let recentActivities = [];
   

@@ -25,7 +25,7 @@ export function renderLeadsTable(currentUser) {
   let sortColumn = 'created_at';
   let sortAscending = false;
   // Period filter: 30, 90, 180 days, or 0 = all time
-  let periodDays = parseInt(localStorage.getItem('table_period_days') || '0');
+  let periodDays = parseInt(localStorage.getItem('table_period_days') || '30');
 
   let activeFilters = {
     search: '',

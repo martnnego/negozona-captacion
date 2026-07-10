@@ -7,8 +7,8 @@ class CacheManager {
     this.leads = [];
     this.isLoaded = false;
     this.listeners = new Set();
-    // Default: last 180 days. 0 = all time.
-    this.dateWindowDays = parseInt(localStorage.getItem('cache_date_window') || '180');
+    // Default: last 30 days. 0 = all time.
+    this.dateWindowDays = parseInt(localStorage.getItem('cache_date_window') || '30');
   }
 
   async loadAll() {
