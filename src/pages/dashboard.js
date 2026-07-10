@@ -116,7 +116,8 @@ export async function renderDashboard(currentUser) {
       // 1. Fetch leads (retrieve minimal columns for charts optimization)
       const { data: leads, error: leadsErr } = await supabase
         .from('leads')
-        .select('id, created_at, country, pipeline_stage_id, assigned_to');
+        .select('id, created_at, country, pipeline_stage_id, assigned_to')
+        .range(0, 9999);
 
       if (leadsErr) throw leadsErr;
       leadsData = leads || [];

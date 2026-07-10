@@ -93,7 +93,8 @@ export function renderLeadsKanban(currentUser) {
     try {
       const { data, error } = await supabase
         .from('leads')
-        .select('*');
+        .select('*')
+        .range(0, 9999);
 
       if (error) throw error;
       leads = data || [];

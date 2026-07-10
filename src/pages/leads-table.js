@@ -152,7 +152,8 @@ export function renderLeadsTable(currentUser) {
     try {
       const { data, error } = await supabase
         .from('leads')
-        .select('pipeline_stage_id');
+        .select('pipeline_stage_id')
+        .range(0, 9999);
 
       if (error) throw error;
       
