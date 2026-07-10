@@ -15,7 +15,7 @@ export function renderNavbar(currentUser, onNotificationClick) {
   navbar.innerHTML = `
     <!-- Path breadcrumb and toggle -->
     <div class="flex items-center gap-3">
-      <button id="toggle-sidebar-btn" class="p-1 rounded-sm text-[#616161] hover:text-primary transition-colors focus:outline-none text-base" title="Mostrar/Ocultar Menú">
+      <button id="toggle-sidebar-btn" class="cursor-pointer p-1 rounded-sm text-[#616161] hover:text-primary transition-colors focus:outline-none text-base" title="Mostrar/Ocultar Menú">
         ☰
       </button>
       <div class="flex items-center gap-2 font-mono text-[11px] tracking-wider text-muted font-medium">

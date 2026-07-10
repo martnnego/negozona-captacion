@@ -49,7 +49,7 @@ export function renderSidebar(currentUser) {
           <h1 class="text-sm font-semibold font-display text-primary tracking-tight">CRM Expansión</h1>
         </div>
       </div>
-      <button id="close-sidebar-btn" class="lg:hidden text-neutral-400 hover:text-primary font-mono text-base focus:outline-none p-1" title="Cerrar menú">
+      <button id="close-sidebar-btn" class="cursor-pointer lg:hidden text-neutral-400 hover:text-primary font-mono text-base focus:outline-none p-1" title="Cerrar menú">
         ✕
       </button>
     </div>
