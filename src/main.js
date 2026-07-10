@@ -44,7 +44,7 @@ async function initApp() {
       
       // Global Realtime Sync
       if (!unsubscribeRealtime) {
-        unsubscribeRealtime = realtime.subscribeToLeads((payload) => {
+        const unsubLeads = realtime.subscribeToLeads((payload) => {
           console.log('Global Realtime Lead Event:', payload);
           const { eventType, new: newLead, old: oldLead } = payload;
           if (eventType === 'INSERT') {
@@ -55,6 +55,34 @@ async function initApp() {
             cache.deleteLead(oldLead.id);
           }
         });
+
+        const unsubContacts = realtime.subscribeToContacts((payload) => {
+          console.log('Global Realtime Contact Event:', payload);
+          const { eventType, new: newContact, old: oldContact } = payload;
+          if (eventType === 'INSERT') {
+            cache.addContact(newContact);
+          } else if (eventType === 'UPDATE') {
+            cache.updateContact(newContact);
+          } else if (eventType === 'DELETE') {
+            cache.deleteContact(oldContact.id);
+          }
+        });
+
+        const unsubLinks = realtime.subscribeToLinks((payload) => {
+          console.log('Global Realtime Link Event:', payload);
+          const { eventType, new: newLink, old: oldLink } = payload;
+          if (eventType === 'INSERT') {
+            cache.addLink(newLink);
+          } else if (eventType === 'DELETE') {
+            cache.deleteLink(oldLink.lead_id, oldLink.contact_id);
+          }
+        });
+
+        unsubscribeRealtime = () => {
+          unsubLeads();
+          unsubContacts();
+          unsubLinks();
+        };
       }
 
       // Re-trigger routing to apply updated layout

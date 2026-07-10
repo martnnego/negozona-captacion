@@ -12,7 +12,7 @@ export function renderSidebar(currentUser) {
     { label: 'DASHBOARD', hash: '#dashboard', icon: '📊' },
     { label: 'TABLA DE LEADS', hash: '#leads-table', icon: '📋' },
     { label: 'PIPELINE KANBAN', hash: '#leads-kanban', icon: '🗂️' },
-    { label: 'POR EMPRESA', hash: '#leads-by-company', icon: '🏢' },
+    { label: 'CONTACTOS', hash: '#leads-by-company', icon: '👥' },
     { label: 'CONFIGURACIÓN', hash: '#settings', icon: '⚙️' },
   ];
 

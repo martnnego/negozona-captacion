@@ -7,13 +7,16 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
 
   const stage = cache.getStage(lead.pipeline_stage_id);
   const profile = cache.getProfile(lead.assigned_to);
+  const primaryContact = lead.primary_contact_id ? cache.getContact(lead.primary_contact_id) : null;
 
-  // Capitalize name
-  const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Sin Nombre';
+  // Resolve values from primary contact
+  const fullName = primaryContact ? `${primaryContact.first_name || ''} ${primaryContact.last_name || ''}`.trim() : '—';
+  const email = primaryContact ? primaryContact.email : '—';
+  const phone = primaryContact ? primaryContact.phone : '—';
+  const lastContactDate = primaryContact ? primaryContact.fecha_ultimo_contacto : null;
+
   const company = lead.company || '—';
   const country = lead.country || '—';
-  const email = lead.email || '—';
-  const phone = lead.phone || '—';
 
   const stageColor = stage?.color || '#94a3b8';
   const stageName = stage?.name || 'Sin Gestión';
@@ -34,8 +37,9 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
     <td class="px-6 py-3.5 font-semibold text-primary font-display max-w-[180px] truncate" title="${fullName}">
       ${fullName}
     </td>
-    <td class="px-6 py-3.5 max-w-[150px] truncate" title="${company}">
+    <td class="px-6 py-3.5 max-w-[150px] truncate font-semibold" title="${company}">
       ${company}
+      ${lead.nombre_validado ? `<span class="inline-flex items-center ml-1 px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-sm text-[8px] uppercase tracking-wider font-bold">✓</span>` : ''}
     </td>
     <td class="px-6 py-3.5 font-mono text-[10px] tracking-wider text-muted-slate uppercase">
       ${country}
@@ -56,7 +60,7 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
       ${assignedName}
     </td>
     <td class="px-6 py-3.5 font-mono text-[10px] whitespace-nowrap">
-      ${formatDate(lead.fecha_ultimo_contacto)}
+      ${formatDate(lastContactDate)}
     </td>
     <td class="px-6 py-3.5 text-coral font-mono text-[10px] tracking-widest whitespace-nowrap">
       ${lead.valoracion || '—'}

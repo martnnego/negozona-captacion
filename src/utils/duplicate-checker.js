@@ -15,16 +15,16 @@ export async function checkDuplicateEmails(emails) {
     const chunk = cleanEmails.slice(i, i + chunkSize);
     try {
       const { data, error } = await supabase
-        .from('leads')
+        .from('contacts')
         .select('id, email')
         .in('email', chunk);
 
       if (error) throw error;
 
       if (data) {
-        data.forEach(lead => {
-          if (lead.email) {
-            duplicateMap[lead.email.toLowerCase()] = lead.id;
+        data.forEach(contact => {
+          if (contact.email) {
+            duplicateMap[contact.email.toLowerCase()] = contact.id;
           }
         });
       }

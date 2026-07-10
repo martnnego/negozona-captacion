@@ -197,14 +197,16 @@ export function renderLeadsKanban(currentUser) {
   }
 
   function renderCardHtml(lead) {
-    const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Sin Nombre';
+    const primaryContact = lead.primary_contact_id ? cache.getContact(lead.primary_contact_id) : null;
+    const fullName = primaryContact ? `${primaryContact.first_name || ''} ${primaryContact.last_name || ''}`.trim() : '—';
     const company = lead.company || 'Sin Empresa';
     const rating = lead.valoracion || '';
     
-    // Check if lead hasn't been contacted in 14 days
+    // Check if lead hasn't been contacted in 14 days (reads from primary contact date)
     let hasAlert = false;
-    if (lead.fecha_ultimo_contacto) {
-      const lastContact = new Date(lead.fecha_ultimo_contacto);
+    const lastContactDate = primaryContact ? primaryContact.fecha_ultimo_contacto : null;
+    if (lastContactDate) {
+      const lastContact = new Date(lastContactDate);
       const diffMs = new Date() - lastContact;
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
       if (diffDays > 14) {
@@ -232,7 +234,9 @@ export function renderLeadsKanban(currentUser) {
         <!-- Details -->
         <div class="flex flex-col gap-0.5 pr-4">
           <span class="font-semibold text-primary font-display truncate">${fullName}</span>
-          <span class="text-neutral-500 text-[11px] truncate">${company}</span>
+          <span class="text-neutral-500 text-[11px] truncate font-semibold">${company}
+            ${lead.nombre_validado ? `<span class="inline-block text-emerald-600 ml-1" title="Nombre de empresa validado">✓</span>` : ''}
+          </span>
         </div>
 
         <!-- Meta row -->

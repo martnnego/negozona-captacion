@@ -9,7 +9,7 @@ export function renderNavbar(currentUser, onNotificationClick) {
   let viewTitle = 'Dashboard';
   if (hash === '#leads-table') viewTitle = 'Tabla de Leads';
   else if (hash === '#leads-kanban') viewTitle = 'Pipeline Kanban';
-  else if (hash === '#leads-by-company') viewTitle = 'Leads agrupados por Empresa';
+  else if (hash === '#leads-by-company') viewTitle = 'Contactos';
   else if (hash === '#settings') viewTitle = 'Configuración del Sistema';
 
   navbar.innerHTML = `

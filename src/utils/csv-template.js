@@ -2,44 +2,24 @@ export function downloadCSVTemplate() {
   const headers = [
     'first_name',
     'last_name',
+    'email',
+    'phone',
     'company',
     'position',
     'linkedin_url',
-    'country',
-    'email',
-    'phone',
-    'source',
-    'source_detail',
-    'status',
-    'industry',
-    'investment',
-    'branches',
-    'assigned_to',
-    'valoracion',
-    'medio_contacto',
-    'notes'
+    'medio_contacto'
   ];
 
   // Example row for user guidance
   const exampleRow = [
     'Juan',
     'Pérez',
+    'juan.perez@grido.com.ar',
+    '+5491199998888',
     'Grido',
     'Director',
     'https://linkedin.com/in/juanperez',
-    'Argentina',
-    'juan.perez@grido.com.ar',
-    '+5491199998888',
-    'manual',
-    'Campaña Franquicias',
-    'Sin Gestión',
-    'Heladerías',
-    '50000 USD',
-    '15',
-    'Camila Bastard',
-    '★★★★',
-    'WhatsApp',
-    'Interesado en expandir locales en Buenos Aires.'
+    'WhatsApp'
   ];
 
   const csvContent = [
@@ -52,8 +32,9 @@ export function downloadCSVTemplate() {
   
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', 'plantilla_leads_negozona.csv');
+  link.setAttribute('download', 'plantilla_contactos_crm.csv');
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
 }
+

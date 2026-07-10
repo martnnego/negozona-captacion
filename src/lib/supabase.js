@@ -52,3 +52,42 @@ export function getFromDate(days) {
   d.setDate(d.getDate() - days);
   return d.toISOString();
 }
+
+/** Fetches all rows from any table using pagination (1000 page size). */
+export async function fetchAllRows(tableName, selectColumns = '*', options = {}) {
+  let allRows = [];
+  let from = 0;
+  const pageSize = 1000;
+  let hasMore = true;
+  const orderColumn = options.orderCol || 'id';
+
+  while (hasMore) {
+    const to = from + pageSize - 1;
+    let query = supabase
+      .from(tableName)
+      .select(selectColumns)
+      .order(orderColumn, { ascending: true })
+      .range(from, to);
+
+    if (options.filterCol && options.filterVal) {
+      query = query.eq(options.filterCol, options.filterVal);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      allRows = allRows.concat(data);
+      if (data.length < pageSize) {
+        hasMore = false;
+      } else {
+        from += pageSize;
+      }
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allRows;
+}
+
