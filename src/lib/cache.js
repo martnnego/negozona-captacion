@@ -7,6 +7,8 @@ class CacheManager {
     this.leads = [];
     this.contacts = new Map();
     this.links = [];
+    this.events = [];
+    this.participations = [];
     this.isLoaded = false;
     this.listeners = new Set();
     // Default: last 30 days. 0 = all time.
@@ -16,7 +18,7 @@ class CacheManager {
   async loadAll() {
     try {
       const from_date = getFromDate(this.dateWindowDays);
-      const [stagesRes, profilesRes, leadsData, contactsData, linksData] = await Promise.all([
+      const [stagesRes, profilesRes, leadsData, contactsData, linksData, eventsData, participationsData] = await Promise.all([
         supabase
           .from('pipeline_stages')
           .select('*')
@@ -26,11 +28,13 @@ class CacheManager {
           .select('*')
           .eq('is_active', true),
         fetchAllLeads(
-          'id, created_at, company, country, source, source_detail, pipeline_stage_id, industry, investment, branches, assigned_to, valoracion, motivo_descarte, notes, updated_at, primary_contact_id, nombre_validado',
+          'id, created_at, company, country, source, source_detail, pipeline_stage_id, industry, investment, branches, assigned_to, valoracion, motivo_descarte, notes, updated_at, primary_contact_id, nombre_validado, franquiday_stage_id, franquiday_notes',
           { from_date }
         ),
         fetchAllRows('contacts', '*'),
-        fetchAllRows('lead_contacts_link', '*', { orderCol: 'lead_id' })
+        fetchAllRows('lead_contacts_link', '*', { orderCol: 'lead_id' }),
+        fetchAllRows('eventos_franquiday', '*', { orderCol: 'fecha' }),
+        fetchAllRows('participaciones_franquiday', '*', { orderCol: 'lead_id' })
       ]);
 
       if (stagesRes.error) throw stagesRes.error;
@@ -54,9 +58,11 @@ class CacheManager {
       }
 
       this.links = linksData || [];
+      this.events = eventsData || [];
+      this.participations = participationsData || [];
       this.leads = leadsData || [];
       this.isLoaded = true;
-      console.log(`Cache initialized: ${this.leads.length} leads, ${this.contacts.size} contacts, ${this.links.length} links (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'})`);
+      console.log(`Cache initialized: ${this.leads.length} leads, ${this.contacts.size} contacts, ${this.links.length} links, ${this.events.length} events, ${this.participations.length} participations (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'})`);
       this.triggerChange();
     } catch (err) {
       console.error('Error loading metadata cache:', err);
@@ -210,6 +216,101 @@ class CacheManager {
     return this.leads.filter(l => leadIds.includes(l.id));
   }
 
+  // --- FRANQUIDAY METHODS ---
+
+  getEvents() {
+    return this.events;
+  }
+
+  getEvent(id) {
+    return this.events.find(e => e.id === id);
+  }
+
+  getActiveEvent() {
+    return this.events.find(e => e.is_active === true);
+  }
+
+  addEvent(event) {
+    if (!this.events.find(e => e.id === event.id)) {
+      this.events.push(event);
+      this.triggerChange();
+    }
+  }
+
+  updateEvent(event) {
+    let updated = false;
+    this.events = this.events.map(e => {
+      if (e.id === event.id) {
+        updated = true;
+        return { ...e, ...event };
+      }
+      return e;
+    });
+    if (updated) {
+      this.triggerChange();
+    }
+  }
+
+  deleteEvent(id) {
+    const len = this.events.length;
+    this.events = this.events.filter(e => e.id !== id);
+    if (this.events.length !== len) {
+      this.participations = this.participations.filter(p => p.evento_id !== id);
+      this.triggerChange();
+    }
+  }
+
+  getParticipations() {
+    return this.participations;
+  }
+
+  getLeadParticipations(leadId) {
+    return this.participations.filter(p => p.lead_id === leadId);
+  }
+
+  addParticipation(participation) {
+    if (!this.participations.find(p => p.id === participation.id)) {
+      this.participations.push(participation);
+      this.triggerChange();
+    }
+  }
+
+  updateParticipation(participation) {
+    let updated = false;
+    this.participations = this.participations.map(p => {
+      if (p.id === participation.id) {
+        updated = true;
+        return { ...p, ...participation };
+      }
+      return p;
+    });
+    if (updated) {
+      // If this was for the active event, also update the denormalized fields in lead in cache
+      const activeEvent = this.getActiveEvent();
+      if (activeEvent && participation.evento_id === activeEvent.id) {
+        this.leads = this.leads.map(l => {
+          if (l.id === participation.lead_id) {
+            return { 
+              ...l, 
+              franquiday_stage_id: participation.pipeline_stage_id,
+              franquiday_notes: participation.notes
+            };
+          }
+          return l;
+        });
+      }
+      this.triggerChange();
+    }
+  }
+
+  deleteParticipation(id) {
+    const len = this.participations.length;
+    this.participations = this.participations.filter(p => p.id !== id);
+    if (this.participations.length !== len) {
+      this.triggerChange();
+    }
+  }
+
   subscribe(callback) {
     this.listeners.add(callback);
     return () => {
@@ -232,6 +333,8 @@ class CacheManager {
     this.profiles.clear();
     this.contacts.clear();
     this.links = [];
+    this.events = [];
+    this.participations = [];
     this.leads = [];
     this.isLoaded = false;
     this.listeners.clear();

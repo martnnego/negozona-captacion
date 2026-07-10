@@ -88,5 +88,49 @@ export const realtime = {
     return () => {
       supabase.removeChannel(channel);
     };
+  },
+
+  subscribeToEvents(callback) {
+    const uniqueChannelId = `events-changes-${Math.random().toString(36).substring(2, 9)}`;
+    const channel = supabase
+      .channel(uniqueChannelId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'eventos_franquiday'
+        },
+        (payload) => {
+          callback(payload);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  subscribeToParticipations(callback) {
+    const uniqueChannelId = `participations-changes-${Math.random().toString(36).substring(2, 9)}`;
+    const channel = supabase
+      .channel(uniqueChannelId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'participaciones_franquiday'
+        },
+        (payload) => {
+          callback(payload);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }
 };

@@ -23,6 +23,7 @@ export function renderLeadsTable(currentUser) {
   let sortAscending = false;
   // Period filter: 30, 90, 180 days, or 0 = all time
   let periodDays = parseInt(localStorage.getItem('table_period_days') || '30');
+  let activePipelineMode = localStorage.getItem('crm_active_pipeline_mode') || 'comercial'; // 'comercial' or 'franquiday'
 
   let activeFilters = {
     search: '',
@@ -39,9 +40,25 @@ export function renderLeadsTable(currentUser) {
   container.innerHTML = `
     <!-- Header Title -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#d9d9dd] pb-6">
-      <div>
-        <h2 class="text-2xl font-normal font-display text-primary leading-tight tracking-tight">Embudo de Captación</h2>
-        <p class="text-xs text-muted-slate mt-1">Gestión administrativa y asignación de leads de expansión</p>
+      <div class="flex flex-col md:flex-row md:items-center gap-4">
+        <div>
+          <h2 class="text-2xl font-normal font-display text-primary leading-tight tracking-tight">Embudo de Captación</h2>
+          <p class="text-xs text-muted-slate mt-1">Gestión administrativa y asignación de leads de expansión</p>
+        </div>
+
+        <!-- Pipeline Mode Toggle Switch -->
+        <div class="flex items-center bg-neutral-100 p-0.5 rounded-full border border-neutral-200 select-none max-w-fit mt-1 md:mt-0" id="pipeline-mode-toggle">
+          <button data-mode="comercial" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+            activePipelineMode === 'comercial'
+              ? 'bg-white shadow-xs text-primary'
+              : 'text-[#616161] hover:text-primary'
+          }">💼 Comercial</button>
+          <button data-mode="franquiday" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+            activePipelineMode === 'franquiday'
+              ? 'bg-white shadow-xs text-primary'
+              : 'text-[#616161] hover:text-primary'
+          }">🎪 Franquiday</button>
+        </div>
       </div>
       
       <!-- Period Filter + Actions -->
@@ -105,6 +122,26 @@ export function renderLeadsTable(currentUser) {
       <div id="pagination-container" class="px-6"></div>
     </div>
   `;
+
+  // Attach pipeline mode toggle handler
+  container.querySelectorAll('#pipeline-mode-toggle .mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activePipelineMode = btn.dataset.mode;
+      localStorage.setItem('crm_active_pipeline_mode', activePipelineMode);
+      
+      // Update UI styles
+      container.querySelectorAll('#pipeline-mode-toggle .mode-btn').forEach(b => {
+        b.className = b.className.replace('bg-white shadow-xs text-primary', 'text-[#616161] hover:text-primary');
+      });
+      btn.className = btn.className.replace('text-[#616161] hover:text-primary', 'bg-white shadow-xs text-primary');
+
+      // Reload
+      currentPage = 1;
+      selectedLeadIds.clear();
+      updateMassActionsBar();
+      loadData();
+    });
+  });
 
   // Build the floating mass-actions bar and attach to document.body so that
   // `position: fixed` is always relative to the real viewport, never clipped
@@ -178,7 +215,7 @@ export function renderLeadsTable(currentUser) {
       
       const counts = {};
       data.forEach(lead => {
-        const id = lead.pipeline_stage_id;
+        const id = activePipelineMode === 'franquiday' ? (lead.franquiday_stage_id || cache.getStages()[0]?.id) : lead.pipeline_stage_id;
         counts[id] = (counts[id] || 0) + 1;
       });
 
@@ -215,7 +252,11 @@ export function renderLeadsTable(currentUser) {
         query = query.ilike('company', `%${activeFilters.search}%`);
       }
       if (activeFilters.stageId) {
-        query = query.eq('pipeline_stage_id', activeFilters.stageId);
+        if (activePipelineMode === 'franquiday') {
+          query = query.eq('franquiday_stage_id', activeFilters.stageId);
+        } else {
+          query = query.eq('pipeline_stage_id', activeFilters.stageId);
+        }
       }
       if (activeFilters.assignedTo) {
         query = query.eq('assigned_to', activeFilters.assignedTo);
@@ -234,7 +275,8 @@ export function renderLeadsTable(currentUser) {
       }
 
       // Sort
-      query = query.order(sortColumn, { ascending: sortAscending });
+      const actualSortCol = (sortColumn === 'pipeline_stage_id' && activePipelineMode === 'franquiday') ? 'franquiday_stage_id' : sortColumn;
+      query = query.order(actualSortCol, { ascending: sortAscending });
 
       // Range
       const from = (currentPage - 1) * rowsPerPage;
@@ -431,20 +473,46 @@ export function renderLeadsTable(currentUser) {
     applyMassBtn.textContent = 'Aplicando...';
 
     const leadIds = Array.from(selectedLeadIds);
-    const updateObj = {};
     if (type === 'assign') {
       updateObj.assigned_to = value;
     } else {
-      updateObj.pipeline_stage_id = value;
+      if (activePipelineMode === 'franquiday') {
+        updateObj.franquiday_stage_id = value;
+      } else {
+        updateObj.pipeline_stage_id = value;
+      }
     }
 
     try {
+      // 1. Update main lead fields
       const { error } = await supabase
         .from('leads')
         .update(updateObj)
         .in('id', leadIds);
 
       if (error) throw error;
+
+      // 2. If changing stage in Franquiday mode, also update/insert in participaciones_franquiday
+      if (type === 'stage' && activePipelineMode === 'franquiday') {
+        const activeEvent = cache.getActiveEvent();
+        if (activeEvent) {
+          // Prepare bulk upsert objects
+          const upserts = leadIds.map(lid => ({
+            lead_id: lid,
+            evento_id: activeEvent.id,
+            pipeline_stage_id: value
+          }));
+
+          const { error: upsertErr } = await supabase
+            .from('participaciones_franquiday')
+            .upsert(upserts, { onConflict: 'lead_id,evento_id' });
+
+          if (upsertErr) throw upsertErr;
+        }
+      }
+
+      // Update local cache manually or reload
+      await cache.loadAll();
 
       toast.show(`¡Se actualizaron ${leadIds.length} leads correctamente!`, 'success');
       selectedLeadIds.clear();

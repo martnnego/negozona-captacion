@@ -13,6 +13,8 @@ export function renderLeadsKanban(currentUser) {
   let sortableInstances = [];
   let unsubscribeCache = null;
 
+  let activePipelineMode = localStorage.getItem('crm_active_pipeline_mode') || 'comercial'; // 'comercial' or 'franquiday'
+
   let activeFilters = {
     assignedTo: '',
     country: ''
@@ -28,9 +30,25 @@ export function renderLeadsKanban(currentUser) {
   container.innerHTML = `
     <!-- Header Title -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#d9d9dd] pb-6 shrink-0">
-      <div>
-        <h2 class="text-2xl font-normal font-display text-primary leading-tight tracking-tight">Tablero Kanban</h2>
-        <p class="text-xs text-muted-slate mt-1 font-sans">Pipeline de ventas visual. Arrastra leads para cambiar su estado.</p>
+      <div class="flex flex-col md:flex-row md:items-center gap-4">
+        <div>
+          <h2 class="text-2xl font-normal font-display text-primary leading-tight tracking-tight">Tablero Kanban</h2>
+          <p class="text-xs text-muted-slate mt-1 font-sans">Pipeline de ventas visual. Arrastra leads para cambiar su estado.</p>
+        </div>
+
+        <!-- Pipeline Mode Toggle Switch -->
+        <div class="flex items-center bg-neutral-100 p-0.5 rounded-full border border-neutral-200 select-none max-w-fit mt-1 md:mt-0" id="pipeline-mode-toggle">
+          <button data-mode="comercial" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+            activePipelineMode === 'comercial'
+              ? 'bg-white shadow-xs text-primary'
+              : 'text-[#616161] hover:text-primary'
+          }">💼 Comercial</button>
+          <button data-mode="franquiday" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+            activePipelineMode === 'franquiday'
+              ? 'bg-white shadow-xs text-primary'
+              : 'text-[#616161] hover:text-primary'
+          }">🎪 Franquiday</button>
+        </div>
       </div>
 
       <!-- Filters -->
@@ -58,6 +76,26 @@ export function renderLeadsKanban(currentUser) {
       <!-- Dynamic Columns -->
     </div>
   `;
+
+  // Attach pipeline mode toggle handler
+  const attachModeToggle = () => {
+    container.querySelectorAll('#pipeline-mode-toggle .mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activePipelineMode = btn.dataset.mode;
+        localStorage.setItem('crm_active_pipeline_mode', activePipelineMode);
+        
+        // Update UI styles
+        container.querySelectorAll('#pipeline-mode-toggle .mode-btn').forEach(b => {
+          b.className = b.className.replace('bg-white shadow-xs text-primary', 'text-[#616161] hover:text-primary');
+        });
+        btn.className = btn.className.replace('text-[#616161] hover:text-primary', 'bg-white shadow-xs text-primary');
+
+        // Reload
+        distributeCards();
+      });
+    });
+  };
+  setTimeout(attachModeToggle, 0);
 
   const boardWrapper = container.querySelector('#kanban-board-scroll');
   const comercialSelect = container.querySelector('#kanban-comercial');
@@ -104,7 +142,10 @@ export function renderLeadsKanban(currentUser) {
     // Build columns
     const stages = cache.getStages();
     boardWrapper.innerHTML = stages.map(stage => {
-      const stageLeads = filteredLeads.filter(l => l.pipeline_stage_id === stage.id);
+      const stageLeads = filteredLeads.filter(l => {
+        const activeStageId = activePipelineMode === 'franquiday' ? (l.franquiday_stage_id || stages[0]?.id) : l.pipeline_stage_id;
+        return activeStageId === stage.id;
+      });
       
       return `
         <!-- Column -->
@@ -163,21 +204,48 @@ export function renderLeadsKanban(currentUser) {
 
               if (newStageId === oldStageId) return;
 
-              console.log(`Moving lead ${leadId} from stage ${oldStageId} to ${newStageId}`);
+              console.log(`Moving lead ${leadId} from stage ${oldStageId} to ${newStageId} (mode: ${activePipelineMode})`);
 
               try {
+                const updateObj = {};
+                if (activePipelineMode === 'franquiday') {
+                  updateObj.franquiday_stage_id = newStageId;
+                } else {
+                  updateObj.pipeline_stage_id = newStageId;
+                }
+
+                // 1. Update lead record
                 const { error } = await supabase
                   .from('leads')
-                  .update({ pipeline_stage_id: newStageId })
+                  .update(updateObj)
                   .eq('id', leadId);
 
                 if (error) throw error;
+
+                // 2. If in Franquiday mode, also update participaciones_franquiday
+                if (activePipelineMode === 'franquiday') {
+                  const activeEvent = cache.getActiveEvent();
+                  if (activeEvent) {
+                    const { error: upsertErr } = await supabase
+                      .from('participaciones_franquiday')
+                      .upsert({
+                        lead_id: leadId,
+                        evento_id: activeEvent.id,
+                        pipeline_stage_id: newStageId
+                      }, { onConflict: 'lead_id,evento_id' });
+
+                    if (upsertErr) throw upsertErr;
+                  }
+                }
+
+                // Synchronize global cache
+                await cache.loadAll();
                 
                 // Success toast
                 toast.show('Ficha movida correctamente', 'success');
 
                 // Optimistic update of local state
-                leads = leads.map(l => l.id === leadId ? { ...l, pipeline_stage_id: newStageId } : l);
+                leads = cache.getLeads() || [];
                 distributeCards();
               } catch (err) {
                 toast.show('Error al mover tarjeta: ' + err.message, 'error');

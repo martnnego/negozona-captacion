@@ -46,6 +46,13 @@ export function renderSettings(currentUser) {
           }">
             ETAPAS DEL PIPELINE
           </button>
+          <button data-tab="franquiday" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 ${
+            activeTab === 'franquiday' 
+              ? 'text-primary border-b-2 border-primary -mb-[1px]' 
+              : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
+          }">
+            EVENTOS FRANQUIDAY
+          </button>
         ` : ''}
       </div>
 
@@ -69,6 +76,8 @@ export function renderSettings(currentUser) {
       renderUsersTab(contentArea);
     } else if (activeTab === 'pipeline') {
       renderPipelineTab(contentArea);
+    } else if (activeTab === 'franquiday') {
+      renderFranquidayTab(contentArea);
     }
   }
 
@@ -450,6 +459,177 @@ export function renderSettings(currentUser) {
         tbody.appendChild(row);
       });
     }
+  }
+
+  // TAB 4: FRANQUIDAY EVENTS MANAGEMENT
+  function renderFranquidayTab(parent) {
+    const events = cache.getEvents() || [];
+    
+    parent.innerHTML = `
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 font-sans text-xs">
+        <!-- New Event Form -->
+        <div class="bg-white border border-[#d9d9dd] rounded-sm p-5 flex flex-col gap-4 max-w-sm h-fit">
+          <h3 class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase border-b border-neutral-100 pb-2">Crear Nueva Edición</h3>
+          
+          <form id="create-event-form" class="flex flex-col gap-3">
+            <div class="flex flex-col gap-1">
+              <label for="event-name" class="font-mono text-[9px] font-bold text-primary uppercase">Nombre del Evento *</label>
+              <input type="text" id="event-name" name="nombre" required class="cohere-input text-xs" placeholder="Ej: Franquiday Buenos Aires 2026" />
+            </div>
+            
+            <div class="flex flex-col gap-1">
+              <label for="event-date" class="font-mono text-[9px] font-bold text-primary uppercase">Fecha *</label>
+              <input type="date" id="event-date" name="fecha" required class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3" />
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label for="event-country" class="font-mono text-[9px] font-bold text-primary uppercase">País *</label>
+              <select id="event-country" name="pais" required class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3">
+                <option value="Argentina">Argentina</option>
+                <option value="España">España</option>
+                <option value="México">México</option>
+                <option value="Uruguay">Uruguay</option>
+                <option value="Chile">Chile</option>
+              </select>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label for="event-state" class="font-mono text-[9px] font-bold text-primary uppercase">Provincia / Región *</label>
+              <input type="text" id="event-state" name="provincia" required class="cohere-input text-xs" placeholder="Ej: Buenos Aires / Madrid" />
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label for="event-city" class="font-mono text-[9px] font-bold text-primary uppercase">Ciudad *</label>
+              <input type="text" id="event-city" name="ciudad" required class="cohere-input text-xs" placeholder="Ej: CABA / Madrid" />
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label for="event-venue" class="font-mono text-[9px] font-bold text-primary uppercase">Lugar / Sede *</label>
+              <input type="text" id="event-venue" name="lugar" required class="cohere-input text-xs" placeholder="Ej: Hotel Hilton / La Rural" />
+            </div>
+
+            <button type="submit" id="submit-event-btn" class="mt-2 w-full py-2 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none">
+              Crear Evento
+            </button>
+          </form>
+        </div>
+
+        <!-- Event List -->
+        <div class="lg:col-span-2 bg-white border border-[#d9d9dd] rounded-sm p-5 flex flex-col gap-4">
+          <h3 class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase border-b border-neutral-100 pb-2">Historial de Ediciones</h3>
+          
+          <div class="overflow-x-auto">
+            <table class="w-full text-left font-sans text-xs">
+              <thead>
+                <tr class="border-b border-[#d9d9dd] font-mono text-[9px] font-bold text-muted-slate uppercase">
+                  <th class="py-2.5">Edición / Nombre</th>
+                  <th class="py-2.5">Fecha</th>
+                  <th class="py-2.5">Ubicación / Sede</th>
+                  <th class="py-2.5">Estado</th>
+                  <th class="py-2.5 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-neutral-100">
+                ${events.length === 0 ? `
+                  <tr>
+                    <td colspan="5" class="py-8 text-center text-neutral-400 italic">No hay eventos Franquiday registrados.</td>
+                  </tr>
+                ` : events.map(e => `
+                  <tr class="hover:bg-neutral-50/50">
+                    <td class="py-3 font-semibold text-primary">${e.nombre}</td>
+                    <td class="py-3 font-mono">${e.fecha}</td>
+                    <td class="py-3 text-neutral-500">${e.lugar} (${e.ciudad}, ${e.pais})</td>
+                    <td class="py-3">
+                      ${e.is_active 
+                        ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">Activo</span>`
+                        : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-neutral-50 text-neutral-500 border border-neutral-200">Pasado</span>`
+                      }
+                    </td>
+                    <td class="py-3 text-right">
+                      ${!e.is_active ? `
+                        <button data-activate-event-id="${e.id}" class="px-2.5 py-1 border border-[#d9d9dd] hover:border-emerald-600 hover:text-emerald-600 font-mono text-[9px] font-bold uppercase rounded-sm bg-white transition-all tracking-wider focus:outline-none">
+                          Activar
+                        </button>
+                      ` : `
+                        <span class="text-neutral-400 font-mono text-[9px] italic">Evento Activo</span>
+                      `}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Form submission
+    const form = parent.querySelector('#create-event-form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('#submit-event-btn');
+      btn.disabled = true;
+      btn.textContent = 'Creando...';
+
+      const formData = new FormData(form);
+      const newEvent = {
+        nombre: formData.get('nombre').trim(),
+        fecha: formData.get('fecha'),
+        pais: formData.get('pais'),
+        provincia: formData.get('provincia').trim(),
+        ciudad: formData.get('ciudad').trim(),
+        lugar: formData.get('lugar').trim(),
+        is_active: false
+      };
+
+      try {
+        const { data, error } = await supabase
+          .from('eventos_franquiday')
+          .insert([newEvent])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        toast.show('¡Edición de Franquiday registrada con éxito!', 'success');
+        
+        // If there is no active event, activate this one automatically
+        const active = cache.getActiveEvent();
+        if (!active) {
+          await supabase.rpc('activate_franquiday_event', { event_id: data.id });
+        }
+
+        await cache.loadAll();
+        renderFranquidayTab(parent);
+      } catch (err) {
+        toast.show('Error al registrar evento: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Crear Evento';
+      }
+    });
+
+    // Activation button clicks
+    parent.querySelectorAll('[data-activate-event-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const eventId = btn.dataset.activateEventId;
+        btn.disabled = true;
+        btn.textContent = 'Activando...';
+
+        try {
+          const { error } = await supabase.rpc('activate_franquiday_event', { event_id: eventId });
+          if (error) throw error;
+
+          toast.show('Evento Franquiday activado correctamente. Sincronización realizada.', 'success');
+          await cache.loadAll();
+          renderFranquidayTab(parent);
+        } catch (err) {
+          toast.show('Error al activar evento: ' + err.message, 'error');
+          btn.disabled = false;
+          btn.textContent = 'Activar';
+        }
+      });
+    });
   }
 
   return container;

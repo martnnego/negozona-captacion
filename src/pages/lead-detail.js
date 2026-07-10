@@ -123,6 +123,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       { id: 'linked_contacts', label: `CONTACTOS (${linkedContacts.length})` },
       { id: 'interactions', label: `GESTIONES (${interactions.length})` },
       { id: 'comments', label: `COMENTARIOS (${comments.length})` },
+      { id: 'franquiday', label: '🎪 FRANQUIDAY' },
       { id: 'history', label: 'HISTORIAL' }
     ];
 
@@ -185,6 +186,8 @@ export async function renderLeadDetail(leadId, onUpdate) {
       renderInteractionsTab(tabContent, profiles);
     } else if (activeTab === 'comments') {
       renderCommentsTab(tabContent, profiles);
+    } else if (activeTab === 'franquiday') {
+      renderFranquidayTab(tabContent, stages);
     } else if (activeTab === 'history') {
       renderHistoryTab(tabContent, stages, profiles);
     }
@@ -1137,8 +1140,176 @@ export async function renderLeadDetail(leadId, onUpdate) {
       notes: 'Notas',
       motivo_descarte: 'Motivo descarte',
       primary_contact_id: 'Contacto Principal',
-      nombre_validado: 'Nombre Validado'
+      nombre_validado: 'Nombre Validado',
+      franquiday_stage_id: 'Etapa Franquiday',
+      franquiday_notes: 'Notas Franquiday'
     };
     return translations[field] || field;
+  }
+
+  async function renderFranquidayTab(parent, stages) {
+    const activeEvent = cache.getActiveEvent();
+    const participations = cache.getLeadParticipations(lead.id) || [];
+
+    // Resolve participation in active event if exists
+    const activeParticipation = activeEvent 
+      ? participations.find(p => p.evento_id === activeEvent.id)
+      : null;
+
+    const currentStageId = lead.franquiday_stage_id || activeParticipation?.pipeline_stage_id || stages[0]?.id;
+    const currentNotes = lead.franquiday_notes || activeParticipation?.notes || '';
+
+    let activeEventHtml = '';
+    if (!activeEvent) {
+      activeEventHtml = `
+        <div class="bg-amber-50 border border-amber-200 rounded-sm p-4 text-amber-700 italic select-none">
+          ⚠️ No hay ninguna edición de Franquiday activa actualmente. Puedes dar de alta y activar una desde la pestaña de Configuración.
+        </div>
+      `;
+    } else {
+      activeEventHtml = `
+        <div class="bg-white border border-[#d9d9dd] rounded-sm p-5 flex flex-col gap-4 shadow-2xs">
+          <div class="flex items-center justify-between border-b border-neutral-100 pb-3">
+            <div>
+              <span class="font-mono text-[9px] font-bold text-neutral-400 uppercase">Edición Activa</span>
+              <h4 class="text-sm font-bold text-primary mt-0.5">${activeEvent.nombre}</h4>
+              <p class="text-[10px] text-muted-slate font-sans mt-0.5">🎪 ${activeEvent.lugar} (${activeEvent.ciudad}, ${activeEvent.pais}) • 📅 ${activeEvent.fecha}</p>
+            </div>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">Activo</span>
+          </div>
+
+          <form id="franquiday-active-form" class="flex flex-col gap-3">
+            <div class="flex flex-col gap-1">
+              <label for="franquiday-stage" class="font-mono text-[9px] font-bold text-primary uppercase">Etapa de Participación</label>
+              <select id="franquiday-stage" name="stage_id" required class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm py-2 px-3">
+                ${stages.map(s => `<option value="${s.id}" ${currentStageId === s.id ? 'selected' : ''}>${s.name.toUpperCase()}</option>`).join('')}
+              </select>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label for="franquiday-notes" class="font-mono text-[9px] font-bold text-primary uppercase">Notas y Comentarios del Evento</label>
+              <textarea id="franquiday-notes" name="notes" rows="4" class="cohere-input text-xs" placeholder="Escribir requerimientos del stand, notas comerciales, etc...">${currentNotes}</textarea>
+            </div>
+
+            <div class="flex justify-end mt-2">
+              <button type="submit" id="save-franquiday-btn" class="px-5 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none">
+                Guardar Participación
+              </button>
+            </div>
+          </form>
+        </div>
+      `;
+    }
+
+    // Previous editions history list
+    const pastParticipations = participations.filter(p => !activeEvent || p.evento_id !== activeEvent.id);
+    let historyHtml = '';
+    if (pastParticipations.length === 0) {
+      historyHtml = `
+        <div class="py-6 text-center text-neutral-400 italic bg-neutral-50 border border-dashed border-[#d9d9dd] rounded-sm select-none">
+          No hay participaciones registradas en ediciones pasadas.
+        </div>
+      `;
+    } else {
+      historyHtml = `
+        <div class="flex flex-col gap-3">
+          ${pastParticipations.map(p => {
+            const ev = cache.getEvent(p.evento_id);
+            const evName = ev ? ev.nombre : 'Edición Franquiday';
+            const evDetails = ev ? `📅 ${ev.fecha} • 📍 ${ev.ciudad}` : '';
+            const st = stages.find(s => s.id === p.pipeline_stage_id);
+            const stName = st ? st.name : 'Sin Gestión';
+            const stColor = st ? st.color : '#94a3b8';
+
+            return `
+              <div class="border border-[#e5e7eb] rounded-sm p-4 bg-neutral-50/50 flex flex-col gap-2">
+                <div class="flex items-center justify-between border-b border-neutral-100 pb-2">
+                  <div>
+                    <h5 class="font-bold text-primary text-xs">${evName}</h5>
+                    <p class="text-[9px] text-muted-slate mt-0.5 font-sans">${evDetails}</p>
+                  </div>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider text-white" style="background-color: ${stColor}">
+                    ${stName}
+                  </span>
+                </div>
+                <p class="text-neutral-600 leading-relaxed whitespace-pre-wrap">${p.notes || 'Sin anotaciones registradas.'}</p>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    parent.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans text-xs">
+        <!-- Active Event Management -->
+        <div class="flex flex-col gap-4">
+          <h3 class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase">Gestión Edición Activa</h3>
+          ${activeEventHtml}
+        </div>
+
+        <!-- History of past events -->
+        <div class="flex flex-col gap-4">
+          <h3 class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase">Historial de Participaciones</h3>
+          <div class="flex-1 overflow-y-auto max-h-[380px] pr-1">
+            ${historyHtml}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Active form submit handler
+    const franquidayForm = parent.querySelector('#franquiday-active-form');
+    if (franquidayForm) {
+      franquidayForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = franquidayForm.querySelector('#save-franquiday-btn');
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+
+        const formData = new FormData(franquidayForm);
+        const stageId = formData.get('stage_id');
+        const notesVal = formData.get('notes').trim() || null;
+
+        try {
+          // 1. Update denormalized stage fields in leads table
+          const { error: leadErr } = await supabase
+            .from('leads')
+            .update({
+              franquiday_stage_id: stageId,
+              franquiday_notes: notesVal
+            })
+            .eq('id', lead.id);
+
+          if (leadErr) throw leadErr;
+
+          // 2. Upsert in participaciones_franquiday
+          const { error: partErr } = await supabase
+            .from('participaciones_franquiday')
+            .upsert({
+              lead_id: lead.id,
+              evento_id: activeEvent.id,
+              pipeline_stage_id: stageId,
+              notes: notesVal
+            }, { onConflict: 'lead_id,evento_id' });
+
+          if (partErr) throw partErr;
+
+          lead.franquiday_stage_id = stageId;
+          lead.franquiday_notes = notesVal;
+
+          toast.show('Participación Franquiday guardada con éxito', 'success');
+          
+          await cache.loadAll();
+          await loadAllData();
+          refreshHistory();
+        } catch (err) {
+          toast.show('Error al guardar participación: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Guardar Participación';
+        }
+      });
+    }
   }
 }

@@ -78,10 +78,36 @@ async function initApp() {
           }
         });
 
+        const unsubEvents = realtime.subscribeToEvents((payload) => {
+          console.log('Global Realtime Event Event:', payload);
+          const { eventType, new: newEvent, old: oldEvent } = payload;
+          if (eventType === 'INSERT') {
+            cache.addEvent(newEvent);
+          } else if (eventType === 'UPDATE') {
+            cache.updateEvent(newEvent);
+          } else if (eventType === 'DELETE') {
+            cache.deleteEvent(oldEvent.id);
+          }
+        });
+
+        const unsubParticipations = realtime.subscribeToParticipations((payload) => {
+          console.log('Global Realtime Participation Event:', payload);
+          const { eventType, new: newP, old: oldP } = payload;
+          if (eventType === 'INSERT') {
+            cache.addParticipation(newP);
+          } else if (eventType === 'UPDATE') {
+            cache.updateParticipation(newP);
+          } else if (eventType === 'DELETE') {
+            cache.deleteParticipation(oldP.id);
+          }
+        });
+
         unsubscribeRealtime = () => {
           unsubLeads();
           unsubContacts();
           unsubLinks();
+          unsubEvents();
+          unsubParticipations();
         };
       }
 
