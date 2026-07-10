@@ -2,8 +2,9 @@ import { supabase } from './supabase';
 
 export const realtime = {
   subscribeToLeads(callback) {
+    const uniqueChannelId = `leads-changes-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel('leads-changes')
+      .channel(uniqueChannelId)
       .on(
         'postgres_changes',
         {
@@ -23,8 +24,9 @@ export const realtime = {
   },
 
   subscribeToNotifications(userId, callback) {
+    const uniqueChannelId = `notifications-${userId}-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel(`notifications-${userId}`)
+      .channel(uniqueChannelId)
       .on(
         'postgres_changes',
         {
