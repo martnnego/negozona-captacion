@@ -61,6 +61,7 @@ async function initApp() {
         }
         activeNavbar = null;
         appElement.className = 'h-full flex flex-col bg-white';
+        router.appContainer = appElement;
         // Router will render login inside appElement directly
       } else {
         appElement.className = 'h-full flex overflow-hidden bg-white';
