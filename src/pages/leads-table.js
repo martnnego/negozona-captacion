@@ -113,40 +113,41 @@ export function renderLeadsTable(currentUser) {
       <!-- Pagination Container -->
       <div id="pagination-container" class="px-6"></div>
     </div>
-
-    <!-- Mass Actions floating bar -->
-    <div id="mass-actions-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-primary border border-neutral-800 text-white rounded-full px-6 py-3 shadow-xl z-30 items-center gap-4 transition-all duration-200 translate-y-20 opacity-0 flex select-none">
-      <span class="font-sans text-[11px] font-semibold"><span id="selected-count" class="font-mono bg-coral text-white text-[10px] font-bold px-2 py-0.5 rounded-full mr-1.5">0</span> leads seleccionados</span>
-      <div class="h-4 w-px bg-neutral-700"></div>
-      
-      <div class="flex items-center gap-2">
-        <select id="mass-action-type" class="bg-neutral-900 border border-neutral-700 rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-white focus:outline-none uppercase tracking-wider">
-          <option value="">SELECCIONAR ACCIÓN</option>
-          <option value="assign">ASIGNAR COMERCIAL</option>
-          <option value="stage">CAMBIAR ETAPA</option>
-        </select>
-        
-        <select id="mass-action-value" class="bg-neutral-900 border border-neutral-700 rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-white focus:outline-none uppercase tracking-wider hidden">
-          <!-- Populated dynamically -->
-        </select>
-        
-        <button id="apply-mass-btn" class="px-3 py-1.5 bg-white hover:bg-neutral-100 text-primary text-[9px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none">
-          Aplicar
-        </button>
-      </div>
-      
-      <button id="cancel-mass-btn" class="text-neutral-400 hover:text-white font-mono text-[10px] uppercase font-bold focus:outline-none">✕</button>
-    </div>
   `;
+
+  // Build the floating mass-actions bar and attach to document.body so that
+  // `position: fixed` is always relative to the real viewport, never clipped
+  // by a transformed/overflow ancestor inside the layout.
+  const massBar = document.createElement('div');
+  massBar.id = 'mass-actions-bar';
+  massBar.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 bg-primary border border-neutral-800 text-white rounded-full px-6 py-3 shadow-xl z-[9999] items-center gap-4 transition-all duration-300 translate-y-24 opacity-0 flex select-none pointer-events-none';
+  massBar.innerHTML = `
+    <span class="font-sans text-[11px] font-semibold"><span id="selected-count" class="font-mono bg-coral text-white text-[10px] font-bold px-2 py-0.5 rounded-full mr-1.5">0</span> leads seleccionados</span>
+    <div class="h-4 w-px bg-neutral-700"></div>
+    <div class="flex items-center gap-2">
+      <select id="mass-action-type" class="bg-neutral-900 border border-neutral-700 rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-white focus:outline-none uppercase tracking-wider">
+        <option value="">SELECCIONAR ACCIÓN</option>
+        <option value="assign">ASIGNAR COMERCIAL</option>
+        <option value="stage">CAMBIAR ETAPA</option>
+      </select>
+      <select id="mass-action-value" class="bg-neutral-900 border border-neutral-700 rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-white focus:outline-none uppercase tracking-wider hidden">
+        <!-- Populated dynamically -->
+      </select>
+      <button id="apply-mass-btn" class="px-3 py-1.5 bg-white hover:bg-neutral-100 text-primary text-[9px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none">
+        Aplicar
+      </button>
+    </div>
+    <button id="cancel-mass-btn" class="text-neutral-400 hover:text-white font-mono text-[10px] uppercase font-bold focus:outline-none">✕</button>
+  `;
+  document.body.appendChild(massBar);
 
   const tbody = container.querySelector('#leads-tbody');
   const masterCheckbox = container.querySelector('#master-checkbox');
-  const massBar = container.querySelector('#mass-actions-bar');
-  const selectedCountSpan = container.querySelector('#selected-count');
-  const massActionType = container.querySelector('#mass-action-type');
-  const massActionValue = container.querySelector('#mass-action-value');
-  const applyMassBtn = container.querySelector('#apply-mass-btn');
-  const cancelMassBtn = container.querySelector('#cancel-mass-btn');
+  const selectedCountSpan = massBar.querySelector('#selected-count');
+  const massActionType = massBar.querySelector('#mass-action-type');
+  const massActionValue = massBar.querySelector('#mass-action-value');
+  const applyMassBtn = massBar.querySelector('#apply-mass-btn');
+  const cancelMassBtn = massBar.querySelector('#cancel-mass-btn');
 
   // Trigger loading
   loadData();
@@ -389,11 +390,11 @@ export function renderLeadsTable(currentUser) {
     selectedCountSpan.textContent = size;
     
     if (size > 0) {
-      massBar.classList.remove('translate-y-20', 'opacity-0');
-      massBar.classList.add('translate-y-0', 'opacity-100');
+      massBar.classList.remove('translate-y-24', 'opacity-0', 'pointer-events-none');
+      massBar.classList.add('translate-y-0', 'opacity-100', 'pointer-events-auto');
     } else {
-      massBar.classList.add('translate-y-20', 'opacity-0');
-      massBar.classList.remove('translate-y-0', 'opacity-100');
+      massBar.classList.add('translate-y-24', 'opacity-0', 'pointer-events-none');
+      massBar.classList.remove('translate-y-0', 'opacity-100', 'pointer-events-auto');
       massActionType.value = '';
       massActionValue.classList.add('hidden');
     }
@@ -988,6 +989,10 @@ export function renderLeadsTable(currentUser) {
 
   container.cleanup = () => {
     unsubscribeCache();
+    // Remove the floating bar from body when navigating away
+    if (massBar && massBar.parentNode) {
+      massBar.parentNode.removeChild(massBar);
+    }
   };
 
   return container;
