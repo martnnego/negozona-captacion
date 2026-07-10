@@ -34,7 +34,7 @@ export function renderLeadsKanban(currentUser) {
         <select id="kanban-comercial" class="bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
           <option value="">TODOS LOS COMERCIALES</option>
           ${cache.getProfiles().map(p => `
-            <option value="${p.id}" ${activeFilters.assignedTo === p.id ? 'selected' : ''}>${p.full_name.toUpperCase()}</option>
+            <option value="${p.id}" ${activeFilters.assignedTo === p.id ? 'selected' : ''}>${(p.full_name || p.email || '').toUpperCase()}</option>
           `).join('')}
         </select>
 
@@ -156,51 +156,60 @@ export function renderLeadsKanban(currentUser) {
     });
 
     // Initialize SortableJS on all columns
-    boardWrapper.querySelectorAll('.kanban-cards-list').forEach(listEl => {
-      const stageId = listEl.dataset.stageId;
-      
-      const sortable = new Sortable(listEl, {
-        group: 'kanban',
-        animation: 150,
-        ghostClass: 'opacity-40',
-        dragClass: 'rotate-1',
-        
-        onEnd: async (evt) => {
-          const cardEl = evt.item;
-          const targetListEl = evt.to;
-          const sourceListEl = evt.from;
+    try {
+      const SortableConstructor = Sortable.default || Sortable;
+      if (typeof SortableConstructor === 'function') {
+        boardWrapper.querySelectorAll('.kanban-cards-list').forEach(listEl => {
+          const stageId = listEl.dataset.stageId;
           
-          const leadId = cardEl.dataset.leadId;
-          const newStageId = targetListEl.dataset.stageId;
-          const oldStageId = sourceListEl.dataset.stageId;
-
-          if (newStageId === oldStageId) return;
-
-          console.log(`Moving lead ${leadId} from stage ${oldStageId} to ${newStageId}`);
-
-          try {
-            const { error } = await supabase
-              .from('leads')
-              .update({ pipeline_stage_id: newStageId })
-              .eq('id', leadId);
-
-            if (error) throw error;
+          const sortable = new SortableConstructor(listEl, {
+            group: 'kanban',
+            animation: 150,
+            ghostClass: 'opacity-40',
+            dragClass: 'rotate-1',
             
-            // Success toast
-            toast.show('Ficha movida correctamente', 'success');
+            onEnd: async (evt) => {
+              const cardEl = evt.item;
+              const targetListEl = evt.to;
+              const sourceListEl = evt.from;
+              
+              const leadId = cardEl.dataset.leadId;
+              const newStageId = targetListEl.dataset.stageId;
+              const oldStageId = sourceListEl.dataset.stageId;
 
-            // Optimistic update of local state
-            leads = leads.map(l => l.id === leadId ? { ...l, pipeline_stage_id: newStageId } : l);
-            distributeCards();
-          } catch (err) {
-            toast.show('Error al mover tarjeta: ' + err.message, 'error');
-            // Revert cards distribution
-            distributeCards();
-          }
-        }
-      });
-      sortableInstances.push(sortable);
-    });
+              if (newStageId === oldStageId) return;
+
+              console.log(`Moving lead ${leadId} from stage ${oldStageId} to ${newStageId}`);
+
+              try {
+                const { error } = await supabase
+                  .from('leads')
+                  .update({ pipeline_stage_id: newStageId })
+                  .eq('id', leadId);
+
+                if (error) throw error;
+                
+                // Success toast
+                toast.show('Ficha movida correctamente', 'success');
+
+                // Optimistic update of local state
+                leads = leads.map(l => l.id === leadId ? { ...l, pipeline_stage_id: newStageId } : l);
+                distributeCards();
+              } catch (err) {
+                toast.show('Error al mover tarjeta: ' + err.message, 'error');
+                // Revert cards distribution
+                distributeCards();
+              }
+            }
+          });
+          sortableInstances.push(sortable);
+        });
+      } else {
+        console.error('SortableJS was imported but is not a constructor/function');
+      }
+    } catch (sortError) {
+      console.error('Failed to initialize SortableJS:', sortError);
+    }
   }
 
   function renderCardHtml(lead) {
