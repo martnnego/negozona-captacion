@@ -3,7 +3,7 @@ import { router } from '../lib/router';
 
 export function renderSidebar(currentUser) {
   const sidebar = document.createElement('aside');
-  sidebar.className = 'w-64 bg-white border-r border-[#d9d9dd] flex flex-col h-full shrink-0 select-none';
+  sidebar.className = 'sidebar-responsive bg-white border-r border-[#d9d9dd] flex flex-col h-full shrink-0 select-none';
 
   const currentHash = window.location.hash || '#dashboard';
   const isAdmin = currentUser?.profile?.role === 'super_admin';
@@ -37,9 +37,14 @@ export function renderSidebar(currentUser) {
 
   sidebar.innerHTML = `
     <!-- Top Brand -->
-    <div class="px-6 py-6 border-b border-[#d9d9dd] flex flex-col gap-1">
-      <span class="font-mono text-[10px] tracking-[0.2em] text-coral font-bold uppercase">NEGOZONA</span>
-      <h1 class="text-sm font-semibold font-display text-primary tracking-tight">CRM Expansión</h1>
+    <div class="px-6 py-6 border-b border-[#d9d9dd] flex items-center justify-between gap-2 shrink-0">
+      <div class="flex flex-col gap-1">
+        <span class="font-mono text-[10px] tracking-[0.2em] text-coral font-bold uppercase">NEGOZONA</span>
+        <h1 class="text-sm font-semibold font-display text-primary tracking-tight">CRM Expansión</h1>
+      </div>
+      <button id="close-sidebar-btn" class="lg:hidden text-neutral-400 hover:text-primary font-mono text-base focus:outline-none p-1" title="Cerrar menú">
+        ✕
+      </button>
     </div>
 
     <!-- Navigation links -->
@@ -75,6 +80,16 @@ export function renderSidebar(currentUser) {
       alert('Error cerrando sesión: ' + err.message);
     }
   });
+
+  // Attach mobile close handler
+  const closeBtn = sidebar.querySelector('#close-sidebar-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      const backdrop = document.getElementById('sidebar-backdrop');
+      if (backdrop) backdrop.classList.add('hidden');
+    });
+  }
 
   return sidebar;
 }

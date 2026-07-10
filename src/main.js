@@ -64,10 +64,15 @@ async function initApp() {
         router.appContainer = appElement;
         // Router will render login inside appElement directly
       } else {
-        appElement.className = 'h-full flex overflow-hidden bg-white';
+        appElement.className = 'h-full flex overflow-hidden bg-white relative';
         
         // Build dashboard layout containers
         const sidebar = renderSidebar(userSession);
+        
+        // Create backdrop for mobile sidebar drawer
+        const backdrop = document.createElement('div');
+        backdrop.id = 'sidebar-backdrop';
+        backdrop.className = 'fixed inset-0 bg-black/30 z-40 hidden lg:hidden transition-opacity duration-300';
         
         const mainArea = document.createElement('div');
         mainArea.className = 'flex-1 flex flex-col min-w-0 h-full';
@@ -93,8 +98,15 @@ async function initApp() {
         mainArea.appendChild(activeNavbar);
         mainArea.appendChild(contentArea);
         
+        // Close sidebar on backdrop click
+        backdrop.addEventListener('click', () => {
+          sidebar.classList.remove('open');
+          backdrop.classList.add('hidden');
+        });
+        
         appElement.innerHTML = '';
         appElement.appendChild(sidebar);
+        appElement.appendChild(backdrop);
         appElement.appendChild(mainArea);
         
         // Update router container target to render page inside contentArea

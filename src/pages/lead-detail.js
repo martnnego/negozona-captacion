@@ -61,7 +61,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
   function renderContent() {
     const bodyEl = detailModal.bodyEl;
     bodyEl.innerHTML = '';
-    bodyEl.className = 'flex flex-col gap-6 overflow-hidden max-h-[80vh]';
+    bodyEl.className = 'flex-1 p-6 font-sans text-sm text-neutral-700 flex flex-col gap-6 max-h-[80vh] overflow-y-auto';
 
     const stages = cache.getStages();
     const profiles = cache.getProfiles();
