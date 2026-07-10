@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, fetchAllLeads } from '../lib/supabase';
 import { cache } from '../lib/cache';
 import { renderLeadDetail } from './lead-detail';
 import { formatDate } from '../utils/date-format';
@@ -57,12 +57,7 @@ export function renderLeadsByCompany(currentUser) {
 
   async function loadLeads() {
     try {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .range(0, 9999);
-
-      if (error) throw error;
+      const data = await fetchAllLeads('*');
       leads = data || [];
       
       // Calculate group listings

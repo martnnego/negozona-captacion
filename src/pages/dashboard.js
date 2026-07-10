@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, fetchAllLeads } from '../lib/supabase';
 import { cache } from '../lib/cache';
 import { Chart, registerables } from 'chart.js';
 import { toast } from '../components/toast';
@@ -114,12 +114,7 @@ export async function renderDashboard(currentUser) {
   async function loadData() {
     try {
       // 1. Fetch leads (retrieve minimal columns for charts optimization)
-      const { data: leads, error: leadsErr } = await supabase
-        .from('leads')
-        .select('id, created_at, country, pipeline_stage_id, assigned_to')
-        .range(0, 9999);
-
-      if (leadsErr) throw leadsErr;
+      const leads = await fetchAllLeads('id, created_at, country, pipeline_stage_id, assigned_to');
       leadsData = leads || [];
 
       // 2. Fetch recent activities

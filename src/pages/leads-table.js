@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, fetchAllLeads } from '../lib/supabase';
 import { cache } from '../lib/cache';
 import { renderStageCards } from '../components/stage-cards';
 import { renderFilters } from '../components/filters';
@@ -150,12 +150,7 @@ export function renderLeadsTable(currentUser) {
 
   async function loadStageCounts() {
     try {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('pipeline_stage_id')
-        .range(0, 9999);
-
-      if (error) throw error;
+      const data = await fetchAllLeads('pipeline_stage_id');
       
       const counts = {};
       data.forEach(lead => {

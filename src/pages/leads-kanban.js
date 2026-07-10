@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, fetchAllLeads } from '../lib/supabase';
 import { cache } from '../lib/cache';
 import { realtime } from '../lib/realtime';
 import { renderLeadDetail } from './lead-detail';
@@ -91,12 +91,7 @@ export function renderLeadsKanban(currentUser) {
   async function loadLeads() {
     boardWrapper.innerHTML = `<div class="p-8 text-center text-xs text-neutral-400 font-sans w-full">Cargando pipeline...</div>`;
     try {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .range(0, 9999);
-
-      if (error) throw error;
+      const data = await fetchAllLeads('*');
       leads = data || [];
       distributeCards();
     } catch (err) {
