@@ -106,9 +106,9 @@ export function renderLeadsByCompany(currentUser) {
       
       // Accordion Header
       accordion.innerHTML = `
-        <div class="px-5 py-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-neutral-50/50 select-none border-b ${
+        <div class="accordion-header px-5 py-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-neutral-50/50 select-none border-b ${
           isCollapsed ? 'border-transparent' : 'border-neutral-100'
-        }" id="header-${name.replace(/\s+/g, '-')}">
+        }">
           <div class="flex items-center gap-3">
             <span class="text-xs font-mono text-[#616161]">${isCollapsed ? '▶' : '▼'}</span>
             <span class="text-sm font-semibold text-primary font-display">${name}</span>
@@ -166,7 +166,7 @@ export function renderLeadsByCompany(currentUser) {
       `;
 
       // Collapse click event
-      const header = accordion.querySelector(`#header-${name.replace(/\s+/g, '-')}`);
+      const header = accordion.querySelector('.accordion-header');
       header.addEventListener('click', () => {
         if (collapsedCompanies.has(name)) {
           collapsedCompanies.delete(name);
