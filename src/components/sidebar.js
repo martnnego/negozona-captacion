@@ -13,11 +13,8 @@ export function renderSidebar(currentUser) {
     { label: 'TABLA DE LEADS', hash: '#leads-table', icon: '📋' },
     { label: 'PIPELINE KANBAN', hash: '#leads-kanban', icon: '🗂️' },
     { label: 'POR EMPRESA', hash: '#leads-by-company', icon: '🏢' },
+    { label: 'CONFIGURACIÓN', hash: '#settings', icon: '⚙️' },
   ];
-
-  if (isAdmin) {
-    menuItems.push({ label: 'CONFIGURACIÓN', hash: '#settings', icon: '⚙️' });
-  }
 
   let menuHtml = menuItems
     .map(item => {

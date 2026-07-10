@@ -18,7 +18,7 @@ export function renderSettings(currentUser) {
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#d9d9dd] pb-6 shrink-0">
         <div>
           <h2 class="text-2xl font-normal font-display text-primary leading-tight tracking-tight">Configuración</h2>
-          <p class="text-xs text-muted-slate mt-1 font-sans">Administración de perfiles, permisos y etapas del pipeline</p>
+          <p class="text-xs text-muted-slate mt-1 font-sans">${isAdmin ? 'Administración de perfiles, permisos y etapas del pipeline' : 'Editá tu perfil y contraseña de acceso'}</p>
         </div>
       </div>
 
@@ -189,10 +189,26 @@ export function renderSettings(currentUser) {
       <div class="flex flex-col gap-6 font-sans text-xs">
         
         <!-- Supabase Auth Guidance Info Box -->
-        <div class="bg-neutral-50 border border-[#d9d9dd] rounded-sm p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div class="flex flex-col gap-0.5">
-            <h4 class="font-bold text-primary font-mono text-[9px] tracking-wider uppercase">¿Cómo agregar un comercial?</h4>
-            <p class="text-neutral-500 text-[11px]">Para registrar e invitar a un nuevo comercial, hazlo a través de tu panel de administración de <b>Supabase Auth</b>. El sistema creará de forma automática su perfil del CRM al iniciar sesión por primera vez.</p>
+        <div class="bg-neutral-50 border border-[#d9d9dd] rounded-sm p-5 flex flex-col gap-5">
+          <div class="flex flex-col gap-2">
+            <h4 class="font-bold text-primary font-mono text-[9px] tracking-wider uppercase border-b border-neutral-200 pb-2">¿Cómo invitar a un nuevo comercial?</h4>
+            <ol class="flex flex-col gap-1.5 text-[11px] text-neutral-600 list-decimal list-inside pl-1">
+              <li>Ingresá al panel de <b>Supabase</b> → <b>Authentication</b> → <b>Users</b>.</li>
+              <li>Hacé clic en <b>Add User</b> → <b>Invite User</b>.</li>
+              <li>Ingresá el email del comercial y confirmá. Se enviará un email con el enlace de acceso automáticamente.</li>
+              <li>El comercial aparecerá en esta tabla en cuanto active su cuenta y configure su perfil.</li>
+            </ol>
+          </div>
+
+          <div class="flex flex-col gap-2 border-t border-neutral-200 pt-4">
+            <h4 class="font-bold text-coral font-mono text-[9px] tracking-wider uppercase">¿Cómo reiniciar un tester/usuario de prueba?</h4>
+            <p class="text-[11px] text-neutral-500 mb-1">Si necesitás eliminar y volver a invitar a un usuario de prueba (para limpiar datos de sesión anteriores), seguí estos pasos:</p>
+            <ol class="flex flex-col gap-1.5 text-[11px] text-neutral-600 list-decimal list-inside pl-1">
+              <li>Ingresá al panel de <b>Supabase</b> → <b>Authentication</b> → <b>Users</b>.</li>
+              <li>Buscá al usuario por email y hacé clic en los tres puntos (⋯) a la derecha de su fila.</li>
+              <li>Seleccioná <b>Delete User</b> y confirmá. <span class="text-rose-600 font-semibold">Esto eliminará también su perfil del CRM en cascada.</span></li>
+              <li>Para re-invitar, repetí el proceso de invitación descripto arriba con el mismo email.</li>
+            </ol>
           </div>
         </div>
 

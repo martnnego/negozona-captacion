@@ -14,6 +14,8 @@ import { renderLeadsByCompany } from './pages/leads-by-company';
 import { renderSettings } from './pages/settings';
 import { renderLeadDetail } from './pages/lead-detail';
 
+import { realtime } from './lib/realtime';
+
 const routes = {
   '#login': renderLogin,
   '#dashboard': renderDashboard,
@@ -29,6 +31,8 @@ let activeNavbar = null;
 async function initApp() {
   const appElement = document.getElementById('app');
   
+  let unsubscribeRealtime = null;
+
   // Set up auth state change listener to handle routing and caching dynamically
   auth.onAuthStateChange(async (event, userSession) => {
     console.log('Auth state changed:', event);
@@ -37,10 +41,30 @@ async function initApp() {
       if (!cache.isLoaded) {
         await cache.loadAll();
       }
+      
+      // Global Realtime Sync
+      if (!unsubscribeRealtime) {
+        unsubscribeRealtime = realtime.subscribeToLeads((payload) => {
+          console.log('Global Realtime Lead Event:', payload);
+          const { eventType, new: newLead, old: oldLead } = payload;
+          if (eventType === 'INSERT') {
+            cache.addLead(newLead);
+          } else if (eventType === 'UPDATE') {
+            cache.updateLead(newLead);
+          } else if (eventType === 'DELETE') {
+            cache.deleteLead(oldLead.id);
+          }
+        });
+      }
+
       // Re-trigger routing to apply updated layout
       router.handleRouting();
     } else {
       cache.clear();
+      if (unsubscribeRealtime) {
+        unsubscribeRealtime();
+        unsubscribeRealtime = null;
+      }
       if (activeNavbar?.cleanup) {
         activeNavbar.cleanup();
       }

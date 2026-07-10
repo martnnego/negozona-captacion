@@ -1,15 +1,17 @@
-import { supabase } from './supabase';
+import { supabase, fetchAllLeads } from './supabase';
 
 class CacheManager {
   constructor() {
     this.stages = new Map();
     this.profiles = new Map();
+    this.leads = [];
     this.isLoaded = false;
+    this.listeners = new Set();
   }
 
   async loadAll() {
     try {
-      const [stagesRes, profilesRes] = await Promise.all([
+      const [stagesRes, profilesRes, leadsData] = await Promise.all([
         supabase
           .from('pipeline_stages')
           .select('*')
@@ -17,7 +19,8 @@ class CacheManager {
         supabase
           .from('profiles')
           .select('*')
-          .eq('is_active', true)
+          .eq('is_active', true),
+        fetchAllLeads('id, created_at, first_name, last_name, email, phone, company, position, linkedin_url, country, source, source_detail, pipeline_stage_id, industry, investment, branches, assigned_to, valoracion, medio_contacto, fecha_ultimo_contacto, fecha_carga, motivo_descarte, notes, updated_at')
       ]);
 
       if (stagesRes.error) throw stagesRes.error;
@@ -33,8 +36,10 @@ class CacheManager {
         this.profiles.set(profile.id, profile);
       });
 
+      this.leads = leadsData || [];
       this.isLoaded = true;
-      console.log('Cache initialized successfully');
+      console.log('Cache initialized successfully, loaded', this.leads.length, 'leads');
+      this.triggerChange();
     } catch (err) {
       console.error('Error loading metadata cache:', err);
     }
@@ -56,10 +61,67 @@ class CacheManager {
     return Array.from(this.profiles.values());
   }
 
+  getLeads() {
+    return this.leads;
+  }
+
+  setLeads(leads) {
+    this.leads = leads;
+    this.triggerChange();
+  }
+
+  addLead(lead) {
+    if (!this.leads.find(l => l.id === lead.id)) {
+      this.leads.push(lead);
+      this.triggerChange();
+    }
+  }
+
+  updateLead(lead) {
+    let updated = false;
+    this.leads = this.leads.map(l => {
+      if (l.id === lead.id) {
+        updated = true;
+        return { ...l, ...lead };
+      }
+      return l;
+    });
+    if (updated) {
+      this.triggerChange();
+    }
+  }
+
+  deleteLead(id) {
+    const lengthBefore = this.leads.length;
+    this.leads = this.leads.filter(l => l.id !== id);
+    if (this.leads.length !== lengthBefore) {
+      this.triggerChange();
+    }
+  }
+
+  subscribe(callback) {
+    this.listeners.add(callback);
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  triggerChange() {
+    this.listeners.forEach(cb => {
+      try {
+        cb();
+      } catch (e) {
+        console.error('Error in cache subscriber callback:', e);
+      }
+    });
+  }
+
   clear() {
     this.stages.clear();
     this.profiles.clear();
+    this.leads = [];
     this.isLoaded = false;
+    this.listeners.clear();
   }
 }
 

@@ -1,4 +1,3 @@
-import { supabase, fetchAllLeads } from '../lib/supabase';
 import { cache } from '../lib/cache';
 import { renderLeadDetail } from './lead-detail';
 import { formatDate } from '../utils/date-format';
@@ -55,17 +54,24 @@ export function renderLeadsByCompany(currentUser) {
 
   loadLeads();
 
-  async function loadLeads() {
+  function loadLeads() {
     try {
-      const data = await fetchAllLeads('*');
-      leads = data || [];
-      
-      // Calculate group listings
+      leads = cache.getLeads() || [];
       renderGroups();
     } catch (err) {
       toast.show('Error al traer leads agrupados: ' + err.message, 'error');
     }
   }
+
+  // Subscribe to changes in cache
+  const unsubscribeCache = cache.subscribe(() => {
+    leads = cache.getLeads() || [];
+    renderGroups();
+  });
+
+  container.cleanup = () => {
+    unsubscribeCache();
+  };
 
   function renderGroups() {
     groupsList.innerHTML = '';

@@ -1,6 +1,5 @@
-import { supabase, fetchAllLeads } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { cache } from '../lib/cache';
-import { realtime } from '../lib/realtime';
 import { renderLeadDetail } from './lead-detail';
 import { toast } from '../components/toast';
 import Sortable from 'sortablejs';
@@ -12,12 +11,18 @@ export function renderLeadsKanban(currentUser) {
   // State
   let leads = [];
   let sortableInstances = [];
-  let unsubscribeRealtime = null;
+  let unsubscribeCache = null;
 
   let activeFilters = {
     assignedTo: '',
     country: ''
   };
+
+  // Subscribe to changes in cache
+  unsubscribeCache = cache.subscribe(() => {
+    leads = cache.getLeads() || [];
+    distributeCards();
+  });
 
   // Render Kanban structure
   container.innerHTML = `
@@ -72,27 +77,10 @@ export function renderLeadsKanban(currentUser) {
   // Load Leads initially
   loadLeads();
 
-  // Subscribe to Realtime lead changes
-  unsubscribeRealtime = realtime.subscribeToLeads((payload) => {
-    console.log('Realtime change in Kanban:', payload);
-    const eventType = payload.eventType;
-    
-    if (eventType === 'INSERT') {
-      leads.push(payload.new);
-    } else if (eventType === 'DELETE') {
-      leads = leads.filter(l => l.id !== payload.old.id);
-    } else if (eventType === 'UPDATE') {
-      leads = leads.map(l => l.id === payload.new.id ? payload.new : l);
-    }
-
-    distributeCards();
-  });
-
   async function loadLeads() {
     boardWrapper.innerHTML = `<div class="p-8 text-center text-xs text-neutral-400 font-sans w-full">Cargando pipeline...</div>`;
     try {
-      const data = await fetchAllLeads('*');
-      leads = data || [];
+      leads = cache.getLeads() || [];
       distributeCards();
     } catch (err) {
       toast.show('Error al cargar pipeline: ' + err.message, 'error');
@@ -263,7 +251,7 @@ export function renderLeadsKanban(currentUser) {
 
   // Cleanup event listeners
   container.cleanup = () => {
-    if (unsubscribeRealtime) unsubscribeRealtime();
+    if (unsubscribeCache) unsubscribeCache();
     sortableInstances.forEach(s => s.destroy());
   };
 

@@ -1,4 +1,4 @@
-import { supabase, fetchAllLeads } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { cache } from '../lib/cache';
 import { Chart, registerables } from 'chart.js';
 import { toast } from '../components/toast';
@@ -113,9 +113,7 @@ export async function renderDashboard(currentUser) {
   // Fetch leads and activities
   async function loadData() {
     try {
-      // 1. Fetch leads (retrieve minimal columns for charts optimization)
-      const leads = await fetchAllLeads('id, created_at, country, pipeline_stage_id, assigned_to');
-      leadsData = leads || [];
+      leadsData = cache.getLeads() || [];
 
       // 2. Fetch recent activities
       const { data: activities, error: actErr } = await supabase
@@ -430,6 +428,16 @@ export async function renderDashboard(currentUser) {
       })
       .join('');
   }
+
+  // Subscribe to changes in cache
+  const unsubscribeCache = cache.subscribe(() => {
+    leadsData = cache.getLeads() || [];
+    calculateAndRender();
+  });
+
+  container.cleanup = () => {
+    unsubscribeCache();
+  };
 
   // Load everything
   loadData();

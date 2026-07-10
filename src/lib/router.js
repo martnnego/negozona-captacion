@@ -37,6 +37,15 @@ class Router {
     const renderFn = this.routes[routeKey];
     
     if (renderFn) {
+      // Execute cleanup on previous view if defined
+      if (this.currentView && typeof this.currentView.cleanup === 'function') {
+        try {
+          this.currentView.cleanup();
+        } catch (e) {
+          console.error('Error cleaning up previous view:', e);
+        }
+      }
+
       this.currentRoute = routeKey;
       if (this.onRouteChanged) {
         this.onRouteChanged(routeKey, userSession);
@@ -45,6 +54,8 @@ class Router {
       // Execute the page renderer
       this.appContainer.innerHTML = '';
       const view = await renderFn(userSession);
+      this.currentView = view;
+
       if (view instanceof HTMLElement) {
         this.appContainer.appendChild(view);
       } else if (typeof view === 'string') {

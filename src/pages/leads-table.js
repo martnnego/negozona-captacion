@@ -148,9 +148,9 @@ export function renderLeadsTable(currentUser) {
     }
   }
 
-  async function loadStageCounts() {
+  function loadStageCounts() {
     try {
-      const data = await fetchAllLeads('pipeline_stage_id');
+      const data = cache.getLeads();
       
       const counts = {};
       data.forEach(lead => {
@@ -936,6 +936,15 @@ export function renderLeadsTable(currentUser) {
       renderLeadDetail(autoOpenLeadId, () => loadData());
     }, 100);
   }
+
+  // Subscribe to cache to keep stage counts up to date
+  const unsubscribeCache = cache.subscribe(() => {
+    loadStageCounts();
+  });
+
+  container.cleanup = () => {
+    unsubscribeCache();
+  };
 
   return container;
 }
