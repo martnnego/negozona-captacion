@@ -3,3 +3,9 @@ dist/
 .env
 .DS_Store
 *.local
+
+# Negozona specific data & plans
+contactos_consolidados_negozona_20260708_200510.csv
+implementation_plan_crm_negozona_20260709.md
+scratch-test-admin.js
+scratch-test.js
