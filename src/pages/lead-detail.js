@@ -3,6 +3,7 @@ import { cache } from '../lib/cache';
 import { formatDate, formatDateTime } from '../utils/date-format';
 import { modal } from '../components/modal';
 import { toast } from '../components/toast';
+import { openContactEditModal } from '../components/contact-edit-modal';
 
 export async function renderLeadDetail(leadId, onUpdate) {
   let activeTab = localStorage.getItem('lead_detail_active_tab') || 'detail'; // 'detail', 'linked_contacts', 'interactions', 'comments', 'history'
@@ -30,6 +31,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
   const detailModal = modal.create({
     title: 'Ficha de Empresa / Marca',
     content: contentWrapper,
+    sizeClass: 'max-w-2xl md:max-w-4xl',
     onClose: () => {
       if (onUpdate) onUpdate();
     }
@@ -39,35 +41,29 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
   async function loadAllData() {
     try {
-      const [leadRes, linksRes, interactionsRes, commentsRes, historyRes, auditRes] = await Promise.all([
-        supabase.from('leads').select('*').eq('id', leadId).single(),
-        supabase.from('lead_contacts_link').select('contact_id').eq('lead_id', leadId),
+      // 1. Resolve lead and contacts from local cache
+      lead = cache.getLead(leadId);
+      if (!lead) {
+        // Fallback query in case it is not present in cache
+        const leadRes = await supabase.from('leads').select('*').eq('id', leadId).single();
+        if (leadRes.error) throw leadRes.error;
+        lead = leadRes.data;
+      }
+
+      linkedContacts = cache.getLeadContacts(leadId) || [];
+
+      // 2. Only fetch dynamically changing transactional logs from Supabase
+      const [interactionsRes, commentsRes, historyRes, auditRes] = await Promise.all([
         supabase.from('lead_interactions').select('*').eq('lead_id', leadId).order('contacted_at', { ascending: false }),
         supabase.from('lead_comments').select('*').eq('lead_id', leadId).order('created_at', { ascending: false }),
         supabase.from('lead_status_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
         supabase.from('lead_audit_log').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false })
       ]);
 
-      if (leadRes.error) throw leadRes.error;
-      
-      lead = leadRes.data;
       interactions = interactionsRes.data || [];
       comments = commentsRes.data || [];
       statusHistory = historyRes.data || [];
       auditLogs = auditRes.data || [];
-
-      // Fetch actual contacts using links
-      const contactIds = (linksRes.data || []).map(link => link.contact_id);
-      if (contactIds.length > 0) {
-        const { data: contactsData, error: contactsErr } = await supabase
-          .from('contacts')
-          .select('*')
-          .in('id', contactIds);
-        if (contactsErr) throw contactsErr;
-        linkedContacts = contactsData || [];
-      } else {
-        linkedContacts = [];
-      }
 
       renderContent();
     } catch (err) {
@@ -116,7 +112,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
     // Tab Navigation Bar
     const tabsBar = document.createElement('div');
-    tabsBar.className = 'flex items-center gap-6 border-b border-[#d9d9dd] font-sans text-xs select-none';
+    tabsBar.className = 'flex items-center gap-2 md:gap-6 border-b border-[#d9d9dd] font-sans text-xs select-none overflow-x-auto no-scrollbar flex-nowrap shrink-0 w-full';
     
     const tabs = [
       { id: 'detail', label: 'INFORMACIÓN GENERAL' },
@@ -130,7 +126,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
     tabsBar.innerHTML = tabs.map(tab => `
       <button 
         data-tab="${tab.id}" 
-        class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 ${
+        class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer ${
           activeTab === tab.id 
             ? 'text-primary border-b-2 border-primary -mb-[1px]' 
             : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
@@ -143,6 +139,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
     // Tab Contents container
     const tabContent = document.createElement('div');
     tabContent.className = 'flex-1 overflow-y-auto min-h-[300px] py-2';
+    tabContent.id = 'lead-detail-tab-content';
 
     bodyEl.appendChild(summaryHeader);
     bodyEl.appendChild(tabsBar);
@@ -194,7 +191,24 @@ export async function renderLeadDetail(leadId, onUpdate) {
   }
 
   // REFRESH DATA FUNCTIONS
+  function showTabLoader() {
+    const tabEl = detailModal.bodyEl.querySelector('#lead-detail-tab-content');
+    if (!tabEl) return;
+    tabEl.innerHTML = `
+      <div class="w-full min-h-[200px] flex items-center justify-center font-sans text-neutral-400 text-xs">
+        <div class="flex flex-col items-center gap-2 select-none">
+          <svg class="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="font-mono text-[9px] font-bold uppercase tracking-wider">Cargando datos...</span>
+        </div>
+      </div>
+    `;
+  }
+
   async function refreshHistory() {
+    if (activeTab === 'history') showTabLoader();
     try {
       const [histRes, auditRes] = await Promise.all([
         supabase.from('lead_status_history').select('*').eq('lead_id', lead.id).order('changed_at', { ascending: false }),
@@ -209,6 +223,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
   }
 
   async function refreshInteractions() {
+    if (activeTab === 'interactions') showTabLoader();
     try {
       const res = await supabase.from('lead_interactions').select('*').eq('lead_id', lead.id).order('contacted_at', { ascending: false });
       interactions = res.data || [];
@@ -219,6 +234,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
   }
 
   async function refreshComments() {
+    if (activeTab === 'comments') showTabLoader();
     try {
       const res = await supabase.from('lead_comments').select('*').eq('lead_id', lead.id).order('created_at', { ascending: false });
       comments = res.data || [];
@@ -482,6 +498,11 @@ export async function renderLeadDetail(leadId, onUpdate) {
                     </button>
                   ` : ''}
 
+                  <!-- Edit Button -->
+                  <button data-edit-contact-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-primary hover:bg-neutral-50 transition-colors focus:outline-none text-[13px]" title="Editar datos del contacto">
+                    ✏️
+                  </button>
+
                   <!-- Unlink Button -->
                   <button data-unlink-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-rose-600 hover:bg-neutral-50 transition-colors focus:outline-none text-[13px]" title="Desvincular contacto">
                     ✕
@@ -580,6 +601,16 @@ export async function renderLeadDetail(leadId, onUpdate) {
         } catch (err) {
           toast.show('Error al desvincular contacto: ' + err.message, 'error');
         }
+      });
+    });
+
+    // Edit Contact click
+    parent.querySelectorAll('[data-edit-contact-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const contactId = btn.dataset.editContactId;
+        openContactEditModal(contactId, () => {
+          loadAllData();
+        });
       });
     });
 

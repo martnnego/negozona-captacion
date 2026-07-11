@@ -48,12 +48,12 @@ export function renderLeadsTable(currentUser) {
 
         <!-- Pipeline Mode Toggle Switch -->
         <div class="flex items-center bg-neutral-100 p-0.5 rounded-full border border-neutral-200 select-none max-w-fit mt-1 md:mt-0" id="pipeline-mode-toggle">
-          <button data-mode="comercial" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+          <button data-mode="comercial" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer ${
             activePipelineMode === 'comercial'
               ? 'bg-white shadow-xs text-primary'
               : 'text-[#616161] hover:text-primary'
           }">💼 Comercial</button>
-          <button data-mode="franquiday" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+          <button data-mode="franquiday" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer ${
             activePipelineMode === 'franquiday'
               ? 'bg-white shadow-xs text-primary'
               : 'text-[#616161] hover:text-primary'
@@ -66,7 +66,7 @@ export function renderLeadsTable(currentUser) {
         <!-- Period Pills -->
         <div class="flex items-center gap-1" id="period-pills">
           ${[{label:'30 días', val:30}, {label:'90 días', val:90}, {label:'180 días', val:180}, {label:'Todo', val:0}].map(p => `
-            <button data-period="${p.val}" class="period-btn px-3 py-1.5 border rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
+            <button data-period="${p.val}" class="period-btn px-3 py-1.5 border rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 cursor-pointer ${
               periodDays === p.val
                 ? 'bg-primary border-primary text-white'
                 : 'bg-white border-[#d9d9dd] text-[#616161] hover:text-primary hover:border-primary'
@@ -215,7 +215,9 @@ export function renderLeadsTable(currentUser) {
       
       const counts = {};
       data.forEach(lead => {
-        const id = activePipelineMode === 'franquiday' ? (lead.franquiday_stage_id || cache.getStages()[0]?.id) : lead.pipeline_stage_id;
+        const id = activePipelineMode === 'franquiday' 
+          ? (cache.getMostRecentFranquidayStageId(lead.id) || lead.franquiday_stage_id || cache.getStages()[0]?.id) 
+          : lead.pipeline_stage_id;
         counts[id] = (counts[id] || 0) + 1;
       });
 

@@ -143,7 +143,9 @@ export function renderLeadsKanban(currentUser) {
     const stages = cache.getStages();
     boardWrapper.innerHTML = stages.map(stage => {
       const stageLeads = filteredLeads.filter(l => {
-        const activeStageId = activePipelineMode === 'franquiday' ? (l.franquiday_stage_id || stages[0]?.id) : l.pipeline_stage_id;
+        const activeStageId = activePipelineMode === 'franquiday' 
+          ? (cache.getMostRecentFranquidayStageId(l.id) || l.franquiday_stage_id || stages[0]?.id) 
+          : l.pipeline_stage_id;
         return activeStageId === stage.id;
       });
       

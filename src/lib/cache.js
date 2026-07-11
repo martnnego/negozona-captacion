@@ -268,6 +268,23 @@ class CacheManager {
     return this.participations.filter(p => p.lead_id === leadId);
   }
 
+  getMostRecentFranquidayStageId(leadId) {
+    const parts = this.getLeadParticipations(leadId) || [];
+    if (parts.length === 0) return null;
+
+    const partsWithEvents = parts.map(p => {
+      const ev = this.getEvent(p.evento_id);
+      return { ...p, event: ev };
+    }).filter(x => x.event !== undefined);
+
+    if (partsWithEvents.length === 0) return null;
+
+    // Sort by event date descending
+    partsWithEvents.sort((a, b) => new Date(b.event.fecha) - new Date(a.event.fecha));
+    
+    return partsWithEvents[0].pipeline_stage_id;
+  }
+
   addParticipation(participation) {
     if (!this.participations.find(p => p.id === participation.id)) {
       this.participations.push(participation);

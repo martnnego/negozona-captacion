@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { cache } from '../lib/cache';
 import { toast } from '../components/toast';
+import { modal } from '../components/modal';
 
 export function renderSettings(currentUser) {
   const container = document.createElement('div');
@@ -24,7 +25,7 @@ export function renderSettings(currentUser) {
 
       <!-- Tab Navigation Bar -->
       <div class="flex items-center gap-6 border-b border-[#d9d9dd] font-sans text-xs select-none">
-        <button data-tab="profile" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 ${
+        <button data-tab="profile" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
           activeTab === 'profile' 
             ? 'text-primary border-b-2 border-primary -mb-[1px]' 
             : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
@@ -32,21 +33,21 @@ export function renderSettings(currentUser) {
           MI PERFIL
         </button>
         ${isAdmin ? `
-          <button data-tab="users" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 ${
+          <button data-tab="users" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
             activeTab === 'users' 
               ? 'text-primary border-b-2 border-primary -mb-[1px]' 
               : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
           }">
             GESTIÓN DE USUARIOS
           </button>
-          <button data-tab="pipeline" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 ${
+          <button data-tab="pipeline" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
             activeTab === 'pipeline' 
               ? 'text-primary border-b-2 border-primary -mb-[1px]' 
               : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
           }">
             ETAPAS DEL PIPELINE
           </button>
-          <button data-tab="franquiday" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 ${
+          <button data-tab="franquiday" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
             activeTab === 'franquiday' 
               ? 'text-primary border-b-2 border-primary -mb-[1px]' 
               : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
@@ -546,14 +547,26 @@ export function renderSettings(currentUser) {
                         : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-neutral-50 text-neutral-500 border border-neutral-200">Pasado</span>`
                       }
                     </td>
-                    <td class="py-3 text-right">
-                      ${!e.is_active ? `
-                        <button data-activate-event-id="${e.id}" class="px-2.5 py-1 border border-[#d9d9dd] hover:border-emerald-600 hover:text-emerald-600 font-mono text-[9px] font-bold uppercase rounded-sm bg-white transition-all tracking-wider focus:outline-none">
-                          Activar
+                    <td class="py-3 text-right select-none">
+                      <div class="flex items-center justify-end gap-2">
+                        ${!e.is_active ? `
+                          <button data-activate-event-id="${e.id}" class="px-2.5 py-1 border border-[#d9d9dd] hover:border-emerald-600 hover:text-emerald-600 font-mono text-[9px] font-bold uppercase rounded-sm bg-white transition-all tracking-wider focus:outline-none cursor-pointer">
+                            Activar
+                          </button>
+                        ` : `
+                          <span class="text-neutral-400 font-mono text-[9px] italic mr-1">Evento Activo</span>
+                        `}
+                        
+                        <!-- Edit Button -->
+                        <button data-edit-event-id="${e.id}" class="p-1 rounded-sm text-neutral-400 hover:text-primary hover:bg-neutral-50 transition-colors focus:outline-none text-[12px] cursor-pointer" title="Editar Evento">
+                          ✏️
                         </button>
-                      ` : `
-                        <span class="text-neutral-400 font-mono text-[9px] italic">Evento Activo</span>
-                      `}
+                        
+                        <!-- Delete Button -->
+                        <button data-delete-event-id="${e.id}" class="p-1 rounded-sm text-neutral-400 hover:text-rose-600 hover:bg-neutral-50 transition-colors focus:outline-none text-[12px] cursor-pointer" title="Eliminar Evento">
+                          🗑️
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 `).join('')}
@@ -628,6 +641,139 @@ export function renderSettings(currentUser) {
           toast.show('Error al activar evento: ' + err.message, 'error');
           btn.disabled = false;
           btn.textContent = 'Activar';
+        }
+      });
+    });
+
+    // Edit event click handler
+    parent.querySelectorAll('[data-edit-event-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const eventId = btn.dataset.editEventId;
+        const ev = events.find(x => x.id === eventId);
+        if (!ev) return;
+
+        const editFormWrapper = document.createElement('div');
+        editFormWrapper.className = 'font-sans text-xs select-none';
+        editFormWrapper.innerHTML = `
+          <form id="edit-event-form" class="flex flex-col gap-4 pb-2">
+            <div class="flex flex-col gap-1">
+              <label for="edit-event-name" class="font-mono text-[9px] font-bold text-primary uppercase">Nombre de la edición *</label>
+              <input type="text" id="edit-event-name" name="nombre" required value="${ev.nombre || ''}" class="cohere-input text-xs" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label for="edit-event-date" class="font-mono text-[9px] font-bold text-primary uppercase">Fecha *</label>
+              <input type="date" id="edit-event-date" name="fecha" required value="${ev.fecha || ''}" class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label for="edit-event-country" class="font-mono text-[9px] font-bold text-primary uppercase">País *</label>
+              <select id="edit-event-country" name="pais" required class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3">
+                ${['Argentina', 'España', 'México', 'Uruguay', 'Chile'].map(c => `
+                  <option value="${c}" ${ev.pais === c ? 'selected' : ''}>${c}</option>
+                `).join('')}
+              </select>
+            </div>
+            <div class="flex flex-col gap-1">
+              <label for="edit-event-state" class="font-mono text-[9px] font-bold text-primary uppercase">Provincia / Región *</label>
+              <input type="text" id="edit-event-state" name="provincia" required value="${ev.provincia || ''}" class="cohere-input text-xs" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label for="edit-event-city" class="font-mono text-[9px] font-bold text-primary uppercase">Ciudad *</label>
+              <input type="text" id="edit-event-city" name="ciudad" required value="${ev.ciudad || ''}" class="cohere-input text-xs" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label for="edit-event-venue" class="font-mono text-[9px] font-bold text-primary uppercase">Lugar / Sede *</label>
+              <input type="text" id="edit-event-venue" name="lugar" required value="${ev.lugar || ''}" class="cohere-input text-xs" />
+            </div>
+            
+            <div class="flex items-center justify-end gap-3 mt-5 border-t border-neutral-100 pt-4">
+              <button type="button" id="btn-cancel-edit-event" class="px-5 py-2 text-neutral-600 hover:text-primary font-mono text-[10px] font-bold uppercase cursor-pointer">
+                Cancelar
+              </button>
+              <button type="submit" id="btn-save-event" class="px-6 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors cursor-pointer">
+                Guardar cambios
+              </button>
+            </div>
+          </form>
+        `;
+
+        const editModal = modal.create({
+          title: `Editar Evento: ${ev.nombre}`,
+          content: editFormWrapper
+        });
+
+        editFormWrapper.querySelector('#btn-cancel-edit-event').addEventListener('click', () => editModal.close());
+
+        editFormWrapper.querySelector('#edit-event-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const btnSave = editFormWrapper.querySelector('#btn-save-event');
+          btnSave.disabled = true;
+          btnSave.textContent = 'Guardando...';
+
+          const fd = new FormData(e.target);
+          const updatedEvent = {
+            nombre: fd.get('nombre').trim(),
+            fecha: fd.get('fecha'),
+            pais: fd.get('pais'),
+            provincia: fd.get('provincia').trim(),
+            ciudad: fd.get('ciudad').trim(),
+            lugar: fd.get('lugar').trim()
+          };
+
+          try {
+            const { error } = await supabase
+              .from('eventos_franquiday')
+              .update(updatedEvent)
+              .eq('id', ev.id);
+
+            if (error) throw error;
+
+            toast.show('Evento Franquiday actualizado correctamente', 'success');
+            editModal.close();
+            await cache.loadAll();
+            renderFranquidayTab(parent);
+          } catch (err) {
+            toast.show('Error al actualizar evento: ' + err.message, 'error');
+            btnSave.disabled = false;
+            btnSave.textContent = 'Guardar cambios';
+          }
+        });
+      });
+    });
+
+    // Delete event click handler
+    parent.querySelectorAll('[data-delete-event-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const eventId = btn.dataset.deleteEventId;
+        const ev = events.find(x => x.id === eventId);
+        if (!ev) return;
+
+        const confirmMsg = `¿Seguro que deseas eliminar permanentemente la edición "${ev.nombre}"?\n` +
+                           `¡ATENCIÓN! Esto eliminará de forma irreversible todas las participaciones y notas comerciales de las marcas en este evento específico.`;
+        if (!confirm(confirmMsg)) return;
+
+        btn.disabled = true;
+        
+        try {
+          const { error } = await supabase
+            .from('eventos_franquiday')
+            .delete()
+            .eq('id', eventId);
+
+          if (error) throw error;
+
+          toast.show('Evento Franquiday y sus participaciones eliminados', 'success');
+
+          // If the deleted event was the active one, clear activeEventId in local state
+          const activeEv = cache.getActiveEvent();
+          if (activeEv && activeEv.id === eventId) {
+            localStorage.removeItem('crm_active_franquiday_event_id');
+          }
+
+          await cache.loadAll();
+          renderFranquidayTab(parent);
+        } catch (err) {
+          toast.show('Error al eliminar evento: ' + err.message, 'error');
+          btn.disabled = false;
         }
       });
     });

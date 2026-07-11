@@ -8,6 +8,7 @@ import { parseCSV } from '../utils/csv-parser';
 import { exportContactsToCSV } from '../utils/csv-export';
 import { downloadCSVTemplate } from '../utils/csv-template';
 import { checkDuplicateEmails } from '../utils/duplicate-checker';
+import { openContactEditModal } from '../components/contact-edit-modal';
 
 export function renderLeadsByCompany(currentUser) {
   const container = document.createElement('div');
@@ -19,6 +20,8 @@ export function renderLeadsByCompany(currentUser) {
   let leads = [];
   let searchQuery = '';
   let collapsedCompanies = new Set();
+  let currentPage = 1;
+  let rowsPerPage = 10;
 
   container.innerHTML = `
     <!-- Header Title -->
@@ -119,6 +122,7 @@ export function renderLeadsByCompany(currentUser) {
     clearTimeout(debounceTimeout);
     debounceTimeout = setTimeout(() => {
       searchQuery = searchInput.value.trim().toLowerCase();
+      currentPage = 1; // Reset to page 1 on new search
       renderContent();
     }, 200);
   });
@@ -253,12 +257,13 @@ export function renderLeadsByCompany(currentUser) {
                 <th class="px-6 py-2.5">Estado</th>
                 <th class="px-6 py-2.5">Medio Contacto</th>
                 <th class="px-6 py-2.5">Principal</th>
+                <th class="px-6 py-2.5">Acciones</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100 text-neutral-700">
               ${contactsList.length === 0 ? `
                 <tr>
-                  <td colspan="8" class="px-6 py-4 text-center text-neutral-400 italic">No hay contactos vinculados a esta marca.</td>
+                  <td colspan="9" class="px-6 py-4 text-center text-neutral-400 italic">No hay contactos vinculados a esta marca.</td>
                 </tr>
               ` : contactsList.map(c => {
                 const isPrimary = lead.primary_contact_id === c.id;
@@ -282,6 +287,11 @@ export function renderLeadsByCompany(currentUser) {
                     </td>
                     <td class="px-6 py-3 font-mono text-[10px] uppercase text-muted-slate">${c.medio_contacto || '—'}</td>
                     <td class="px-6 py-3 font-semibold ${isPrimary ? 'text-emerald-600' : 'text-neutral-300'}">${isPrimary ? '★ Principal' : '—'}</td>
+                    <td class="px-6 py-3">
+                      <button data-edit-contact-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-primary hover:bg-neutral-50 transition-colors focus:outline-none text-[12px]" title="Editar contacto">
+                        ✏️
+                      </button>
+                    </td>
                   </tr>
                 `;
               }).join('')}
@@ -312,16 +322,28 @@ export function renderLeadsByCompany(currentUser) {
         });
       }
 
+      // Edit contact click
+      accordion.querySelectorAll('[data-edit-contact-id]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const contactId = btn.dataset.editContactId;
+          openContactEditModal(contactId, () => {
+            loadData();
+          });
+        });
+      });
+
       contentArea.appendChild(accordion);
     });
   }
 
   // View 2: Flat Contacts Table
   function renderListView() {
-    let filteredContacts = contacts;
+    let filteredContacts = [...contacts];
 
+    // Search Query filter
     if (searchQuery) {
-      filteredContacts = contacts.filter(c => {
+      filteredContacts = filteredContacts.filter(c => {
         const fullName = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
         const matchesContact = fullName.includes(searchQuery) ||
           (c.email || '').toLowerCase().includes(searchQuery) ||
@@ -334,6 +356,21 @@ export function renderLeadsByCompany(currentUser) {
       });
     }
 
+    // Default sorting helper: Sort by the first linked company's name alphabetically
+    function getFirstCompanyName(contactId) {
+      const linkedLeads = cache.getContactLeads(contactId);
+      if (linkedLeads.length > 0) {
+        return linkedLeads[0].company || 'Sin Empresa';
+      }
+      return 'Sin empresa';
+    }
+
+    filteredContacts.sort((a, b) => {
+      const companyA = getFirstCompanyName(a.id).toLowerCase();
+      const companyB = getFirstCompanyName(b.id).toLowerCase();
+      return companyA.localeCompare(companyB);
+    });
+
     if (filteredContacts.length === 0) {
       contentArea.innerHTML = `
         <div class="py-12 text-center text-xs text-neutral-400 font-sans border border-dashed border-[#d9d9dd] rounded-sm bg-neutral-50/50">
@@ -342,6 +379,19 @@ export function renderLeadsByCompany(currentUser) {
       `;
       return;
     }
+
+    // Pagination calculations
+    const totalRows = filteredContacts.length;
+    const totalPages = Math.ceil(totalRows / rowsPerPage);
+    
+    // Adjust currentPage if it overflows after search
+    if (currentPage > totalPages && totalPages > 0) {
+      currentPage = totalPages;
+    }
+
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    const endIndex = Math.min(startIndex + rowsPerPage, totalRows);
+    const paginatedContacts = filteredContacts.slice(startIndex, endIndex);
 
     const tableWrapper = document.createElement('div');
     tableWrapper.className = 'bg-white border border-[#d9d9dd] rounded-sm overflow-hidden flex flex-col';
@@ -358,10 +408,11 @@ export function renderLeadsByCompany(currentUser) {
               <th class="px-6 py-3">Medio</th>
               <th class="px-6 py-3">Estado</th>
               <th class="px-6 py-3">Última Gestión</th>
+              <th class="px-6 py-3">Acciones</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-[#e5e7eb] text-neutral-700">
-            ${filteredContacts.map(c => {
+            ${paginatedContacts.map(c => {
               const linkedLeads = cache.getContactLeads(c.id);
               const companiesStr = linkedLeads.length > 0 
                 ? linkedLeads.map(l => l.company || 'Sin Empresa').join(', ') 
@@ -385,13 +436,102 @@ export function renderLeadsByCompany(currentUser) {
                     </span>
                   </td>
                   <td class="px-6 py-3.5 font-mono text-[10px]">${formatDate(c.fecha_ultimo_contacto)}</td>
+                  <td class="px-6 py-3.5">
+                    <button data-edit-contact-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-primary hover:bg-neutral-50 transition-colors focus:outline-none text-[12px]" title="Editar contacto">
+                      ✏️
+                    </button>
+                  </td>
                 </tr>
               `;
             }).join('')}
           </tbody>
         </table>
       </div>
+
+      <!-- Pagination Footer -->
+      <div class="px-6 py-4 border-t border-[#e5e7eb] bg-neutral-50/50 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans text-xs select-none">
+        <div class="flex items-center gap-2">
+          <span class="text-neutral-500">Filas por página:</span>
+          <select id="contacts-rows-per-page" class="bg-white border border-[#d9d9dd] rounded-sm py-1 px-1.5 font-mono text-[10px] font-bold text-primary focus:outline-none transition-colors">
+            ${[10, 25, 50].map(v => `<option value="${v}" ${rowsPerPage === v ? 'selected' : ''}>${v}</option>`).join('')}
+          </select>
+          <span class="text-neutral-400 ml-4 font-mono text-[10px]">
+            Mostrando ${totalRows === 0 ? 0 : startIndex + 1} a ${endIndex} de ${totalRows} contactos
+          </span>
+        </div>
+
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="contacts-prev-page" class="px-3 py-1.5 border border-[#d9d9dd] text-[#616161] hover:text-primary hover:border-primary text-[10px] font-mono font-bold uppercase rounded-full bg-white transition-all disabled:opacity-30 disabled:pointer-events-none focus:outline-none" ${currentPage === 1 ? 'disabled' : ''}>
+            ANTERIOR
+          </button>
+          
+          <div class="flex items-center gap-1">
+            ${Array.from({ length: totalPages }).map((_, i) => {
+              const pageNum = i + 1;
+              if (totalPages > 5 && Math.abs(currentPage - pageNum) > 1 && pageNum !== 1 && pageNum !== totalPages) {
+                if (pageNum === 2 || pageNum === totalPages - 1) {
+                  return '<span class="text-neutral-400 px-1 font-mono">...</span>';
+                }
+                return '';
+              }
+              return `
+                <button data-page="${pageNum}" class="contacts-page-btn w-6 h-6 rounded-full font-mono text-[10px] font-bold transition-all ${
+                  currentPage === pageNum 
+                    ? 'bg-primary text-white' 
+                    : 'text-[#616161] hover:bg-neutral-100'
+                }">${pageNum}</button>
+              `;
+            }).join('')}
+          </div>
+
+          <button id="contacts-next-page" class="px-3 py-1.5 border border-[#d9d9dd] text-[#616161] hover:text-primary hover:border-primary text-[10px] font-mono font-bold uppercase rounded-full bg-white transition-all disabled:opacity-30 disabled:pointer-events-none focus:outline-none" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>
+            SIGUIENTE
+          </button>
+        </div>
+      </div>
     `;
+
+    // Row edit contact click
+    tableWrapper.querySelectorAll('[data-edit-contact-id]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const contactId = btn.dataset.editContactId;
+        openContactEditModal(contactId, () => {
+          loadData();
+        });
+      });
+    });
+
+    // Rows per page change listener
+    tableWrapper.querySelector('#contacts-rows-per-page').addEventListener('change', (e) => {
+      rowsPerPage = parseInt(e.target.value);
+      currentPage = 1;
+      renderContent();
+    });
+
+    // Prev page button
+    tableWrapper.querySelector('#contacts-prev-page').addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage--;
+        renderContent();
+      }
+    });
+
+    // Next page button
+    tableWrapper.querySelector('#contacts-next-page').addEventListener('click', () => {
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderContent();
+      }
+    });
+
+    // Page buttons
+    tableWrapper.querySelectorAll('.contacts-page-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentPage = parseInt(btn.dataset.page);
+        renderContent();
+      });
+    });
 
     contentArea.appendChild(tableWrapper);
   }

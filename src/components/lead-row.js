@@ -6,7 +6,9 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
   row.className = 'border-b border-[#e5e7eb] hover:bg-neutral-50/50 transition-colors font-sans text-xs text-neutral-700 cursor-pointer select-none';
 
   const pipelineMode = localStorage.getItem('crm_active_pipeline_mode') || 'comercial';
-  const activeStageId = pipelineMode === 'franquiday' ? (lead.franquiday_stage_id || cache.getStages()[0]?.id) : lead.pipeline_stage_id;
+  const activeStageId = pipelineMode === 'franquiday' 
+    ? (cache.getMostRecentFranquidayStageId(lead.id) || lead.franquiday_stage_id || cache.getStages()[0]?.id) 
+    : lead.pipeline_stage_id;
   
   const stage = cache.getStage(activeStageId);
   const profile = cache.getProfile(lead.assigned_to);

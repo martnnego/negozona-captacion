@@ -1,10 +1,10 @@
 export const modal = {
-  create({ title, content, actions = [], onClose = null }) {
+  create({ title, content, actions = [], onClose = null, sizeClass = 'max-w-2xl' }) {
     const backdrop = document.createElement('div');
     backdrop.className = 'fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in';
     
     const container = document.createElement('div');
-    container.className = 'bg-white w-full max-w-2xl rounded-sm border border-neutral-200 shadow-xl flex flex-col max-h-[90vh] overflow-hidden';
+    container.className = `bg-white w-full ${sizeClass} rounded-sm border border-neutral-200 shadow-xl flex flex-col max-h-[90vh] overflow-hidden`;
     
     // Header
     const header = document.createElement('div');
