@@ -6,7 +6,7 @@ export function renderSettings(currentUser) {
   const container = document.createElement('div');
   container.className = 'flex flex-col gap-6 animate-fade-in pb-12 select-none';
 
-  let activeTab = 'profile'; // 'profile', 'users', 'pipeline'
+  let activeTab = localStorage.getItem('settings_active_tab') || 'profile'; // 'profile', 'users', 'pipeline', 'franquiday'
   const isAdmin = currentUser?.profile?.role === 'super_admin';
 
   // Render main structure
@@ -64,6 +64,7 @@ export function renderSettings(currentUser) {
     container.querySelectorAll('[data-tab]').forEach(btn => {
       btn.addEventListener('click', () => {
         activeTab = btn.dataset.tab;
+        localStorage.setItem('settings_active_tab', activeTab);
         renderMain();
       });
     });

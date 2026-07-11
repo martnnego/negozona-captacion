@@ -32,10 +32,14 @@ async function initApp() {
   const appElement = document.getElementById('app');
   
   let unsubscribeRealtime = null;
+  let lastUserId = null;
 
   // Set up auth state change listener to handle routing and caching dynamically
   auth.onAuthStateChange(async (event, userSession) => {
     console.log('Auth state changed:', event);
+    const currentUserId = userSession?.user?.id || null;
+    const sessionUserChanged = currentUserId !== lastUserId;
+    lastUserId = currentUserId;
     
     if (userSession) {
       if (!cache.isLoaded) {
@@ -111,8 +115,10 @@ async function initApp() {
         };
       }
 
-      // Re-trigger routing to apply updated layout
-      router.handleRouting();
+      if (sessionUserChanged) {
+        // Re-trigger routing to apply updated layout
+        router.handleRouting();
+      }
     } else {
       cache.clear();
       if (unsubscribeRealtime) {
