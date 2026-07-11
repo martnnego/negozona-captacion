@@ -36,13 +36,9 @@ export function renderSidebar(currentUser) {
     <!-- Top Brand -->
     <div class="px-4 py-5 border-b border-[#d9d9dd] flex items-center justify-between gap-2 shrink-0">
       <div class="flex items-center gap-3">
-        <!-- N Logo SVG -->
-        <div class="shrink-0 w-9 h-9 rounded-lg overflow-hidden" style="background:#0f172a">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="36" height="36">
-            <rect width="64" height="64" rx="10" fill="#0f172a"/>
-            <path d="M13 49 L13 15 L20 15 L45 41 L45 15 L51 15 L51 49 L44 49 L19 23 L19 49 Z" fill="white"/>
-            <circle cx="51" cy="13" r="6" fill="#ff6b6b"/>
-          </svg>
+        <!-- Logo Image matching Favicon -->
+        <div class="shrink-0 w-9 h-9 flex items-center justify-center">
+          <img src="/logo-pin.png" alt="NegoZona Logo" class="h-9 w-auto object-contain select-none" />
         </div>
         <div class="flex flex-col gap-0.5">
           <span class="font-mono text-[10px] tracking-[0.2em] text-coral font-bold uppercase">NEGOZONA</span>

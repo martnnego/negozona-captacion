@@ -42,7 +42,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
   async function loadAllData() {
     try {
       // 1. Resolve lead and contacts from local cache
-      lead = cache.getLead(leadId);
+      lead = (cache.getLeads() || []).find(l => l.id === leadId);
       if (!lead) {
         // Fallback query in case it is not present in cache
         const leadRes = await supabase.from('leads').select('*').eq('id', leadId).single();
@@ -265,14 +265,14 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
           <div class="flex flex-col gap-1 relative">
             <label for="edit-company" class="font-mono text-[9px] font-bold text-primary uppercase">Nombre Empresa / Marca *</label>
-            <div class="flex gap-2">
+            <div class="flex flex-col sm:flex-row gap-2">
               <input type="text" id="edit-company" name="company" required value="${lead.company || ''}" class="cohere-input text-xs flex-1" />
               ${!isNameValidated ? `
-                <button type="button" id="validate-name-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-mono font-bold uppercase rounded-sm tracking-wider transition-colors focus:outline-none shrink-0">
+                <button type="button" id="validate-name-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-mono font-bold uppercase rounded-sm tracking-wider transition-colors focus:outline-none shrink-0 w-full sm:w-auto text-center justify-center flex items-center cursor-pointer">
                   Confirmar y Validar
                 </button>
               ` : `
-                <button type="button" id="invalidate-name-btn" class="px-4 py-2 border border-rose-300 text-rose-600 hover:bg-rose-50 text-[10px] font-mono font-bold uppercase rounded-sm tracking-wider transition-colors focus:outline-none shrink-0">
+                <button type="button" id="invalidate-name-btn" class="px-4 py-2 border border-rose-300 text-rose-600 hover:bg-rose-50 text-[10px] font-mono font-bold uppercase rounded-sm tracking-wider transition-colors focus:outline-none shrink-0 w-full sm:w-auto text-center justify-center flex items-center cursor-pointer">
                   Editar / Invalidar
                 </button>
               `}

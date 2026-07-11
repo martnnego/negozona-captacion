@@ -18,7 +18,23 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
   const fullName = primaryContact ? `${primaryContact.first_name || ''} ${primaryContact.last_name || ''}`.trim() : '—';
   const email = primaryContact ? primaryContact.email : '—';
   const phone = primaryContact ? primaryContact.phone : '—';
-  const lastContactDate = primaryContact ? primaryContact.fecha_ultimo_contacto : null;
+  // Calculate days without contact
+  const dateBase = lead.fecha_ultimo_contacto ? new Date(lead.fecha_ultimo_contacto) : new Date(lead.created_at);
+  const now = new Date();
+  dateBase.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+  const diffTime = Math.max(0, now - dateBase);
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  let dotClass = 'bg-rose-500 animate-pulse'; // Default/Critical (>=14 days)
+  let trafficStatus = 'Crítico';
+  if (diffDays < 7) {
+    dotClass = 'bg-emerald-500';
+    trafficStatus = 'Al día';
+  } else if (diffDays < 14) {
+    dotClass = 'bg-amber-500';
+    trafficStatus = 'Atención';
+  }
 
   const company = lead.company || '—';
   const country = lead.country || '—';
@@ -65,7 +81,10 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
       ${assignedName}
     </td>
     <td class="px-6 py-3.5 font-mono text-[10px] whitespace-nowrap">
-      ${formatDate(lastContactDate)}
+      <div class="flex items-center gap-2" title="Inactividad: ${diffDays} días (${trafficStatus})">
+        <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}"></span>
+        <span>${lead.fecha_ultimo_contacto ? formatDate(lead.fecha_ultimo_contacto) : 'Sin gestión'}</span>
+      </div>
     </td>
     <td class="px-6 py-3.5 text-coral font-mono text-[10px] tracking-widest whitespace-nowrap">
       ${lead.valoracion || '—'}

@@ -40,15 +40,15 @@ export async function renderDashboard(currentUser) {
           <p class="text-xs text-muted-slate mt-1 font-sans">Panel de control y métricas clave del pipeline</p>
         </div>
 
-        <div class="flex items-center gap-3 shrink-0">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0 w-full sm:w-auto select-none">
           <!-- Pipeline Mode Switcher -->
-          <div class="flex items-center bg-neutral-100 rounded-full p-0.5 border border-neutral-200 shrink-0 select-none text-[10px] font-mono font-bold tracking-wider">
-            <button id="mode-comercial-btn" class="px-4 py-1.5 rounded-full transition-all duration-150 uppercase flex items-center gap-1 cursor-pointer ${
+          <div class="flex items-center justify-center bg-neutral-100 rounded-full p-0.5 border border-neutral-200 w-full sm:w-auto text-[10px] font-mono font-bold tracking-wider">
+            <button id="mode-comercial-btn" class="flex-1 sm:flex-initial px-4 py-1.5 rounded-full transition-all duration-150 uppercase flex items-center justify-center gap-1 cursor-pointer ${
               activePipelineMode === 'comercial' ? 'bg-white text-primary shadow-xs' : 'text-[#616161] hover:text-primary'
             }">
               💼 Comercial
             </button>
-            <button id="mode-franquiday-btn" class="px-4 py-1.5 rounded-full transition-all duration-150 uppercase flex items-center gap-1 cursor-pointer ${
+            <button id="mode-franquiday-btn" class="flex-1 sm:flex-initial px-4 py-1.5 rounded-full transition-all duration-150 uppercase flex items-center justify-center gap-1 cursor-pointer ${
               activePipelineMode === 'franquiday' ? 'bg-white text-primary shadow-xs' : 'text-[#616161] hover:text-primary'
             }">
               🎪 Franquiday
@@ -56,7 +56,7 @@ export async function renderDashboard(currentUser) {
           </div>
 
           <!-- Franquiday Events Selector -->
-          <select id="dashboard-event-select" class="bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider ${
+          <select id="dashboard-event-select" class="bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider w-full sm:w-auto ${
             activePipelineMode === 'franquiday' ? '' : 'hidden'
           }">
             ${events.map(e => `
@@ -101,9 +101,9 @@ export async function renderDashboard(currentUser) {
     </div>
 
     <!-- Cards container -->
-    <div id="metrics-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div id="metrics-cards" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
       <!-- Loading Skeleton Cards -->
-      ${Array(4).fill(0).map(() => `
+      ${Array(5).fill(0).map(() => `
         <div class="bg-neutral-50 border border-neutral-100 rounded-sm p-6 h-28 animate-pulse flex flex-col justify-between">
           <div class="h-3 w-1/3 bg-neutral-200 rounded-xs"></div>
           <div class="h-8 w-1/2 bg-neutral-200 rounded-xs"></div>
@@ -290,6 +290,29 @@ export async function renderDashboard(currentUser) {
       ? ((ganadoCount / totalLeads) * 100).toFixed(1) 
       : '0.0';
 
+    // Calculate Inactivity Average
+    let totalInactivityDays = 0;
+    filteredLeads.forEach(l => {
+      const dateBase = l.fecha_ultimo_contacto ? new Date(l.fecha_ultimo_contacto) : new Date(l.created_at);
+      const now = new Date();
+      dateBase.setHours(0, 0, 0, 0);
+      now.setHours(0, 0, 0, 0);
+      const diffTime = Math.max(0, now - dateBase);
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      totalInactivityDays += diffDays;
+    });
+
+    const avgInactivity = totalLeads > 0 
+      ? (totalInactivityDays / totalLeads).toFixed(1) 
+      : '0.0';
+
+    let inactivityColorClass = 'text-rose-600'; // Critical (>=14)
+    if (parseFloat(avgInactivity) < 7) {
+      inactivityColorClass = 'text-emerald-600';
+    } else if (parseFloat(avgInactivity) < 14) {
+      inactivityColorClass = 'text-amber-500';
+    }
+
     // Render Cards
     const cardsContainer = container.querySelector('#metrics-cards');
     cardsContainer.innerHTML = `
@@ -315,6 +338,12 @@ export async function renderDashboard(currentUser) {
       <div class="bg-white border border-[#d9d9dd] rounded-sm p-6 flex flex-col justify-between h-28 select-none">
         <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase font-sans">Tasa Conversión</span>
         <span class="text-3xl font-light font-display text-primary">${conversionRate}%</span>
+      </div>
+
+      <!-- Inactividad Promedio -->
+      <div class="bg-white border border-[#d9d9dd] rounded-sm p-6 flex flex-col justify-between h-28 select-none" title="Promedio de días transcurridos desde el último contacto registrado">
+        <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase">Inactividad Promedio</span>
+        <span class="text-3xl font-light font-display ${inactivityColorClass}">${avgInactivity} días</span>
       </div>
     `;
 

@@ -272,19 +272,26 @@ export function renderLeadsKanban(currentUser) {
     const company = lead.company || 'Sin Empresa';
     const rating = lead.valoracion || '';
     
-    // Check if lead hasn't been contacted in 14 days (reads from primary contact date)
-    let hasAlert = false;
-    const lastContactDate = primaryContact ? primaryContact.fecha_ultimo_contacto : null;
-    if (lastContactDate) {
-      const lastContact = new Date(lastContactDate);
-      const diffMs = new Date() - lastContact;
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      if (diffDays > 14) {
-        hasAlert = true;
-      }
-    } else {
-      // No contact date means it hasn't been contacted at all
-      hasAlert = true;
+    // Calculate days without contact based on lead.fecha_ultimo_contacto
+    const dateBase = lead.fecha_ultimo_contacto ? new Date(lead.fecha_ultimo_contacto) : new Date(lead.created_at);
+    const now = new Date();
+    dateBase.setHours(0, 0, 0, 0);
+    now.setHours(0, 0, 0, 0);
+    const diffTime = Math.max(0, now - dateBase);
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    let dotColor = '#ef4444'; // Red
+    let dotClass = 'bg-rose-500 animate-pulse';
+    let trafficStatus = 'Crítico';
+    
+    if (diffDays < 7) {
+      dotColor = '#10b981'; // Green
+      dotClass = 'bg-emerald-500';
+      trafficStatus = 'Al día';
+    } else if (diffDays < 14) {
+      dotColor = '#f59e0b'; // Yellow
+      dotClass = 'bg-amber-500';
+      trafficStatus = 'Atención';
     }
 
     const profile = cache.getProfile(lead.assigned_to);
@@ -295,16 +302,16 @@ export function renderLeadsKanban(currentUser) {
       <div 
         data-lead-id="${lead.id}" 
         class="kanban-card bg-white border border-[#d9d9dd] rounded-sm p-4 cursor-pointer hover:border-primary hover:shadow-xs transition-all duration-150 flex flex-col gap-2 relative"
+        style="border-left: 3px solid ${dotColor};"
+        title="Inactividad: ${diffDays} días (${trafficStatus})"
       >
-        <!-- Top alert flag -->
-        ${hasAlert ? `
-          <span class="absolute top-3 right-3 text-coral text-xs" title="Sin gestión hace más de 14 días">⚠️</span>
-        ` : ''}
-
         <!-- Details -->
         <div class="flex flex-col gap-0.5 pr-4">
-          <span class="font-semibold text-primary font-display truncate">${fullName}</span>
-          <span class="text-neutral-500 text-[11px] truncate font-semibold">${company}
+          <div class="flex items-center gap-1.5 overflow-hidden">
+            <span class="w-2 h-2 rounded-full shrink-0 ${dotClass}"></span>
+            <span class="font-semibold text-primary font-display truncate">${fullName}</span>
+          </div>
+          <span class="text-neutral-500 text-[11px] truncate font-semibold ml-3.5">${company}
             ${lead.nombre_validado ? `<span class="inline-block text-emerald-600 ml-1" title="Nombre de empresa validado">✓</span>` : ''}
           </span>
         </div>
@@ -316,8 +323,9 @@ export function renderLeadsKanban(currentUser) {
         </div>
 
         <!-- Bottom User tag -->
-        <div class="flex items-center gap-1.5 mt-1 text-[9px] font-mono text-neutral-400 font-bold uppercase truncate" title="Asignado a: ${assignedName}">
-          👤 ${assignedName}
+        <div class="flex items-center justify-between mt-1 text-[9px] font-mono font-bold uppercase text-neutral-400">
+          <span class="truncate max-w-[130px]" title="Asignado a: ${assignedName}">👤 ${assignedName}</span>
+          <span class="shrink-0 text-neutral-400 text-[8px] font-mono">Hace ${diffDays}d</span>
         </div>
       </div>
     `;
