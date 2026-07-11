@@ -236,65 +236,98 @@ export function renderLeadsTable(currentUser) {
   }
 
   async function loadLeads() {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="10" class="py-12 text-center text-xs text-neutral-400 font-sans">
-          Cargando leads...
-        </td>
-      </tr>
-    `;
-
     try {
-      let query = supabase
-        .from('leads')
-        .select('*', { count: 'exact' });
+      let filtered = [...(cache.getLeads() || [])];
 
-      // Apply Filters
+      // 1. Apply Filters locally
       if (activeFilters.search) {
-        query = query.ilike('company', `%${activeFilters.search}%`);
+        const searchVal = activeFilters.search.toLowerCase();
+        filtered = filtered.filter(l => (l.company || '').toLowerCase().includes(searchVal));
       }
+
       if (activeFilters.stageId) {
-        if (activePipelineMode === 'franquiday') {
-          query = query.eq('franquiday_stage_id', activeFilters.stageId);
-        } else {
-          query = query.eq('pipeline_stage_id', activeFilters.stageId);
-        }
+        filtered = filtered.filter(l => {
+          const activeStageId = activePipelineMode === 'franquiday' 
+            ? (cache.getMostRecentFranquidayStageId(l.id) || l.franquiday_stage_id || cache.getStages()[0]?.id) 
+            : l.pipeline_stage_id;
+          return activeStageId === activeFilters.stageId;
+        });
       }
+
       if (activeFilters.assignedTo) {
-        query = query.eq('assigned_to', activeFilters.assignedTo);
+        filtered = filtered.filter(l => l.assigned_to === activeFilters.assignedTo);
       }
+
       if (activeFilters.country) {
-        query = query.eq('country', activeFilters.country);
+        filtered = filtered.filter(l => l.country === activeFilters.country);
       }
+
       if (activeFilters.valoracion) {
-        query = query.eq('valoracion', activeFilters.valoracion);
+        filtered = filtered.filter(l => l.valoracion === activeFilters.valoracion);
       }
+
       // Period filter
       if (periodDays > 0) {
         const fromDate = new Date();
         fromDate.setDate(fromDate.getDate() - periodDays);
-        query = query.gte('created_at', fromDate.toISOString());
+        filtered = filtered.filter(l => new Date(l.created_at) >= fromDate);
       }
 
-      // Sort
+      // 2. Sort locally
       const actualSortCol = (sortColumn === 'pipeline_stage_id' && activePipelineMode === 'franquiday') ? 'franquiday_stage_id' : sortColumn;
-      query = query.order(actualSortCol, { ascending: sortAscending });
 
-      // Range
+      filtered.sort((a, b) => {
+        let valA = a[actualSortCol];
+        let valB = b[actualSortCol];
+
+        // Handle stage position sorting
+        if (actualSortCol === 'pipeline_stage_id') {
+          const stages = cache.getStages();
+          const posA = stages.find(s => s.id === valA)?.position || 99;
+          const posB = stages.find(s => s.id === valB)?.position || 99;
+          return sortAscending ? posA - posB : posB - posA;
+        }
+
+        if (actualSortCol === 'franquiday_stage_id') {
+          const stages = cache.getStages();
+          const stageIdA = cache.getMostRecentFranquidayStageId(a.id) || a.franquiday_stage_id || stages[0]?.id;
+          const stageIdB = cache.getMostRecentFranquidayStageId(b.id) || b.franquiday_stage_id || stages[0]?.id;
+          const posA = stages.find(s => s.id === stageIdA)?.position || 99;
+          const posB = stages.find(s => s.id === stageIdB)?.position || 99;
+          return sortAscending ? posA - posB : posB - posA;
+        }
+
+        // Default sorting
+        if (valA === undefined || valA === null) valA = '';
+        if (valB === undefined || valB === null) valB = '';
+
+        if (typeof valA === 'string') {
+          return sortAscending 
+            ? valA.localeCompare(valB)
+            : valB.localeCompare(valA);
+        } else {
+          return sortAscending
+            ? (valA > valB ? 1 : -1)
+            : (valB > valA ? 1 : -1);
+        }
+      });
+
+      // 3. Paginate locally
+      totalRows = filtered.length;
+      const totalPages = Math.ceil(totalRows / rowsPerPage);
+      
+      if (currentPage > totalPages && totalPages > 0) {
+        currentPage = totalPages;
+      }
+
       const from = (currentPage - 1) * rowsPerPage;
-      const to = currentPage * rowsPerPage - 1;
-      query = query.range(from, to);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-
-      leads = data || [];
-      totalRows = count || 0;
+      const to = from + rowsPerPage;
+      leads = filtered.slice(from, to);
 
       renderTableBody();
       renderPaginationControls();
     } catch (err) {
-      toast.show('Error al traer leads: ' + err.message, 'error');
+      toast.show('Error al procesar listado de leads: ' + err.message, 'error');
     }
   }
 
