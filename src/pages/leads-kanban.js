@@ -296,6 +296,7 @@ export function renderLeadsKanban(currentUser) {
 
     const profile = cache.getProfile(lead.assigned_to);
     const assignedName = profile?.full_name || 'Sin Asignar';
+    const isPhoneValidated = primaryContact ? !!primaryContact.telefono_validado : false;
 
     return `
       <!-- Card -->
@@ -310,6 +311,10 @@ export function renderLeadsKanban(currentUser) {
           <div class="flex items-center gap-1.5 overflow-hidden">
             <span class="w-2 h-2 rounded-full shrink-0 ${dotClass}"></span>
             <span class="font-semibold text-primary font-display truncate">${fullName}</span>
+            ${isPhoneValidated 
+              ? `<span class="text-[9px] text-emerald-600 font-bold select-none shrink-0" title="Teléfono del contacto verificado">📞 ✓</span>` 
+              : ''
+            }
           </div>
           <span class="text-neutral-500 text-[11px] truncate font-semibold ml-3.5">${company}
             ${lead.nombre_validado ? `<span class="inline-block text-emerald-600 ml-1" title="Nombre de empresa validado">✓</span>` : ''}

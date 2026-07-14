@@ -478,12 +478,27 @@ export async function renderLeadDetail(leadId, onUpdate) {
                   <div class="flex items-center gap-3 text-[11px] text-[#616161]">
                     <span>📧 ${c.email || '—'}</span>
                     <span>•</span>
-                    <span class="font-mono">📞 ${c.phone || '—'}</span>
+                    <div class="flex items-center gap-1">
+                      <span class="font-mono">📞 ${c.phone || '—'}</span>
+                      ${c.phone && c.phone !== '—'
+                        ? c.telefono_validado
+                          ? `<span class="inline-flex items-center px-1 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-sm text-[8px] uppercase tracking-wider font-bold" title="Número de teléfono verificado">✓ Validado</span>`
+                          : `<span class="inline-flex items-center px-1 py-0.2 bg-neutral-50 text-neutral-400 border border-neutral-200 rounded-sm text-[8px] uppercase tracking-wider font-bold" title="Número de teléfono no verificado">Pendiente</span>`
+                        : ''
+                      }
+                    </div>
                   </div>
                   ${c.linkedin_url ? `<a href="${c.linkedin_url}" target="_blank" class="text-action-blue text-[10px] font-semibold hover:underline">LinkedIn ➔</a>` : ''}
                 </div>
 
                 <div class="flex items-center gap-3 select-none shrink-0">
+                  <!-- Phone Valid/Invalid Toggle -->
+                  <label class="relative inline-flex items-center cursor-pointer mr-1">
+                    <input type="checkbox" data-phone-toggle-id="${c.id}" class="sr-only peer" ${c.telefono_validado ? 'checked' : ''} />
+                    <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                    <span class="ml-2 text-[10px] font-bold uppercase tracking-wider text-muted-slate">${c.telefono_validado ? 'Verificado' : 'Sin verificar'}</span>
+                  </label>
+
                   <!-- Active/Inactive Toggle -->
                   <label class="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" data-contact-toggle-id="${c.id}" class="sr-only peer" ${c.is_active ? 'checked' : ''} />
@@ -556,6 +571,34 @@ export async function renderLeadDetail(leadId, onUpdate) {
           toast.show('Estado de contacto actualizado', 'success');
         } catch (err) {
           toast.show('Error al cambiar estado: ' + err.message, 'error');
+          e.target.checked = !val;
+        }
+      });
+    });
+
+    // Phone Verification Toggle Click Listener
+    parent.querySelectorAll('[data-phone-toggle-id]').forEach(checkbox => {
+      checkbox.addEventListener('change', async (e) => {
+        const contactId = checkbox.dataset.phoneToggleId;
+        const val = e.target.checked;
+        try {
+          const { error } = await supabase
+            .from('contacts')
+            .update({ telefono_validado: val })
+            .eq('id', contactId);
+          if (error) throw error;
+          
+          // Update Cache
+          const ct = linkedContacts.find(x => x.id === contactId);
+          if (ct) {
+            ct.telefono_validado = val;
+            cache.updateContact(ct);
+          }
+          toast.show('Validación de teléfono actualizada', 'success');
+          // Re-render contacts list to show check badge next to phone
+          renderLinkedContactsTab(parent);
+        } catch (err) {
+          toast.show('Error al validar teléfono: ' + err.message, 'error');
           e.target.checked = !val;
         }
       });
@@ -760,7 +803,28 @@ export async function renderLeadDetail(leadId, onUpdate) {
             <option value="Otro">Otro</option>
           </select>
         </div>
+        
+        <!-- Phone Validation Toggle -->
+        <div class="flex items-center gap-3 sm:col-span-2 select-none">
+          <span class="font-mono text-[9px] font-bold text-primary uppercase">Validación de teléfono</span>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="add-c-phone-valid" name="telefono_validado" class="sr-only peer" />
+            <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+            <span class="ml-2 text-[10px] font-bold uppercase tracking-wider text-muted-slate" id="add-c-phone-valid-label">No Validado</span>
+          </label>
+        </div>
       `;
+
+      // Interactive label update
+      setTimeout(() => {
+        const toggleEl = form.querySelector('#add-c-phone-valid');
+        const labelEl = form.querySelector('#add-c-phone-valid-label');
+        if (toggleEl && labelEl) {
+          toggleEl.addEventListener('change', () => {
+            labelEl.textContent = toggleEl.checked ? 'Validado' : 'No Validado';
+          });
+        }
+      }, 50);
 
       modal.create({
         title: 'Crear y Vincular Nuevo Contacto',
@@ -781,6 +845,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
                 position: formData.get('position').trim() || null,
                 linkedin_url: formData.get('linkedin_url').trim() || null,
                 medio_contacto: formData.get('medio_contacto'),
+                telefono_validado: form.querySelector('#add-c-phone-valid').checked,
                 fecha_carga: new Date().toISOString().split('T')[0],
                 fecha_ultimo_contacto: new Date().toISOString().split('T')[0],
                 is_active: true

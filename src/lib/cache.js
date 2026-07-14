@@ -28,7 +28,7 @@ class CacheManager {
           .select('*')
           .eq('is_active', true),
         fetchAllLeads(
-          'id, created_at, company, country, source, source_detail, pipeline_stage_id, industry, investment, branches, assigned_to, valoracion, motivo_descarte, notes, updated_at, primary_contact_id, nombre_validado, franquiday_stage_id, franquiday_notes',
+          'id, created_at, company, country, source, source_detail, pipeline_stage_id, industry, investment, branches, assigned_to, valoracion, motivo_descarte, notes, updated_at, primary_contact_id, nombre_validado, franquiday_stage_id, franquiday_notes, fecha_ultimo_contacto, ultimo_comentario',
           { from_date }
         ),
         fetchAllRows('contacts', '*'),

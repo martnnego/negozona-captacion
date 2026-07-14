@@ -104,13 +104,14 @@ export function renderLeadsTable(currentUser) {
               <th data-col="pipeline_stage_id" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Etapa</th>
               <th data-col="assigned_to" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Comercial</th>
               <th data-col="fecha_ultimo_contacto" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Última Gestión</th>
+              <th class="px-6 py-3 text-muted-slate select-none">Último Comentario</th>
               <th data-col="valoracion" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Val.</th>
             </tr>
           </thead>
           <tbody id="leads-tbody" class="divide-y divide-[#e5e7eb]">
             <!-- Row items go here -->
             <tr>
-              <td colspan="10" class="py-12 text-center text-xs text-neutral-400 font-sans">
+              <td colspan="11" class="py-12 text-center text-xs text-neutral-400 font-sans">
                 Cargando leads...
               </td>
             </tr>
@@ -691,7 +692,6 @@ export function renderLeadsTable(currentUser) {
               valoracion: formData.get('valoracion') || null,
               notes: formData.get('notes').trim() || null,
               source: 'manual',
-              fecha_carga: todayStr,
               nombre_validado: false
             };
 

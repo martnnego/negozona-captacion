@@ -786,8 +786,7 @@ export function renderLeadsByCompany(currentUser) {
                         company: companyName,
                         nombre_validado: false,
                         pipeline_stage_id: defaultStageId,
-                        source: 'csv_import',
-                        fecha_carga: todayStr
+                        source: 'csv_import'
                       }])
                       .select()
                       .single();

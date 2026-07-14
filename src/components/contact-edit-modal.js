@@ -60,6 +60,18 @@ export function openContactEditModal(contactId, onSave) {
         </label>
       </div>
 
+      <!-- Phone Validation Toggle -->
+      <div class="flex items-center gap-3 mt-2 sm:col-span-2">
+        <span class="font-mono text-[9px] font-bold text-primary uppercase">Validación de teléfono</span>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="edit-c-phone-valid" name="telefono_validado" class="sr-only peer" ${contact.telefono_validado ? 'checked' : ''} />
+          <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+          <span class="ml-2 text-[10px] font-bold uppercase tracking-wider text-muted-slate" id="edit-c-phone-valid-label">
+            ${contact.telefono_validado ? 'Validado' : 'No Validado'}
+          </span>
+        </label>
+      </div>
+
       <div class="sm:col-span-2 flex items-center justify-end gap-3 mt-6 border-t border-neutral-100 pt-4">
         <button type="button" id="btn-cancel-edit" class="px-5 py-2 text-neutral-600 hover:text-primary font-mono text-[10px] font-bold uppercase">
           Cancelar
@@ -79,9 +91,15 @@ export function openContactEditModal(contactId, onSave) {
   const form = formWrapper.querySelector('#contact-edit-form');
   const activeToggle = form.querySelector('#edit-c-active');
   const activeLabel = form.querySelector('#edit-c-active-label');
+  const phoneValidToggle = form.querySelector('#edit-c-phone-valid');
+  const phoneValidLabel = form.querySelector('#edit-c-phone-valid-label');
 
   activeToggle.addEventListener('change', () => {
     activeLabel.textContent = activeToggle.checked ? 'Activo' : 'Inactivo';
+  });
+
+  phoneValidToggle.addEventListener('change', () => {
+    phoneValidLabel.textContent = phoneValidToggle.checked ? 'Validado' : 'No Validado';
   });
 
   formWrapper.querySelector('#btn-cancel-edit').addEventListener('click', () => {
@@ -103,7 +121,8 @@ export function openContactEditModal(contactId, onSave) {
       position: formData.get('position').trim() || null,
       linkedin_url: formData.get('linkedin_url').trim() || null,
       medio_contacto: formData.get('medio_contacto') || null,
-      is_active: activeToggle.checked
+      is_active: activeToggle.checked,
+      telefono_validado: phoneValidToggle.checked
     };
 
     try {

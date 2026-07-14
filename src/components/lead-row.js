@@ -69,7 +69,13 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
       ${email}
     </td>
     <td class="px-6 py-3.5 font-mono text-[10px] whitespace-nowrap">
-      ${phone}
+      <div class="flex items-center gap-1">
+        <span>${phone}</span>
+        ${primaryContact && primaryContact.telefono_validado && phone !== '—'
+          ? `<span class="inline-flex items-center px-1 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-sm text-[7px] uppercase tracking-wider font-bold" title="Teléfono verificado">✓</span>`
+          : ''
+        }
+      </div>
     </td>
     <td class="px-6 py-3.5" onclick="event.stopPropagation();">
       <!-- Stage Badge Dropdown or simple visual label -->
@@ -85,6 +91,15 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
         <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}"></span>
         <span>${lead.fecha_ultimo_contacto ? formatDate(lead.fecha_ultimo_contacto) : 'Sin gestión'}</span>
       </div>
+    </td>
+    <td class="px-6 py-3.5 max-w-[160px] truncate">
+      ${lead.ultimo_comentario 
+        ? `<div class="flex items-center gap-1.5" title="${lead.ultimo_comentario.replace(/"/g, '&quot;')}">
+             <span class="text-xs shrink-0 select-none">💬</span>
+             <span class="truncate text-[10px] text-neutral-500 font-sans">${lead.ultimo_comentario}</span>
+           </div>`
+        : `<span class="text-neutral-300 font-sans select-none">—</span>`
+      }
     </td>
     <td class="px-6 py-3.5 text-coral font-mono text-[10px] tracking-widest whitespace-nowrap">
       ${lead.valoracion || '—'}
