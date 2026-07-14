@@ -206,8 +206,6 @@ export function renderLeadsKanban(currentUser) {
 
               if (newStageId === oldStageId) return;
 
-              console.log(`Moving lead ${leadId} from stage ${oldStageId} to ${newStageId} (mode: ${activePipelineMode})`);
-
               try {
                 const updateObj = {};
                 if (activePipelineMode === 'franquiday') {

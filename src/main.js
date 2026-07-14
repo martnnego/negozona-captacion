@@ -36,7 +36,6 @@ async function initApp() {
 
   // Set up auth state change listener to handle routing and caching dynamically
   auth.onAuthStateChange(async (event, userSession) => {
-    console.log('Auth state changed:', event);
     const currentUserId = userSession?.user?.id || null;
     const sessionUserChanged = currentUserId !== lastUserId;
     lastUserId = currentUserId;
@@ -49,7 +48,6 @@ async function initApp() {
       // Global Realtime Sync
       if (!unsubscribeRealtime) {
         const unsubLeads = realtime.subscribeToLeads((payload) => {
-          console.log('Global Realtime Lead Event:', payload);
           const { eventType, new: newLead, old: oldLead } = payload;
           if (eventType === 'INSERT') {
             cache.addLead(newLead);
@@ -61,7 +59,6 @@ async function initApp() {
         });
 
         const unsubContacts = realtime.subscribeToContacts((payload) => {
-          console.log('Global Realtime Contact Event:', payload);
           const { eventType, new: newContact, old: oldContact } = payload;
           if (eventType === 'INSERT') {
             cache.addContact(newContact);
@@ -73,7 +70,6 @@ async function initApp() {
         });
 
         const unsubLinks = realtime.subscribeToLinks((payload) => {
-          console.log('Global Realtime Link Event:', payload);
           const { eventType, new: newLink, old: oldLink } = payload;
           if (eventType === 'INSERT') {
             cache.addLink(newLink);
@@ -83,7 +79,6 @@ async function initApp() {
         });
 
         const unsubEvents = realtime.subscribeToEvents((payload) => {
-          console.log('Global Realtime Event Event:', payload);
           const { eventType, new: newEvent, old: oldEvent } = payload;
           if (eventType === 'INSERT') {
             cache.addEvent(newEvent);
@@ -95,7 +90,6 @@ async function initApp() {
         });
 
         const unsubParticipations = realtime.subscribeToParticipations((payload) => {
-          console.log('Global Realtime Participation Event:', payload);
           const { eventType, new: newP, old: oldP } = payload;
           if (eventType === 'INSERT') {
             cache.addParticipation(newP);
