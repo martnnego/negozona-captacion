@@ -509,6 +509,7 @@ export function renderLeadsTable(currentUser) {
     applyMassBtn.textContent = 'Aplicando...';
 
     const leadIds = Array.from(selectedLeadIds);
+    const updateObj = {};
     if (type === 'assign') {
       updateObj.assigned_to = value;
     } else {
