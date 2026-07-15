@@ -96,8 +96,8 @@ export function renderLeadsTable(currentUser) {
               <th class="px-4 py-3 text-center shrink-0 w-12">
                 <input type="checkbox" id="master-checkbox" class="rounded-xs border-neutral-300 text-primary focus:ring-primary h-3.5 w-3.5" />
               </th>
-              <th data-col="first_name" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Nombre</th>
               <th data-col="company" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Empresa</th>
+              <th data-col="first_name" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Contacto Ppal</th>
               <th data-col="country" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">País</th>
               <th data-col="email" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Email</th>
               <th data-col="phone" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Teléfono</th>
@@ -373,6 +373,65 @@ export function renderLeadsTable(currentUser) {
       });
       tbody.appendChild(row);
     });
+
+    // Listen for inline stage changes
+    tbody.querySelectorAll('[data-lead-stage-select-id]').forEach(select => {
+      select.addEventListener('change', async (e) => {
+        const leadId = select.dataset.leadStageSelectId;
+        const newStageId = e.target.value;
+        const selectedStage = cache.getStage(newStageId);
+        
+        // Update color instantly in UI
+        if (selectedStage) {
+          select.style.backgroundColor = selectedStage.color;
+        }
+
+        try {
+          const lead = cache.getLead(leadId);
+          if (activePipelineMode === 'franquiday') {
+            // Franquiday Mode
+            const { error: leadErr } = await supabase
+              .from('leads')
+              .update({ franquiday_stage_id: newStageId })
+              .eq('id', leadId);
+
+            if (leadErr) throw leadErr;
+            if (lead) lead.franquiday_stage_id = newStageId;
+
+            const activeEvent = cache.getActiveEvent();
+            if (activeEvent) {
+              const { error: partErr } = await supabase
+                .from('participaciones_franquiday')
+                .upsert({
+                  lead_id: leadId,
+                  evento_id: activeEvent.id,
+                  pipeline_stage_id: newStageId
+                }, { onConflict: 'lead_id,evento_id' });
+
+              if (partErr) throw partErr;
+            }
+            toast.show('Etapa Franquiday actualizada con éxito', 'success');
+          } else {
+            // Commercial Mode
+            const { error } = await supabase
+              .from('leads')
+              .update({ pipeline_stage_id: newStageId })
+              .eq('id', leadId);
+
+            if (error) throw error;
+            if (lead) lead.pipeline_stage_id = newStageId;
+            toast.show('Etapa Comercial actualizada con éxito', 'success');
+          }
+
+          if (lead) cache.updateLead(lead);
+          await cache.loadAll();
+          loadData();
+        } catch (err) {
+          toast.show('Error al actualizar etapa: ' + err.message, 'error');
+          loadData();
+        }
+      });
+    });
   }
 
   // Master checkbox selection
@@ -590,9 +649,10 @@ export function renderLeadsTable(currentUser) {
       <div class="sm:col-span-2 border-b border-neutral-100 pb-2 mb-1">
         <h3 class="font-mono text-[9px] font-bold text-primary uppercase">Datos de la Empresa / Marca</h3>
       </div>
-      <div class="flex flex-col gap-1 sm:col-span-2">
+      <div class="flex flex-col gap-1 sm:col-span-2 relative">
         <label for="new-company" class="font-mono text-[9px] font-bold text-primary uppercase">Nombre de la Empresa / Marca *</label>
-        <input type="text" id="new-company" name="company" required class="cohere-input text-xs" placeholder="Ingresar empresa" />
+        <input type="text" id="new-company" name="company" required class="cohere-input text-xs" placeholder="Ingresar empresa" autocomplete="off" />
+        <div id="new-company-suggestions" class="absolute left-0 right-0 top-full mt-1 bg-white border border-[#d9d9dd] rounded-sm shadow-lg max-h-40 overflow-y-auto hidden z-50"></div>
       </div>
       <div class="flex flex-col gap-1">
         <label for="new-industry" class="font-mono text-[9px] font-bold text-primary uppercase">Rubro / Industria</label>
@@ -641,9 +701,10 @@ export function renderLeadsTable(currentUser) {
       <div class="sm:col-span-2 border-b border-neutral-100 pb-2 mb-1 mt-4">
         <h3 class="font-mono text-[9px] font-bold text-primary uppercase">Datos del Contacto Principal (Opcional)</h3>
       </div>
-      <div class="flex flex-col gap-1">
+      <div class="flex flex-col gap-1 relative">
         <label for="new-contact-first-name" class="font-mono text-[9px] font-bold text-primary uppercase">Nombre</label>
-        <input type="text" id="new-contact-first-name" name="contact_first_name" class="cohere-input text-xs" placeholder="Nombre" />
+        <input type="text" id="new-contact-first-name" name="contact_first_name" class="cohere-input text-xs" placeholder="Nombre" autocomplete="off" />
+        <div id="new-contact-suggestions" class="absolute left-0 right-0 top-full mt-1 bg-white border border-[#d9d9dd] rounded-sm shadow-lg max-h-40 overflow-y-auto hidden z-50"></div>
       </div>
       <div class="flex flex-col gap-1">
         <label for="new-contact-last-name" class="font-mono text-[9px] font-bold text-primary uppercase">Apellido</label>
@@ -772,6 +833,130 @@ export function renderLeadsTable(currentUser) {
           }
         }
       ]
+    });
+
+    // Autocomplete y sugerencias para evitar duplicados
+    const newCompanyInput = form.querySelector('#new-company');
+    const newCompanySuggestions = form.querySelector('#new-company-suggestions');
+    const newContactNameInput = form.querySelector('#new-contact-first-name');
+    const newContactSuggestions = form.querySelector('#new-contact-suggestions');
+
+    // Listener para buscar marcas similares
+    newCompanyInput.addEventListener('input', () => {
+      const val = newCompanyInput.value.trim().toLowerCase();
+      if (!val || val.length < 2) {
+        newCompanySuggestions.classList.add('hidden');
+        return;
+      }
+
+      const allLeads = cache.getLeads() || [];
+      const matches = allLeads
+        .filter(l => (l.company || '').toLowerCase().includes(val))
+        .map(l => l.company)
+        .filter((v, idx, arr) => arr.indexOf(v) === idx); // Nombres únicos
+
+      if (matches.length > 0) {
+        newCompanySuggestions.innerHTML = `
+          <div class="px-3 py-1 bg-amber-50 text-amber-800 text-[9px] font-bold font-mono border-b border-amber-100 uppercase select-none">
+            ⚠️ Marca similar ya registrada:
+          </div>
+          ${matches.map(m => `
+            <div class="px-3 py-2 cursor-pointer hover:bg-neutral-50 border-b border-neutral-100 font-sans text-xs text-primary font-semibold flex justify-between items-center">
+              <span>${m}</span>
+              <span class="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded-full uppercase tracking-wider font-bold">Duplicado</span>
+            </div>
+          `).join('')}
+        `;
+        newCompanySuggestions.classList.remove('hidden');
+
+        newCompanySuggestions.querySelectorAll('.cursor-pointer').forEach(item => {
+          item.addEventListener('click', () => {
+            newCompanyInput.value = item.querySelector('span').textContent;
+            newCompanySuggestions.classList.add('hidden');
+          });
+        });
+      } else {
+        newCompanySuggestions.classList.add('hidden');
+      }
+    });
+
+    // Listener para buscar contactos similares
+    newContactNameInput.addEventListener('input', () => {
+      const val = newContactNameInput.value.trim().toLowerCase();
+      if (!val || val.length < 2) {
+        newContactSuggestions.classList.add('hidden');
+        return;
+      }
+
+      const allContacts = cache.getContacts() || [];
+      const matches = allContacts.filter(c => 
+        `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(val) ||
+        (c.email || '').toLowerCase().includes(val)
+      );
+
+      if (matches.length > 0) {
+        newContactSuggestions.innerHTML = `
+          <div class="px-3 py-1 bg-amber-50 text-amber-800 text-[9px] font-bold font-mono border-b border-amber-100 uppercase select-none">
+            ⚠️ Contacto similar ya registrado:
+          </div>
+          ${matches.map(c => {
+            const linkedLeads = cache.getContactLeads(c.id) || [];
+            const companyName = linkedLeads.length > 0 ? (linkedLeads[0].company || '') : 'Sin Empresa';
+            return `
+              <div class="px-3 py-2 cursor-pointer hover:bg-neutral-50 border-b border-neutral-100 font-sans text-xs text-primary flex flex-col gap-0.5">
+                <div class="flex justify-between items-center">
+                  <span class="font-bold text-primary">${c.first_name || ''} ${c.last_name || ''}</span>
+                  <span class="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded-full uppercase tracking-wider font-bold">${companyName}</span>
+                </div>
+                <div class="text-[10px] text-neutral-400 font-mono">
+                  <span>📧 ${c.email || '—'}</span> | <span>📞 ${c.phone || '—'}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        `;
+        newContactSuggestions.classList.remove('hidden');
+
+        newContactSuggestions.querySelectorAll('.cursor-pointer').forEach(item => {
+          item.addEventListener('click', () => {
+            const nameSpan = item.querySelector('.font-bold');
+            if (nameSpan) {
+              const parts = nameSpan.textContent.split(' ');
+              newContactNameInput.value = parts[0] || '';
+              const lastNameInput = form.querySelector('#new-contact-last-name');
+              if (lastNameInput) {
+                lastNameInput.value = parts.slice(1).join(' ') || '';
+              }
+              const emailInput = form.querySelector('#new-contact-email');
+              if (emailInput && !emailInput.value) {
+                const matchC = matches.find(c => `${c.first_name || ''} ${c.last_name || ''}`.trim() === nameSpan.textContent.trim());
+                if (matchC) {
+                  emailInput.value = matchC.email || '';
+                  const phoneInput = form.querySelector('#new-contact-phone');
+                  if (phoneInput) phoneInput.value = matchC.phone || '';
+                  const posInput = form.querySelector('#new-contact-position');
+                  if (posInput) posInput.value = matchC.position || '';
+                  const linkInput = form.querySelector('#new-contact-linkedin');
+                  if (linkInput) linkInput.value = matchC.linkedin_url || '';
+                }
+              }
+            }
+            newContactSuggestions.classList.add('hidden');
+          });
+        });
+      } else {
+        newContactSuggestions.classList.add('hidden');
+      }
+    });
+
+    // Cerrar sugerencias al hacer click fuera
+    document.addEventListener('click', (e) => {
+      if (!newCompanySuggestions.contains(e.target) && e.target !== newCompanyInput) {
+        newCompanySuggestions.classList.add('hidden');
+      }
+      if (!newContactSuggestions.contains(e.target) && e.target !== newContactNameInput) {
+        newContactSuggestions.classList.add('hidden');
+      }
     });
   });
 

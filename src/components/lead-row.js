@@ -44,6 +44,23 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
 
   const assignedName = profile?.full_name || 'Sin Asignar';
 
+  const stages = cache.getStages() || [];
+  const optionsHtml = stages.map(s => `
+    <option value="${s.id}" ${s.id === activeStageId ? 'selected' : ''} style="background-color: #1e1e1e; color: white;">
+      ${s.name.toUpperCase()}
+    </option>
+  `).join('');
+
+  const selectStageHtml = `
+    <select 
+      data-lead-stage-select-id="${lead.id}" 
+      class="bg-transparent text-white text-[9px] font-mono font-bold uppercase tracking-wider rounded-full px-2.5 py-1 focus:outline-none cursor-pointer border-none shadow-xs text-center appearance-none" 
+      style="background-color: ${stageColor};"
+    >
+      ${optionsHtml}
+    </select>
+  `;
+
   row.innerHTML = `
     <!-- Checkbox selection -->
     <td class="px-4 py-3 shrink-0 text-center" onclick="event.stopPropagation();">
@@ -55,12 +72,12 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
     </td>
     
     <!-- Lead Details -->
-    <td class="px-6 py-3.5 font-semibold text-primary font-display max-w-[180px] truncate" title="${fullName}">
-      ${fullName}
-    </td>
     <td class="px-6 py-3.5 max-w-[150px] truncate font-semibold" title="${company}">
       ${company}
       ${lead.nombre_validado ? `<span class="inline-flex items-center ml-1 px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-sm text-[8px] uppercase tracking-wider font-bold">✓</span>` : ''}
+    </td>
+    <td class="px-6 py-3.5 font-semibold text-primary font-display max-w-[180px] truncate" title="${fullName}">
+      ${fullName}
     </td>
     <td class="px-6 py-3.5 font-mono text-[10px] tracking-wider text-muted-slate uppercase">
       ${country}
@@ -78,10 +95,7 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
       </div>
     </td>
     <td class="px-6 py-3.5" onclick="event.stopPropagation();">
-      <!-- Stage Badge Dropdown or simple visual label -->
-      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider text-white" style="background-color: ${stageColor}">
-        ${stageName}
-      </span>
+      ${selectStageHtml}
     </td>
     <td class="px-6 py-3.5 font-semibold text-primary truncate max-w-[120px]" title="${assignedName}">
       ${assignedName}

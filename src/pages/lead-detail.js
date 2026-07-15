@@ -896,9 +896,10 @@ export async function renderLeadDetail(leadId, onUpdate) {
       const form = document.createElement('form');
       form.className = 'grid grid-cols-1 sm:grid-cols-2 gap-4';
       form.innerHTML = `
-        <div class="flex flex-col gap-1">
+        <div class="flex flex-col gap-1 relative">
           <label for="add-c-firstname" class="font-mono text-[9px] font-bold text-primary uppercase">Nombre *</label>
-          <input type="text" id="add-c-firstname" name="first_name" required class="cohere-input text-xs" />
+          <input type="text" id="add-c-firstname" name="first_name" required class="cohere-input text-xs" autocomplete="off" />
+          <div id="add-c-firstname-suggestions" class="absolute left-0 right-0 top-full mt-1 bg-white border border-[#d9d9dd] rounded-sm shadow-lg max-h-40 overflow-y-auto hidden z-50"></div>
         </div>
         <div class="flex flex-col gap-1">
           <label for="add-c-lastname" class="font-mono text-[9px] font-bold text-primary uppercase">Apellido</label>
@@ -1035,8 +1036,87 @@ export async function renderLeadDetail(leadId, onUpdate) {
             }
           }
         ]
-      });
     });
+
+    // Autocomplete y sugerencias para evitar duplicados en nuevo contacto
+    const contactInput = form.querySelector('#add-c-firstname');
+    const contactSuggestions = form.querySelector('#add-c-firstname-suggestions');
+
+    contactInput.addEventListener('input', () => {
+      const val = contactInput.value.trim().toLowerCase();
+      if (!val || val.length < 2) {
+        contactSuggestions.classList.add('hidden');
+        return;
+      }
+
+      const allContacts = cache.getContacts() || [];
+      const matches = allContacts.filter(c => 
+        `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(val) ||
+        (c.email || '').toLowerCase().includes(val)
+      );
+
+      if (matches.length > 0) {
+        contactSuggestions.innerHTML = `
+          <div class="px-3 py-1 bg-amber-50 text-amber-800 text-[9px] font-bold font-mono border-b border-amber-100 uppercase select-none">
+            ⚠️ Contacto similar ya registrado:
+          </div>
+          ${matches.map(c => {
+            const linkedLeads = cache.getContactLeads(c.id) || [];
+            const companyName = linkedLeads.length > 0 ? (linkedLeads[0].company || '') : 'Sin Empresa';
+            return `
+              <div class="px-3 py-2 cursor-pointer hover:bg-neutral-50 border-b border-neutral-100 font-sans text-xs text-primary flex flex-col gap-0.5">
+                <div class="flex justify-between items-center">
+                  <span class="font-bold text-primary">${c.first_name || ''} ${c.last_name || ''}</span>
+                  <span class="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded-full uppercase tracking-wider font-bold">${companyName}</span>
+                </div>
+                <div class="text-[10px] text-neutral-400 font-mono">
+                  <span>📧 ${c.email || '—'}</span> | <span>📞 ${c.phone || '—'}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        `;
+        contactSuggestions.classList.remove('hidden');
+
+        contactSuggestions.querySelectorAll('.cursor-pointer').forEach(item => {
+          item.addEventListener('click', () => {
+            const nameSpan = item.querySelector('.font-bold');
+            if (nameSpan) {
+              const parts = nameSpan.textContent.split(' ');
+              contactInput.value = parts[0] || '';
+              const lastNameInput = form.querySelector('#add-c-lastname');
+              if (lastNameInput) {
+                lastNameInput.value = parts.slice(1).join(' ') || '';
+              }
+              const emailInput = form.querySelector('#add-c-email');
+              if (emailInput && !emailInput.value) {
+                const matchC = matches.find(c => `${c.first_name || ''} ${c.last_name || ''}`.trim() === nameSpan.textContent.trim());
+                if (matchC) {
+                  emailInput.value = matchC.email || '';
+                  const phoneInput = form.querySelector('#add-c-phone');
+                  if (phoneInput) phoneInput.value = matchC.phone || '';
+                  const posInput = form.querySelector('#add-c-position');
+                  if (posInput) posInput.value = matchC.position || '';
+                  const linkInput = form.querySelector('#add-c-linkedin');
+                  if (linkInput) linkInput.value = matchC.linkedin_url || '';
+                }
+              }
+            }
+            contactSuggestions.classList.add('hidden');
+          });
+        });
+      } else {
+        contactSuggestions.classList.add('hidden');
+      }
+    });
+
+    // Cerrar sugerencias al hacer click fuera
+    document.addEventListener('click', (e) => {
+      if (!contactSuggestions.contains(e.target) && e.target !== contactInput) {
+        contactSuggestions.classList.add('hidden');
+      }
+    });
+  });
   }
 
   // --- TAB 3: GESTIONES (INTERACTIONS) ---
