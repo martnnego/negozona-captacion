@@ -387,7 +387,7 @@ export function renderLeadsTable(currentUser) {
         }
 
         try {
-          const lead = cache.getLead(leadId);
+          const lead = (cache.getLeads() || []).find(l => l.id === leadId);
           if (activePipelineMode === 'franquiday') {
             // Franquiday Mode
             const { error: leadErr } = await supabase
