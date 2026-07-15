@@ -14,6 +14,8 @@ export function renderLeadsByCompany(currentUser) {
   const container = document.createElement('div');
   container.className = 'flex flex-col gap-6 animate-fade-in pb-12 select-none';
 
+  const isAdmin = currentUser?.profile?.role === 'super_admin';
+
   // State
   let activeTab = localStorage.getItem('contacts_active_tab') || 'grouped'; // 'grouped' | 'list'
   let contacts = [];
@@ -287,10 +289,15 @@ export function renderLeadsByCompany(currentUser) {
                     </td>
                     <td class="px-6 py-3 font-mono text-[10px] uppercase text-muted-slate">${c.medio_contacto || '—'}</td>
                     <td class="px-6 py-3 font-semibold ${isPrimary ? 'text-emerald-600' : 'text-neutral-300'}">${isPrimary ? '★ Principal' : '—'}</td>
-                    <td class="px-6 py-3">
+                    <td class="px-6 py-3 flex items-center gap-1">
                       <button data-edit-contact-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-primary hover:bg-neutral-50 transition-colors focus:outline-none text-[12px]" title="Editar contacto">
                         ✏️
                       </button>
+                      ${isAdmin ? `
+                        <button data-delete-contact-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-rose-600 hover:bg-neutral-50 transition-colors focus:outline-none text-[12px]" title="Eliminar contacto permanentemente">
+                          🗑️
+                        </button>
+                      ` : ''}
                     </td>
                   </tr>
                 `;
@@ -332,6 +339,37 @@ export function renderLeadsByCompany(currentUser) {
           });
         });
       });
+
+      // Delete contact click (Admin Only)
+      if (isAdmin) {
+        accordion.querySelectorAll('[data-delete-contact-id]').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const contactId = btn.dataset.deleteContactId;
+            const contact = contacts.find(c => c.id === contactId);
+            const contactName = contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : 'este contacto';
+
+            const confirmed = confirm(`¿Estás seguro de que deseas eliminar permanentemente a "${contactName}" de la base de datos?\nEsta acción lo desvinculará de cualquier empresa y es irreversible.`);
+            if (!confirmed) return;
+
+            try {
+              const { error } = await supabase
+                .from('contacts')
+                .delete()
+                .eq('id', contactId);
+
+              if (error) throw error;
+
+              toast.show('Contacto eliminado de la base de datos', 'success');
+              cache.deleteContact(contactId);
+              await cache.loadAll();
+              loadData();
+            } catch (err) {
+              toast.show('Error al eliminar contacto: ' + err.message, 'error');
+            }
+          });
+        });
+      }
 
       contentArea.appendChild(accordion);
     });
@@ -436,10 +474,15 @@ export function renderLeadsByCompany(currentUser) {
                     </span>
                   </td>
                   <td class="px-6 py-3.5 font-mono text-[10px]">${formatDate(c.fecha_ultimo_contacto)}</td>
-                  <td class="px-6 py-3.5">
+                  <td class="px-6 py-3.5 flex items-center gap-1">
                     <button data-edit-contact-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-primary hover:bg-neutral-50 transition-colors focus:outline-none text-[12px]" title="Editar contacto">
                       ✏️
                     </button>
+                    ${isAdmin ? `
+                      <button data-delete-contact-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-rose-600 hover:bg-neutral-50 transition-colors focus:outline-none text-[12px]" title="Eliminar contacto permanentemente">
+                        🗑️
+                      </button>
+                    ` : ''}
                   </td>
                 </tr>
               `;
@@ -501,6 +544,37 @@ export function renderLeadsByCompany(currentUser) {
         });
       });
     });
+
+    // Row delete contact click (Admin Only)
+    if (isAdmin) {
+      tableWrapper.querySelectorAll('[data-delete-contact-id]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const contactId = btn.dataset.deleteContactId;
+          const contact = contacts.find(c => c.id === contactId);
+          const contactName = contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : 'este contacto';
+
+          const confirmed = confirm(`¿Estás seguro de que deseas eliminar permanentemente a "${contactName}" de la base de datos?\nEsta acción lo desvinculará de cualquier empresa y es irreversible.`);
+          if (!confirmed) return;
+
+          try {
+            const { error } = await supabase
+              .from('contacts')
+              .delete()
+              .eq('id', contactId);
+
+            if (error) throw error;
+
+            toast.show('Contacto eliminado de la base de datos', 'success');
+            cache.deleteContact(contactId);
+            await cache.loadAll();
+            loadData();
+          } catch (err) {
+            toast.show('Error al eliminar contacto: ' + err.message, 'error');
+          }
+        });
+      });
+    }
 
     // Rows per page change listener
     tableWrapper.querySelector('#contacts-rows-per-page').addEventListener('change', (e) => {

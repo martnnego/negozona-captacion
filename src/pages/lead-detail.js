@@ -1,11 +1,14 @@
 import { supabase } from '../lib/supabase';
 import { cache } from '../lib/cache';
+import { auth } from '../lib/auth';
 import { formatDate, formatDateTime } from '../utils/date-format';
 import { modal } from '../components/modal';
 import { toast } from '../components/toast';
 import { openContactEditModal } from '../components/contact-edit-modal';
 
 export async function renderLeadDetail(leadId, onUpdate) {
+  const currentUser = await auth.getCurrentUser();
+  const isAdmin = currentUser?.profile?.role === 'super_admin';
   let activeTab = localStorage.getItem('lead_detail_active_tab') || 'detail'; // 'detail', 'linked_contacts', 'interactions', 'comments', 'history'
 
   let lead = null;
@@ -223,9 +226,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
     // Render active tab view
     if (activeTab === 'detail') {
-      renderDetailTab(tabContent, stages, profiles);
+      renderDetailTab(tabContent, stages, profiles, isAdmin);
     } else if (activeTab === 'linked_contacts') {
-      renderLinkedContactsTab(tabContent);
+      renderLinkedContactsTab(tabContent, isAdmin);
     } else if (activeTab === 'interactions') {
       renderInteractionsTab(tabContent, profiles);
     } else if (activeTab === 'comments') {
@@ -292,7 +295,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
   }
 
   // --- TAB 1: INFORMACIÓN GENERAL (DETAIL) ---
-  function renderDetailTab(parent, stages, profiles) {
+  function renderDetailTab(parent, stages, profiles, isAdmin) {
     const isNameValidated = lead.nombre_validado;
 
     parent.innerHTML = `
@@ -376,7 +379,14 @@ export async function renderLeadDetail(leadId, onUpdate) {
           <textarea id="edit-notes" name="notes" rows="3" class="cohere-input text-xs">${lead.notes || ''}</textarea>
         </div>
 
-        <div class="sm:col-span-2 flex items-center justify-end gap-3 mt-4 border-t border-neutral-100 pt-4">
+        <div class="sm:col-span-2 flex items-center justify-between gap-3 mt-4 border-t border-neutral-100 pt-4">
+          <div>
+            ${isAdmin ? `
+              <button type="button" id="delete-lead-btn" class="px-5 py-2.5 border border-rose-300 hover:bg-rose-50 text-rose-600 text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-all duration-150 focus:outline-none cursor-pointer">
+                Eliminar Empresa
+              </button>
+            ` : ''}
+          </div>
           <button type="submit" id="save-lead-btn" class="px-6 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 shadow-xs focus:outline-none">
             Guardar cambios
           </button>
@@ -498,10 +508,42 @@ export async function renderLeadDetail(leadId, onUpdate) {
         saveBtn.textContent = 'Guardar cambios';
       }
     }
+
+    const deleteBtn = parent.querySelector('#delete-lead-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async () => {
+        const confirmed = confirm(`¿Estás seguro de que deseas eliminar permanentemente a "${lead.company || 'esta empresa'}"?\nEsta acción es irreversible y eliminará todos sus comentarios, gestiones e historial.`);
+        if (!confirmed) return;
+
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = 'Eliminando...';
+
+        try {
+          const { error } = await supabase
+            .from('leads')
+            .delete()
+            .eq('id', lead.id);
+
+          if (error) throw error;
+
+          toast.show('Empresa eliminada correctamente', 'success');
+          detailModal.close();
+
+          cache.deleteLead(lead.id);
+          await cache.loadAll();
+
+          if (onUpdate) onUpdate();
+        } catch (err) {
+          toast.show('Error al eliminar empresa: ' + err.message, 'error');
+          deleteBtn.disabled = false;
+          deleteBtn.textContent = 'Eliminar Empresa';
+        }
+      });
+    }
   }
 
   // --- TAB 2: CONTACTOS ASOCIADOS (LINKED CONTACTS) ---
-  function renderLinkedContactsTab(parent) {
+  function renderLinkedContactsTab(parent, isAdmin) {
     let contactsListHtml = '';
     if (linkedContacts.length === 0) {
       contactsListHtml = `
@@ -569,6 +611,13 @@ export async function renderLeadDetail(leadId, onUpdate) {
                   <button data-unlink-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-rose-600 hover:bg-neutral-50 transition-colors focus:outline-none text-[13px]" title="Desvincular contacto">
                     ✕
                   </button>
+
+                  <!-- Delete Button (Admin Only) -->
+                  ${isAdmin ? `
+                    <button data-delete-contact-id="${c.id}" class="p-1 rounded-sm text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition-colors focus:outline-none text-[13px]" title="ELIMINAR CONTACTO PERMANENTEMENTE">
+                      🗑️
+                    </button>
+                  ` : ''}
                 </div>
               </div>
             `;
@@ -703,6 +752,38 @@ export async function renderLeadDetail(leadId, onUpdate) {
         });
       });
     });
+
+    // Delete Contact click (Admin Only)
+    if (isAdmin) {
+      parent.querySelectorAll('[data-delete-contact-id]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const contactId = btn.dataset.deleteContactId;
+          const contact = linkedContacts.find(c => c.id === contactId);
+          const contactName = contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : 'este contacto';
+
+          const confirmed = confirm(`¿Estás seguro de que deseas eliminar permanentemente a "${contactName}" de la base de datos?\nEsta acción lo desvinculará de cualquier empresa y es irreversible.`);
+          if (!confirmed) return;
+
+          try {
+            const { error } = await supabase
+              .from('contacts')
+              .delete()
+              .eq('id', contactId);
+
+            if (error) throw error;
+
+            toast.show('Contacto eliminado de la base de datos', 'success');
+            cache.deleteContact(contactId);
+            await cache.loadAll();
+            await loadAllData();
+            if (onUpdate) onUpdate();
+          } catch (err) {
+            toast.show('Error al eliminar contacto: ' + err.message, 'error');
+          }
+        });
+      });
+    }
 
     // Action 1: Link Existing Contact
     parent.querySelector('#btn-link-existing-contact').addEventListener('click', () => {
