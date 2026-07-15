@@ -79,6 +79,23 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
     const stages = cache.getStages();
     const profiles = cache.getProfiles();
+    const activePipelineMode = localStorage.getItem('crm_active_pipeline_mode') || 'comercial';
+    
+    // Resolve active stage based on pipeline mode
+    let currentStageId = '';
+    let headerStageLabel = 'Etapa Comercial';
+    if (activePipelineMode === 'franquiday') {
+      headerStageLabel = 'Etapa Franquiday';
+      const activeEvent = cache.getActiveEvent();
+      const participations = cache.getLeadParticipations(lead.id) || [];
+      const activeParticipation = activeEvent 
+        ? participations.find(p => p.evento_id === activeEvent.id)
+        : null;
+      currentStageId = lead.franquiday_stage_id || activeParticipation?.pipeline_stage_id || stages[0]?.id;
+    } else {
+      headerStageLabel = 'Etapa Comercial';
+      currentStageId = lead.pipeline_stage_id;
+    }
     
     // Modal Header Info
     const summaryHeader = document.createElement('div');
@@ -103,9 +120,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
         </p>
       </div>
       <div class="flex flex-col gap-0.5">
-        <h4 class="text-xs font-mono font-bold text-muted-slate uppercase tracking-wider">Etapa Comercial</h4>
+        <h4 class="text-xs font-mono font-bold text-muted-slate uppercase tracking-wider">${headerStageLabel}</h4>
         <select id="header-stage-select" class="mt-0.5 bg-white border border-[#d9d9dd] rounded-sm py-1 px-2 font-mono text-[10px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
-          ${stages.map(s => `<option value="${s.id}" ${lead.pipeline_stage_id === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+          ${stages.map(s => `<option value="${s.id}" ${currentStageId === s.id ? 'selected' : ''}>${s.name.toUpperCase()}</option>`).join('')}
         </select>
       </div>
     `;
@@ -149,19 +166,49 @@ export async function renderLeadDetail(leadId, onUpdate) {
     summaryHeader.querySelector('#header-stage-select').addEventListener('change', async (e) => {
       const stageId = e.target.value;
       try {
-        const { error } = await supabase
-          .from('leads')
-          .update({ pipeline_stage_id: stageId })
-          .eq('id', lead.id);
+        if (activePipelineMode === 'franquiday') {
+          // 1. Update franquiday_stage_id in leads
+          const { error: leadErr } = await supabase
+            .from('leads')
+            .update({ franquiday_stage_id: stageId })
+            .eq('id', lead.id);
 
-        if (error) throw error;
-        lead.pipeline_stage_id = stageId;
+          if (leadErr) throw leadErr;
+          lead.franquiday_stage_id = stageId;
+
+          // 2. Update/Upsert in participaciones_franquiday if there is an active event
+          const activeEvent = cache.getActiveEvent();
+          if (activeEvent) {
+            const { error: partErr } = await supabase
+              .from('participaciones_franquiday')
+              .upsert({
+                lead_id: lead.id,
+                evento_id: activeEvent.id,
+                pipeline_stage_id: stageId
+              }, { onConflict: 'lead_id,evento_id' });
+
+            if (partErr) throw partErr;
+          }
+          toast.show('Etapa Franquiday actualizada con éxito', 'success');
+        } else {
+          // Commercial Mode
+          const { error } = await supabase
+            .from('leads')
+            .update({ pipeline_stage_id: stageId })
+            .eq('id', lead.id);
+
+          if (error) throw error;
+          lead.pipeline_stage_id = stageId;
+          toast.show('Etapa Comercial actualizada con éxito', 'success');
+        }
+
         cache.updateLead(lead);
-        toast.show('Etapa actualizada correctamente', 'success');
+        await cache.loadAll();
         refreshHistory();
+        renderContent();
       } catch (err) {
         toast.show('Error al cambiar etapa: ' + err.message, 'error');
-        e.target.value = lead.pipeline_stage_id;
+        e.target.value = currentStageId;
       }
     });
 
