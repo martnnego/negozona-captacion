@@ -158,6 +158,7 @@ export function renderLeadsTable(currentUser) {
         <option value="">SELECCIONAR ACCIÓN</option>
         <option value="assign">ASIGNAR COMERCIAL</option>
         <option value="stage">CAMBIAR ETAPA</option>
+        <option value="valoracion">CAMBIAR VALORACIÓN</option>
       </select>
       <select id="mass-action-value" class="bg-neutral-900 border border-neutral-700 rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-white focus:outline-none uppercase tracking-wider hidden">
         <!-- Populated dynamically -->
@@ -492,6 +493,11 @@ export function renderLeadsTable(currentUser) {
         <option value="">ELEGIR ETAPA</option>
         ${stages.map(s => `<option value="${s.id}">${s.name.toUpperCase()}</option>`).join('')}
       `;
+    } else if (type === 'valoracion') {
+      massActionValue.innerHTML = `
+        <option value="">ELEGIR VALORACIÓN</option>
+        ${['★', '★★', '★★★', '★★★★', '★★★★★'].map(v => `<option value="${v}">${v}</option>`).join('')}
+      `;
     }
   });
 
@@ -512,6 +518,8 @@ export function renderLeadsTable(currentUser) {
     const updateObj = {};
     if (type === 'assign') {
       updateObj.assigned_to = value;
+    } else if (type === 'valoracion') {
+      updateObj.valoracion = value;
     } else {
       if (activePipelineMode === 'franquiday') {
         updateObj.franquiday_stage_id = value;
