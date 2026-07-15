@@ -272,6 +272,16 @@ class CacheManager {
     const parts = this.getLeadParticipations(leadId) || [];
     if (parts.length === 0) return null;
 
+    // 1. If there's an active event, prefer its stage
+    const activeEvent = this.getActiveEvent();
+    if (activeEvent) {
+      const activePart = parts.find(p => p.evento_id === activeEvent.id);
+      if (activePart) {
+        return activePart.pipeline_stage_id;
+      }
+    }
+
+    // 2. Fallback to sorting by event date descending
     const partsWithEvents = parts.map(p => {
       const ev = this.getEvent(p.evento_id);
       return { ...p, event: ev };
@@ -279,7 +289,6 @@ class CacheManager {
 
     if (partsWithEvents.length === 0) return null;
 
-    // Sort by event date descending
     partsWithEvents.sort((a, b) => new Date(b.event.fecha) - new Date(a.event.fecha));
     
     return partsWithEvents[0].pipeline_stage_id;
