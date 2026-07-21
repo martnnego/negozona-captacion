@@ -17,6 +17,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
   let comments = [];
   let statusHistory = [];
   let auditLogs = [];
+  let whatsappMessages = [];
 
   // Create loading wrapper inside modal
   const contentWrapper = document.createElement('div');
@@ -56,17 +57,19 @@ export async function renderLeadDetail(leadId, onUpdate) {
       linkedContacts = cache.getLeadContacts(leadId) || [];
 
       // 2. Only fetch dynamically changing transactional logs from Supabase
-      const [interactionsRes, commentsRes, historyRes, auditRes] = await Promise.all([
+      const [interactionsRes, commentsRes, historyRes, auditRes, whatsappRes] = await Promise.all([
         supabase.from('lead_interactions').select('*').eq('lead_id', leadId).order('contacted_at', { ascending: false }),
         supabase.from('lead_comments').select('*').eq('lead_id', leadId).order('created_at', { ascending: false }),
         supabase.from('lead_status_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
-        supabase.from('lead_audit_log').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false })
+        supabase.from('lead_audit_log').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
+        supabase.from('whatsapp_messages').select('*').eq('lead_id', leadId).order('created_at', { ascending: true })
       ]);
 
       interactions = interactionsRes.data || [];
       comments = commentsRes.data || [];
       statusHistory = historyRes.data || [];
       auditLogs = auditRes.data || [];
+      whatsappMessages = whatsappRes.data || [];
 
       renderContent();
     } catch (err) {
@@ -138,6 +141,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       { id: 'detail', label: 'INFORMACIÓN GENERAL' },
       { id: 'linked_contacts', label: `CONTACTOS (${linkedContacts.length})` },
       { id: 'interactions', label: `GESTIONES (${interactions.length})` },
+      { id: 'whatsapp', label: '🟢 WHATSAPP' },
       { id: 'comments', label: `COMENTARIOS (${comments.length})` },
       { id: 'franquiday', label: '🎪 FRANQUIDAY' },
       { id: 'history', label: 'HISTORIAL' }
@@ -231,6 +235,8 @@ export async function renderLeadDetail(leadId, onUpdate) {
       renderLinkedContactsTab(tabContent, isAdmin);
     } else if (activeTab === 'interactions') {
       renderInteractionsTab(tabContent, profiles);
+    } else if (activeTab === 'whatsapp') {
+      renderWhatsAppTab(tabContent);
     } else if (activeTab === 'comments') {
       renderCommentsTab(tabContent, profiles);
     } else if (activeTab === 'franquiday') {
@@ -1132,8 +1138,15 @@ export async function renderLeadDetail(leadId, onUpdate) {
       contactsListHtml = `
         <div class="flex flex-col gap-4 font-sans text-xs">
           ${interactions.map(c => {
-            const agent = profiles.find(p => p.id === c.created_by);
-            const agentName = agent?.full_name || 'Comercial';
+            const isIncoming = c.direction === 'inbound';
+            let authorName = '';
+            
+            if (isIncoming) {
+              authorName = 'Cliente';
+            } else {
+              const agent = profiles.find(p => p.id === c.created_by);
+              authorName = agent?.full_name || 'Comercial';
+            }
             
             let typeBadge = '';
             if (c.contact_type === 'whatsapp') typeBadge = '🟢 WhatsApp';
@@ -1156,7 +1169,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
                     <span class="font-semibold text-primary">${c.subject || 'Interacción'}</span>
                   </div>
                   <div class="flex items-center gap-2 text-[10px] text-muted-slate">
-                    <span>Por: <b>${agentName}</b></span>
+                    <span>Por: <b>${authorName}</b></span>
                     <span>•</span>
                     <span class="font-mono">${formatDateTime(c.contacted_at)}</span>
                   </div>
@@ -1615,5 +1628,741 @@ export async function renderLeadDetail(leadId, onUpdate) {
         }
       });
     }
+  }
+
+  // --- TAB: WHATSAPP ---
+  async function renderWhatsAppTab(parent) {
+    parent.innerHTML = `
+      <div class="py-12 flex flex-col items-center justify-center gap-3 font-sans text-neutral-400 text-xs select-none">
+        <svg class="animate-spin h-6 w-6 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Cargando datos de WhatsApp...</span>
+      </div>
+    `;
+
+    let activeNumbers = [];
+    let templates = [];
+    let fetchError = null;
+
+    try {
+      // 1. Fetch active numbers from database
+      const { data: numbersRes, error: numErr } = await supabase
+        .from('whatsapp_numbers')
+        .select('*')
+        .eq('is_active', true);
+      
+      if (numErr) throw numErr;
+      activeNumbers = numbersRes || [];
+
+      // 2. Fetch approved templates from Meta proxy
+      const session = await auth.getSession();
+      const jwt = session?.access_token;
+      
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/templates`, {
+        headers: {
+          'Authorization': `Bearer ${jwt}`
+        }
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        templates = result.data || [];
+      } else {
+        const err = await res.json();
+        throw new Error(err.error?.message || err.error || 'Error al obtener plantillas de Meta');
+      }
+    } catch (err) {
+      console.error('Error loading WhatsApp tab data:', err);
+      fetchError = err.message;
+    }
+
+    if (fetchError) {
+      parent.innerHTML = `
+        <div class="p-6 border border-rose-200 bg-rose-50/50 rounded-sm font-sans text-xs text-rose-700 flex flex-col gap-2">
+          <h4 class="font-bold uppercase tracking-wider text-[10px]">Error al cargar WhatsApp</h4>
+          <p>${fetchError}</p>
+          <p class="text-neutral-500 mt-1">Por favor verifica que la integración de WhatsApp esté configurada en los Ajustes.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Build filter dropdown options
+    const filterContactOptions = linkedContacts.map(c => `
+      <option value="${c.id}" data-phone="${c.phone || ''}">
+        ${c.first_name} ${c.last_name} (${c.phone || 'Sin Teléfono'})
+      </option>
+    `).join('');
+
+    const filterSenderOptions = activeNumbers.map(n => `
+      <option value="${n.phone_number_id}">
+        ${n.verified_name || 'CRM'} (${n.display_phone_number})
+      </option>
+    `).join('');
+
+    // Helper to generate chat HTML for a list of messages
+    const generateChatHtml = (messagesList) => {
+      if (!messagesList || messagesList.length === 0) {
+        return `
+          <div class="flex flex-col items-center justify-center py-16 text-neutral-400 text-xs italic gap-2 select-none">
+            <svg class="w-8 h-8 text-neutral-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+            </svg>
+            <span>No hay mensajes de WhatsApp registrados para este filtro.</span>
+          </div>
+        `;
+      }
+
+      let lastDateGroup = null;
+      const statusTick = (msg) => {
+        if (!msg || msg.direction !== 'outbound') return '';
+        const s = msg.status;
+        const deliveredLabel = msg.delivered_at ? new Date(msg.delivered_at).toLocaleString() : '';
+        const readLabel = msg.read_at ? new Date(msg.read_at).toLocaleString() : '';
+        const schedLabel = msg.scheduled_for ? new Date(msg.scheduled_for).toLocaleString() : '';
+        
+        if (s === 'scheduled') return `<span title="Programado para: ${schedLabel}" class="cursor-help" style="color:#d97706;font-size:8px;">🕒</span>`;
+        if (s === 'sent')      return `<span title="Enviado a Meta" class="font-sans text-[10px]" style="color:#71717a;font-weight:bold;">✓</span>`;
+        if (s === 'delivered') return `<span title="Recibido en celular: ${deliveredLabel}" class="cursor-help font-sans text-[10px]" style="color:#71717a;font-weight:bold;">✓✓</span>`;
+        if (s === 'read')      return `<span title="Leído: ${readLabel}" class="cursor-help font-sans text-[10px]" style="color:#1863dc;font-weight:bold;">✓✓</span>`;
+        if (s === 'failed')    return `<span title="Error: ${msg.error_message || 'Fallo de envío'}" class="cursor-help font-sans text-[10px]" style="color:#ef4444;font-weight:bold;">✗</span>`;
+        return '';
+      };
+
+      const bubbles = messagesList.map(msg => {
+        const isOut = msg.direction === 'outbound';
+        const ts = new Date(msg.sent_at || msg.created_at);
+        const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        
+        const dateOptions = { weekday: 'long', day: 'numeric', month: 'long' };
+        const dateGroupStr = ts.toLocaleDateString('es-ES', dateOptions);
+        let dateHeaderHtml = '';
+        if (dateGroupStr !== lastDateGroup) {
+          lastDateGroup = dateGroupStr;
+          const capitalizedDate = dateGroupStr.charAt(0).toUpperCase() + dateGroupStr.slice(1);
+          dateHeaderHtml = `
+            <div class="flex justify-center my-3 select-none w-full animate-fade-in">
+              <span class="bg-neutral-200/50 text-neutral-500 text-[8.5px] px-2.5 py-0.5 rounded-full font-bold tracking-wider uppercase">
+                ${capitalizedDate}
+              </span>
+            </div>
+          `;
+        }
+
+        const senderNum = isOut ? activeNumbers.find(n => n.phone_number_id === msg.phone_number_id) : null;
+        const senderLabel = senderNum
+          ? `${senderNum.verified_name || 'CRM'} (${senderNum.display_phone_number})`
+          : (isOut && msg.phone_number_id ? msg.phone_number_id : null);
+
+        const metaParts = [];
+        if (senderLabel) metaParts.push(senderLabel);
+        if (msg.template_name) metaParts.push(`plantilla: ${msg.template_name}`);
+        if (msg.pricing_category) metaParts.push(msg.pricing_category);
+        const metaLine = metaParts.length > 0
+          ? `<div class="text-[8.5px] text-neutral-400 mt-0.5 px-1.5 select-none lowercase tracking-wide" style="max-width:85%;">${metaParts.join(' &middot; ')}</div>`
+          : '';
+
+        const errorLine = (msg.status === 'failed' && msg.error_message)
+          ? `<div class="text-[8.5px] text-rose-500 mt-0.5 px-1.5 font-mono">⚠ error: ${msg.error_message}</div>`
+          : '';
+
+        let bubbleHtml = '';
+        if (isOut) {
+          bubbleHtml = `
+            <div class="flex flex-col items-end w-full animate-fade-in">
+              <div class="wa-bubble-out" style="
+                background:#e8f7ed;
+                border:1px solid #d3ebd9;
+                border-radius:14px 14px 4px 14px;
+                padding:6px 10px 5px 10px;
+                width:fit-content;
+                max-width:78%;
+                min-width:80px;
+                box-shadow:0 1px 1.5px rgba(0,0,0,0.05);
+                word-break:break-word;
+              ">
+                <div style="display:flex;flex-direction:column;gap:2.5px;">
+                  <div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);">${msg.body || ''}</div>
+                  <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
+                    <span>${timeStr}</span>
+                    ${statusTick(msg)}
+                  </div>
+                </div>
+              </div>
+              ${metaLine}
+              ${errorLine}
+            </div>
+          `;
+        } else {
+          bubbleHtml = `
+            <div class="flex flex-col items-start w-full animate-fade-in">
+              <div class="wa-bubble-in" style="
+                background:#ffffff;
+                border:1px solid #e4e4e7;
+                border-radius:14px 14px 14px 4px;
+                padding:6px 10px 5px 10px;
+                width:fit-content;
+                max-width:78%;
+                min-width:80px;
+                box-shadow:0 1px 1.5px rgba(0,0,0,0.04);
+                word-break:break-word;
+              ">
+                <div style="display:flex;flex-direction:column;gap:2.5px;">
+                  <div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);">${msg.body || ''}</div>
+                  <div style="display:flex;align-items:center;justify-content:flex-end;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
+                    <span>${timeStr}</span>
+                  </div>
+                </div>
+              </div>
+              ${metaLine}
+            </div>
+          `;
+        }
+
+        return `${dateHeaderHtml}${bubbleHtml}`;
+      }).join('');
+
+      return `
+        <div id="wa-messages-list" style="display:flex;flex-direction:column;gap:8px;padding:0 2px 0 0;overflow-y:auto;max-height:300px;scrollbar-width:thin;scrollbar-color:#d4d4d8 transparent;">${bubbles}</div>
+        <style>#wa-messages-list::-webkit-scrollbar{width:5px}#wa-messages-list::-webkit-scrollbar-track{background:transparent}#wa-messages-list::-webkit-scrollbar-thumb{background:#d4d4d8;border-radius:4px}#wa-messages-list::-webkit-scrollbar-thumb:hover{background:#a1a1aa}</style>
+      `;
+    };
+
+    // Form options
+    const numberOptions = activeNumbers.map(n => `
+      <option value="${n.phone_number_id}">${n.verified_name || 'CRM'} (${n.display_phone_number})</option>
+    `).join('');
+
+    const templateOptions = `<option value="">-- Seleccionar Plantilla --</option>` + templates.map(t => `
+      <option value="${t.name}" data-lang="${t.language}">${t.name} (${t.language})</option>
+    `).join('');
+
+    const contactOptions = linkedContacts.map((c, idx) => `
+      <option value="${c.id}" data-phone="${c.phone || ''}" ${idx === 0 ? 'selected' : ''}>
+        ${c.first_name} ${c.last_name} (${c.phone || 'Sin Teléfono'})
+      </option>
+    `).join('');
+
+    parent.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-0 font-sans text-xs">
+        
+        <!-- Left: Chat History with Filters -->
+        <div class="flex flex-col gap-3 md:border-r md:border-neutral-100 md:pr-6 pb-6 md:pb-0">
+          <div class="flex items-center justify-between mb-0.5">
+            <h3 class="font-mono text-[10px] font-bold text-primary tracking-widest uppercase">Historial</h3>
+            <button id="wa-refresh-btn" type="button" class="px-2.5 py-1 text-[9px] border border-[#d9d9dd] hover:border-primary text-neutral-600 hover:text-primary font-mono font-bold uppercase rounded-full bg-white transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1">
+              <svg id="wa-refresh-icon" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                <path d="M23 4v6h-6" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+              <span>Actualizar</span>
+            </button>
+          </div>
+
+          <!-- Filters Bar -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-neutral-50 p-2 border border-neutral-200 rounded-md">
+            <div class="flex flex-col gap-0.5">
+              <label for="wa-filter-recipient" class="font-mono font-bold text-neutral-500 uppercase tracking-wider text-[8px]">Filtrar Destinatario</label>
+              <select id="wa-filter-recipient" class="cohere-input text-[10px] py-1 px-2 w-full cursor-pointer bg-white">
+                <option value="">Todos los contactos</option>
+                ${filterContactOptions}
+              </select>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <label for="wa-filter-sender" class="font-mono font-bold text-neutral-500 uppercase tracking-wider text-[8px]">Filtrar Línea CRM</label>
+              <select id="wa-filter-sender" class="cohere-input text-[10px] py-1 px-2 w-full cursor-pointer bg-white">
+                <option value="">Todas las líneas</option>
+                ${filterSenderOptions}
+              </select>
+            </div>
+          </div>
+          
+          <!-- Chat area with WhatsApp-like background -->
+          <div id="wa-chat-wrapper" style="background:#f0f2f5;border-radius:8px;padding:8px 8px;border:1px solid #e5e7eb;">
+            ${generateChatHtml(whatsappMessages)}
+          </div>
+        </div>
+
+        <!-- Right: Sending Form -->
+        <div class="flex flex-col gap-3 md:pl-6 pt-6 md:pt-0 border-t md:border-t-0 border-neutral-100">
+          <h3 class="font-mono text-[10px] font-bold text-primary tracking-widest uppercase mb-1">Enviar Plantilla</h3>
+          
+          <form id="wa-send-form" class="flex flex-col gap-3">
+            <!-- Contact Selector -->
+            <div class="flex flex-col gap-1">
+              <label for="wa-contact" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Destinatario</label>
+              <select id="wa-contact" name="contact_id" class="cohere-input text-xs w-full cursor-pointer">
+                ${contactOptions}
+              </select>
+            </div>
+
+            <!-- Recipient Phone -->
+            <div class="flex flex-col gap-1">
+              <label for="wa-phone" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Teléfono</label>
+              <input type="text" id="wa-phone" name="to_phone" required class="cohere-input text-xs w-full" placeholder="549XXXXXXXXXX" />
+              <span class="text-[9px] text-neutral-400">Incluir código de país: 549 (ARG celular), 34 (España).</span>
+            </div>
+
+            <!-- Sender Number -->
+            <div class="flex flex-col gap-1">
+              <label for="wa-sender" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Número remitente</label>
+              <select id="wa-sender" name="phone_number_id" required class="cohere-input text-xs w-full cursor-pointer">
+                ${numberOptions}
+              </select>
+            </div>
+
+            <!-- Template Selector -->
+            <div class="flex flex-col gap-1">
+              <label for="wa-template" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Plantilla de Meta</label>
+              <select id="wa-template" name="template_name" required class="cohere-input text-xs w-full cursor-pointer">
+                ${templateOptions}
+              </select>
+            </div>
+
+            <!-- Dynamic Variables Fields -->
+            <div id="wa-variables-container" class="flex flex-col gap-2 hidden">
+              <span class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Variables</span>
+              <div id="wa-variables-fields" class="flex flex-col gap-1.5"></div>
+            </div>
+
+            <!-- Live Preview -->
+            <div id="wa-preview-container" class="flex flex-col gap-1.5 hidden">
+              <span class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Vista previa</span>
+              <div style="background:#f0f2f5;border-radius:8px;padding:12px 10px;border:1px solid #e5e7eb;">
+                <div style="
+                  background:#d9fdd3;
+                  border-radius:2px 12px 12px 12px;
+                  padding:8px 12px 6px 12px;
+                  max-width:90%;
+                  box-shadow:0 1px 2px rgba(0,0,0,0.08);
+                  font-size:12px;line-height:1.5;
+                ">
+                  <p id="wa-preview-text" style="color:#1a1a1a;margin:0;white-space:pre-wrap;"></p>
+                  <div style="display:flex;justify-content:flex-end;margin-top:4px;">
+                    <span style="font-size:10px;color:#9ca3af;font-family:monospace;">12:00 ✓</span>
+                  </div>
+                </div>
+                <div id="wa-preview-buttons" class="mt-2 flex flex-col gap-1.5 hidden max-w-[90%]"></div>
+              </div>
+            </div>
+
+            <!-- Scheduling Toggle -->
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="wa-schedule-toggle" name="schedule_active" class="cursor-pointer" />
+              <label for="wa-schedule-toggle" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider cursor-pointer select-none">Programar para más tarde</label>
+            </div>
+
+            <!-- Scheduler Datetime Picker -->
+            <div id="wa-scheduler-container" class="flex flex-col gap-1 hidden">
+              <label for="wa-scheduled-time" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Fecha y hora</label>
+              <input type="datetime-local" id="wa-scheduled-time" name="scheduled_for" class="cohere-input text-xs w-full" />
+            </div>
+
+            <!-- Submit Button -->
+            <div class="mt-1">
+              <button type="submit" id="wa-submit-btn" class="w-full px-5 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-lg tracking-wider transition-colors duration-150 focus:outline-none">
+                Enviar WhatsApp
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    // References to DOM elements
+    const form = parent.querySelector('#wa-send-form');
+    const contactSelect = parent.querySelector('#wa-contact');
+    const phoneInput = parent.querySelector('#wa-phone');
+    const templateSelect = parent.querySelector('#wa-template');
+    const variablesContainer = parent.querySelector('#wa-variables-container');
+    const variablesFields = parent.querySelector('#wa-variables-fields');
+    const previewContainer = parent.querySelector('#wa-preview-container');
+    const previewText = parent.querySelector('#wa-preview-text');
+    const scheduleToggle = parent.querySelector('#wa-schedule-toggle');
+    const schedulerContainer = parent.querySelector('#wa-scheduler-container');
+    const scheduledTimeInput = parent.querySelector('#wa-scheduled-time');
+    const submitBtn = parent.querySelector('#wa-submit-btn');
+    const refreshBtn = parent.querySelector('#wa-refresh-btn');
+    const refreshIcon = parent.querySelector('#wa-refresh-icon');
+    const filterRecipientSelect = parent.querySelector('#wa-filter-recipient');
+    const filterSenderSelect = parent.querySelector('#wa-filter-sender');
+    const chatWrapper = parent.querySelector('#wa-chat-wrapper');
+
+    // Function to apply filters and re-render messages list
+    const applyFiltersAndRender = () => {
+      const selectedContactId = filterRecipientSelect.value;
+      const selectedSenderId = filterSenderSelect.value;
+
+      const selectedContact = linkedContacts.find(c => c.id === selectedContactId);
+      const cleanContactPhone = selectedContact?.phone ? selectedContact.phone.replace(/[^0-9]/g, '') : '';
+
+      const filtered = whatsappMessages.filter(msg => {
+        // Filter by recipient (contact)
+        if (selectedContactId) {
+          const isDirectContactMatch = msg.contact_id === selectedContactId;
+          const cleanRecipientPhone = (msg.recipient_phone || '').replace(/[^0-9]/g, '');
+          const isPhoneMatch = cleanContactPhone && cleanRecipientPhone && (
+            cleanRecipientPhone.endsWith(cleanContactPhone.slice(-8)) ||
+            cleanContactPhone.endsWith(cleanRecipientPhone.slice(-8))
+          );
+          if (!isDirectContactMatch && !isPhoneMatch) return false;
+        }
+
+        // Filter by sender (line)
+        if (selectedSenderId) {
+          if (msg.phone_number_id !== selectedSenderId) return false;
+        }
+
+        return true;
+      });
+
+      chatWrapper.innerHTML = generateChatHtml(filtered);
+
+      // Auto scroll to bottom
+      const listElem = chatWrapper.querySelector('#wa-messages-list');
+      if (listElem) {
+        listElem.scrollTop = listElem.scrollHeight;
+      }
+    };
+
+    // Filter event listeners
+    filterRecipientSelect.addEventListener('change', applyFiltersAndRender);
+    filterSenderSelect.addEventListener('change', applyFiltersAndRender);
+
+    // Initial auto-scroll
+    const initialList = chatWrapper.querySelector('#wa-messages-list');
+    if (initialList) {
+      initialList.scrollTop = initialList.scrollHeight;
+    }
+
+    // Refresh history handler
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        refreshIcon.classList.add('animate-spin', 'text-primary');
+        refreshBtn.disabled = true;
+        try {
+          await loadAllData();
+          await renderWhatsAppTab(parent);
+          toast.show('Historial de WhatsApp actualizado', 'success');
+        } catch (err) {
+          console.error('Error refreshing WhatsApp history:', err);
+          toast.show('Error al actualizar historial', 'error');
+        } finally {
+          refreshIcon.classList.remove('animate-spin', 'text-primary');
+          refreshBtn.disabled = false;
+        }
+      });
+    }
+
+    // Prefill phone on contact selection & auto-sync filter
+    function handleContactChange() {
+      const selectedOption = contactSelect.options[contactSelect.selectedIndex];
+      if (selectedOption) {
+        const phone = selectedOption.dataset.phone || '';
+        phoneInput.value = phone.replace(/[^0-9+]/g, '');
+        
+        // Auto-sync recipient filter if contact matches an option
+        if (filterRecipientSelect && contactSelect.value) {
+          filterRecipientSelect.value = contactSelect.value;
+          applyFiltersAndRender();
+        }
+      }
+    }
+    contactSelect.addEventListener('change', handleContactChange);
+    handleContactChange(); // Run once initially
+
+    // Toggle scheduler display
+    scheduleToggle.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        schedulerContainer.classList.remove('hidden');
+        scheduledTimeInput.required = true;
+        const localNow = new Date();
+        localNow.setHours(localNow.getHours() + 1);
+        const yyyy = localNow.getFullYear();
+        const mm = String(localNow.getMonth() + 1).padStart(2, '0');
+        const dd = String(localNow.getDate()).padStart(2, '0');
+        const hh = String(localNow.getHours()).padStart(2, '0');
+        const min = String(localNow.getMinutes()).padStart(2, '0');
+        scheduledTimeInput.value = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+      } else {
+        schedulerContainer.classList.add('hidden');
+        scheduledTimeInput.required = false;
+        scheduledTimeInput.value = '';
+      }
+    });
+
+    // Handle template changes: parse variables for HEADER & BODY components and show preview
+    let currentTemplate = null;
+    templateSelect.addEventListener('change', () => {
+      const templateName = templateSelect.value;
+      variablesFields.innerHTML = '';
+
+      if (!templateName) {
+        variablesContainer.classList.add('hidden');
+        previewContainer.classList.add('hidden');
+        currentTemplate = null;
+        return;
+      }
+
+      currentTemplate = templates.find(t => t.name === templateName);
+      if (!currentTemplate) return;
+
+      let varIndex = 1;
+      let totalVars = 0;
+
+      (currentTemplate.components || []).forEach(comp => {
+        if ((comp.type === 'HEADER' && comp.format === 'TEXT') || comp.type === 'BODY') {
+          const compText = comp.text || '';
+          const matches = [...compText.matchAll(/\{\{(\d+)\}\}/g)];
+          if (matches.length > 0) {
+            const compLabel = comp.type === 'HEADER' ? 'Encabezado' : 'Cuerpo';
+            matches.forEach(m => {
+              const num = m[1];
+              totalVars++;
+              const fieldWrapper = document.createElement('div');
+              fieldWrapper.className = 'flex flex-col gap-1';
+              fieldWrapper.innerHTML = `
+                <label for="wa-var-${comp.type.toLowerCase()}-${num}" class="text-[9px] font-mono text-neutral-500 font-bold uppercase">
+                  Variable {{${num}}} (${compLabel})
+                </label>
+                <input type="text" id="wa-var-${comp.type.toLowerCase()}-${num}" data-comp="${comp.type.toLowerCase()}" data-var="${num}" required class="cohere-input text-xs w-full py-1.5" placeholder="Ingrese valor para {{${num}}}" />
+              `;
+              variablesFields.appendChild(fieldWrapper);
+              fieldWrapper.querySelector('input').addEventListener('input', updateLivePreview);
+            });
+          }
+        }
+      });
+
+      if (totalVars > 0) {
+        variablesContainer.classList.remove('hidden');
+      } else {
+        variablesContainer.classList.add('hidden');
+      }
+
+      previewContainer.classList.remove('hidden');
+      updateLivePreview();
+    });
+
+    function updateLivePreview() {
+      if (!currentTemplate) return;
+
+      const headerComponent = (currentTemplate.components || []).find(c => c.type === 'HEADER' && c.format === 'TEXT');
+      const bodyComponent = (currentTemplate.components || []).find(c => c.type === 'BODY');
+      const footerComponent = (currentTemplate.components || []).find(c => c.type === 'FOOTER');
+      const buttonsComponent = (currentTemplate.components || []).find(c => c.type === 'BUTTONS');
+
+      let headerText = headerComponent ? headerComponent.text : '';
+      let bodyText = bodyComponent ? bodyComponent.text : '';
+      let footerText = footerComponent ? footerComponent.text : '';
+
+      const varInputs = variablesFields.querySelectorAll('input');
+      varInputs.forEach((input) => {
+        const compType = input.dataset.comp;
+        const num = input.dataset.var;
+        const val = input.value.trim() || `{{${num}}}`;
+        
+        if (compType === 'header' && headerText) {
+          headerText = headerText.replaceAll(`{{${num}}}`, val);
+        } else if (compType === 'body' && bodyText) {
+          bodyText = bodyText.replaceAll(`{{${num}}}`, val);
+        }
+      });
+
+      let fullPreview = '';
+      if (headerText) fullPreview += `*${headerText}*\n\n`;
+      fullPreview += bodyText;
+      if (footerText) fullPreview += `\n\n_${footerText}_`;
+
+      previewText.innerText = fullPreview;
+
+      // Render template interactive buttons preview
+      const previewButtonsContainer = parent.querySelector('#wa-preview-buttons');
+      if (previewButtonsContainer) {
+        if (buttonsComponent && Array.isArray(buttonsComponent.buttons) && buttonsComponent.buttons.length > 0) {
+          previewButtonsContainer.innerHTML = buttonsComponent.buttons.map(btn => {
+            let icon = '💬';
+            let extraBadge = '';
+            if (btn.type === 'FLOW') {
+              icon = '📋';
+              extraBadge = ' <span class="text-[8px] font-mono bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded">Flow</span>';
+            } else if (btn.type === 'URL') {
+              icon = '🔗';
+            } else if (btn.type === 'PHONE_NUMBER') {
+              icon = '📞';
+            }
+
+            return `
+              <div style="background:#ffffff;border-radius:6px;padding:6px 10px;border:1px solid #dcdfe4;box-shadow:0 1px 1px rgba(0,0,0,0.04);" class="flex items-center justify-center gap-1.5 text-center text-xs font-semibold text-[#00a884] select-none">
+                <span>${icon}</span>
+                <span>${btn.text || 'Botón'}</span>
+                ${extraBadge}
+              </div>
+            `;
+          }).join('');
+          previewButtonsContainer.classList.remove('hidden');
+        } else {
+          previewButtonsContainer.innerHTML = '';
+          previewButtonsContainer.classList.add('hidden');
+        }
+      }
+    }
+
+    // Submit handler
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const rawPhone = phoneInput.value.trim();
+      const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+
+      if (cleanPhone.length < 8) {
+        toast.show('Número de teléfono inválido. Debe tener al menos 8 dígitos.', 'error');
+        return;
+      }
+
+      if (cleanPhone.startsWith('54') && !cleanPhone.startsWith('549')) {
+        toast.show('Advertencia: Los celulares de Argentina suelen requerir "549" en WhatsApp.', 'info');
+      }
+
+      // Validate non-empty variables and build components payload
+      const varInputs = variablesFields.querySelectorAll('input');
+      let hasEmptyVar = false;
+      const variablesArray = [];
+
+      const headerParams = [];
+      const bodyParams = [];
+
+      varInputs.forEach((input) => {
+        const val = input.value.trim();
+        const compType = input.dataset.comp;
+        
+        if (!val) {
+          hasEmptyVar = true;
+        }
+
+        variablesArray.push(val);
+
+        if (compType === 'header') {
+          headerParams.push({ type: 'text', text: val });
+        } else if (compType === 'body') {
+          bodyParams.push({ type: 'text', text: val });
+        }
+      });
+
+      if (hasEmptyVar) {
+        toast.show('Por favor completa todos los campos de variables de la plantilla.', 'error');
+        return;
+      }
+
+      const payloadComponents = [];
+      if (headerParams.length > 0) {
+        payloadComponents.push({ type: 'header', parameters: headerParams });
+      }
+      if (bodyParams.length > 0) {
+        payloadComponents.push({ type: 'body', parameters: bodyParams });
+      }
+
+      // Automatically handle FLOW buttons in templates (e.g. prueba_flow_test1)
+      if (currentTemplate && currentTemplate.components) {
+        currentTemplate.components.forEach(comp => {
+          if (comp.type === 'BUTTONS' && Array.isArray(comp.buttons)) {
+            comp.buttons.forEach((btn, idx) => {
+              if (btn.type === 'FLOW') {
+                payloadComponents.push({
+                  type: 'button',
+                  sub_type: 'flow',
+                  index: String(idx),
+                  parameters: [
+                    {
+                      type: 'action',
+                      action: {
+                        flow_token: 'unused'
+                      }
+                    }
+                  ]
+                });
+              }
+            });
+          }
+        });
+      }
+
+      const bodyText = previewText.innerText;
+      const selectedOption = templateSelect.options[templateSelect.selectedIndex];
+      const templateLanguage = selectedOption.dataset.lang || 'es_AR';
+
+      const phone_number_id = form.querySelector('[name="phone_number_id"]').value;
+      const template_name = templateSelect.value;
+      
+      const payload = {
+        lead_id: lead.id,
+        contact_id: contactSelect.value || null,
+        phone_number_id,
+        to: cleanPhone,
+        template_name,
+        template_language: templateLanguage,
+        components: payloadComponents,
+        body_text: bodyText,
+        variables: variablesArray
+      };
+
+      if (scheduleToggle.checked) {
+        const scheduledTime = scheduledTimeInput.value;
+        if (!scheduledTime) {
+          toast.show('Debe ingresar la fecha y hora de programación', 'error');
+          return;
+        }
+
+        const localDate = new Date(scheduledTime);
+        if (localDate <= new Date()) {
+          toast.show('La fecha de programación debe ser a futuro', 'error');
+          return;
+        }
+        payload.scheduled_for = localDate.toISOString();
+      }
+
+      submitBtn.disabled = true;
+      const originalBtnText = submitBtn.textContent;
+      submitBtn.textContent = 'Enviando...';
+
+      try {
+        const session = await auth.getSession();
+        const jwt = session?.access_token;
+
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/send-template`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwt}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          const actionText = payload.scheduled_for ? 'programado' : 'enviado';
+          toast.show(`Mensaje de WhatsApp ${actionText} con éxito`, 'success');
+          
+          await loadAllData();
+          await renderWhatsAppTab(parent);
+          
+          if (typeof refreshHistory === 'function') {
+            refreshHistory();
+          }
+        } else {
+          throw new Error(result.error?.message || result.error || 'Fallo en la llamada al proxy');
+        }
+      } catch (err) {
+        console.error('Error sending template message:', err);
+        toast.show('Error al enviar WhatsApp: ' + err.message, 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalBtnText;
+      }
+    });
   }
 }

@@ -13,6 +13,8 @@ import { renderLeadsKanban } from './pages/leads-kanban';
 import { renderLeadsByCompany } from './pages/leads-by-company';
 import { renderSettings } from './pages/settings';
 import { renderLeadDetail } from './pages/lead-detail';
+import { renderUnmatchedWhatsApp } from './pages/unmatched-whatsapp';
+import { renderInDevelopment } from './pages/in-development';
 
 import { realtime } from './lib/realtime';
 
@@ -21,8 +23,16 @@ const routes = {
   '#dashboard': renderDashboard,
   '#leads-table': renderLeadsTable,
   '#leads-kanban': renderLeadsKanban,
+  '#unmatched-whatsapp': renderUnmatchedWhatsApp,
   '#leads-by-company': renderLeadsByCompany,
   '#settings': renderSettings,
+  '#settings-profile': renderSettings,
+  '#settings-users': renderSettings,
+  '#settings-pipeline': renderSettings,
+  '#settings-franquiday': renderSettings,
+  '#settings-integrations': renderSettings,
+  '#campaigns': () => renderInDevelopment('Campañas'),
+  '#automations': () => renderInDevelopment('Automatizaciones'),
 };
 
 let activeNavbar = null;

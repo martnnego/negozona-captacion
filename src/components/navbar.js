@@ -10,7 +10,14 @@ export function renderNavbar(currentUser, onNotificationClick) {
   if (hash === '#leads-table') viewTitle = 'Tabla de Leads';
   else if (hash === '#leads-kanban') viewTitle = 'Pipeline Kanban';
   else if (hash === '#leads-by-company') viewTitle = 'Contactos';
-  else if (hash === '#settings') viewTitle = 'Configuración del Sistema';
+  else if (hash === '#campaigns') viewTitle = 'Campañas';
+  else if (hash === '#automations') viewTitle = 'Automatizaciones';
+  else if (hash === '#settings-profile') viewTitle = 'Mi perfil';
+  else if (hash === '#settings-users') viewTitle = 'Gestión de usuarios';
+  else if (hash === '#settings-pipeline') viewTitle = 'Etapas del Pipeline';
+  else if (hash === '#settings-franquiday') viewTitle = 'Eventos Franquiday';
+  else if (hash === '#settings-integrations') viewTitle = 'Integraciones';
+  else if (hash.startsWith('#settings')) viewTitle = 'Configuración';
 
   navbar.innerHTML = `
     <!-- Path breadcrumb and toggle -->

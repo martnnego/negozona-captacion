@@ -46,7 +46,7 @@ export async function renderDashboard(currentUser) {
             <button id="mode-comercial-btn" class="flex-1 sm:flex-initial px-4 py-1.5 rounded-full transition-all duration-150 uppercase flex items-center justify-center gap-1 cursor-pointer ${
               activePipelineMode === 'comercial' ? 'bg-white text-primary shadow-xs' : 'text-[#616161] hover:text-primary'
             }">
-              💼 Comercial
+              💼 Negozona
             </button>
             <button id="mode-franquiday-btn" class="flex-1 sm:flex-initial px-4 py-1.5 rounded-full transition-all duration-150 uppercase flex items-center justify-center gap-1 cursor-pointer ${
               activePipelineMode === 'franquiday' ? 'bg-white text-primary shadow-xs' : 'text-[#616161] hover:text-primary'

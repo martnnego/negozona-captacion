@@ -12,3 +12,6 @@ scratch-test.js
 
 # Supabase Edge Functions local code
 supabase/
+
+# Meta documentation
+documentacion-meta-whatsap/

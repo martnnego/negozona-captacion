@@ -42,7 +42,7 @@ export function renderLeadsKanban(currentUser) {
             activePipelineMode === 'comercial'
               ? 'bg-white shadow-xs text-primary'
               : 'text-[#616161] hover:text-primary'
-          }">💼 Comercial</button>
+          }">💼 Negozona</button>
           <button data-mode="franquiday" class="mode-btn px-3 py-1 rounded-full font-mono text-[9px] font-bold tracking-wider uppercase transition-all duration-150 ${
             activePipelineMode === 'franquiday'
               ? 'bg-white shadow-xs text-primary'

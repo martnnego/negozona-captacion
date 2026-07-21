@@ -8,29 +8,162 @@ export function renderSidebar(currentUser) {
   const currentHash = window.location.hash || '#dashboard';
   const isAdmin = currentUser?.profile?.role === 'super_admin';
 
-  const menuItems = [
-    { label: 'DASHBOARD', hash: '#dashboard', icon: '📊' },
-    { label: 'TABLA DE LEADS', hash: '#leads-table', icon: '📋' },
-    { label: 'PIPELINE KANBAN', hash: '#leads-kanban', icon: '🗂️' },
-    { label: 'CONTACTOS', hash: '#leads-by-company', icon: '👥' },
-    { label: 'CONFIGURACIÓN', hash: '#settings', icon: '⚙️' },
-  ];
+  const isDashboardActive = currentHash === '#dashboard';
+  const isContactosActive = currentHash === '#leads-by-company';
+  const isCampaignsActive = currentHash === '#campaigns';
+  const isAutomationsActive = currentHash === '#automations';
 
-  let menuHtml = menuItems
-    .map(item => {
-      const isActive = currentHash === item.hash;
-      return `
-        <a href="${item.hash}" class="flex items-center gap-3 px-4 py-3 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
-          isActive 
-            ? 'bg-primary text-white' 
+  const dashboardHtml = `
+    <a href="#dashboard" class="flex items-center gap-3 px-4 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+      isDashboardActive 
+        ? 'bg-primary text-white font-bold' 
+        : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+    }">
+      <span>📊</span>
+      <span>Dashboard</span>
+    </a>
+  `;
+
+  const leadsHtml = `
+    <div class="flex flex-col gap-1 mt-1">
+      <div class="flex items-center gap-3 px-4 py-1.5 font-sans text-[10px] font-bold uppercase tracking-wider text-muted-slate select-none">
+        <span>📋</span>
+        <span>Leads</span>
+      </div>
+      <div class="pl-4 flex flex-col gap-1 border-l border-[#d9d9dd] ml-6 mb-1">
+        <a href="#leads-table" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#leads-table'
+            ? 'bg-primary text-white font-bold'
             : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
         }">
-          <span>${item.icon}</span>
-          <span>${item.label}</span>
+          <span>📋</span>
+          <span>Tabla</span>
         </a>
-      `;
-    })
-    .join('');
+        <a href="#leads-kanban" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#leads-kanban'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <span>🗂️</span>
+          <span>Kanban</span>
+        </a>
+        <a href="#unmatched-whatsapp" class="flex items-center justify-between gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#unmatched-whatsapp'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <div class="flex items-center gap-2">
+            <span>💬</span>
+            <span>Sin Asignar</span>
+          </div>
+          <span id="unmatched-wa-badge" class="hidden text-[8px] font-mono font-bold bg-rose-500 text-white px-1.5 py-0.2 rounded-full">0</span>
+        </a>
+      </div>
+    </div>
+  `;
+
+  const contactosHtml = `
+    <a href="#leads-by-company" class="flex items-center gap-3 px-4 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+      isContactosActive 
+        ? 'bg-primary text-white font-bold' 
+        : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+    }">
+      <span>👥</span>
+      <span>Contactos</span>
+    </a>
+  `;
+
+  const campaignsHtml = `
+    <a href="#campaigns" class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+      isCampaignsActive 
+        ? 'bg-primary text-white font-bold' 
+        : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+    }">
+      <div class="flex items-center gap-3">
+        <span>📣</span>
+        <span>Campañas</span>
+      </div>
+      <span class="text-[8px] font-mono bg-soft-stone text-[#616161] px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider scale-90 ${isCampaignsActive ? 'bg-[#333] text-white' : ''}">Desarrollo</span>
+    </a>
+  `;
+
+  const automationsHtml = `
+    <a href="#automations" class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+      isAutomationsActive 
+        ? 'bg-primary text-white font-bold' 
+        : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+    }">
+      <div class="flex items-center gap-3">
+        <span>🤖</span>
+        <span>Automatizaciones</span>
+      </div>
+      <span class="text-[8px] font-mono bg-soft-stone text-[#616161] px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider scale-90 ${isAutomationsActive ? 'bg-[#333] text-white' : ''}">Desarrollo</span>
+    </a>
+  `;
+
+  const configHtml = `
+    <div class="flex flex-col gap-1 mt-1">
+      <div class="flex items-center gap-3 px-4 py-1.5 font-sans text-[10px] font-bold uppercase tracking-wider text-muted-slate select-none">
+        <span>⚙️</span>
+        <span>Configuración</span>
+      </div>
+      <div class="pl-4 flex flex-col gap-1 border-l border-[#d9d9dd] ml-6">
+        <a href="#settings-profile" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#settings-profile' || currentHash === '#settings'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <span>👤</span>
+          <span>Mi perfil</span>
+        </a>
+        ${isAdmin ? `
+          <a href="#settings-users" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+            currentHash === '#settings-users'
+              ? 'bg-primary text-white font-bold'
+              : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+          }">
+            <span>👥</span>
+            <span>Gestión de usuarios</span>
+          </a>
+          <a href="#settings-pipeline" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+            currentHash === '#settings-pipeline'
+              ? 'bg-primary text-white font-bold'
+              : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+          }">
+            <span>🛤️</span>
+            <span>Etapas del Pipeline</span>
+          </a>
+          <a href="#settings-franquiday" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+            currentHash === '#settings-franquiday'
+              ? 'bg-primary text-white font-bold'
+              : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+          }">
+            <span>🎪</span>
+            <span>Eventos Franquiday</span>
+          </a>
+        ` : ''}
+        <a href="#settings-integrations" class="flex items-center justify-between gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#settings-integrations'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <div class="flex items-center gap-2">
+            <span>🔌</span>
+            <span>Integraciones</span>
+          </div>
+        </a>
+      </div>
+    </div>
+  `;
+
+  let menuHtml = `
+    ${dashboardHtml}
+    ${leadsHtml}
+    ${contactosHtml}
+    ${campaignsHtml}
+    ${automationsHtml}
+    ${configHtml}
+  `;
 
   sidebar.innerHTML = `
     <!-- Top Brand -->
