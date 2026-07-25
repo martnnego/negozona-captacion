@@ -213,6 +213,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
         await cache.loadAll();
         refreshHistory();
         renderContent();
+
+        // Dispatch agent_event to Meta
+        notifyMetaAgentStageChange(stageId, currentStages);
       } catch (err) {
         toast.show('Error al cambiar etapa: ' + err.message, 'error');
         e.target.value = currentStageId;
@@ -948,6 +951,13 @@ export async function renderLeadDetail(leadId, onUpdate) {
             <span class="ml-2 text-[10px] font-bold uppercase tracking-wider text-muted-slate" id="add-c-phone-valid-label">No Validado</span>
           </label>
         </div>
+
+        <!-- WhatsApp Agent Allowlist Toggle Section -->
+        <div id="add-c-allowlist-container" class="sm:col-span-2 mt-2 pt-3 border-t border-neutral-200">
+          <div class="flex items-center gap-2 text-neutral-400 py-1 text-[10px]">
+            <span class="animate-pulse">🔄</span> Cargando números de Agente de WhatsApp...
+          </div>
+        </div>
       `;
 
       // Interactive label update
@@ -960,6 +970,70 @@ export async function renderLeadDetail(leadId, onUpdate) {
           });
         }
       }, 50);
+
+      async function loadCreateAllowlistSection() {
+        const container = form.querySelector('#add-c-allowlist-container');
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const jwt = session?.access_token;
+          const headers = { 'Authorization': `Bearer ${jwt}` };
+
+          const numRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/numbers`, { headers });
+          const numData = await numRes.json();
+          const numbers = (numData.data || []).filter(n => n.is_eligible_agent || n.agent_status === 'ACTIVE' || n.agent_status === 'ELIGIBLE');
+
+          if (numbers.length === 0) {
+            container.innerHTML = `
+              <div class="p-2 bg-neutral-50 border border-neutral-200 text-neutral-500 text-[10px] font-mono">
+                No hay números de WhatsApp con Agente de IA configurados.
+              </div>
+            `;
+            return;
+          }
+
+          let html = `
+            <div class="flex flex-col gap-2 select-none">
+              <div class="flex flex-col gap-1">
+                <span class="font-mono text-[9px] font-bold text-primary uppercase">Habilitar en Agentes de WhatsApp (Lista Blanca / AI Audience)</span>
+                <p class="text-[9px] text-neutral-500 font-sans leading-normal bg-blue-50/80 border border-blue-200/60 p-2 rounded-sm">
+                  ℹ️ <strong>Nota:</strong> Si la audiencia del agente está configurada en <strong>Todos (EVERYONE)</strong> en Ajustes Principales, la IA responderá a cualquier usuario. La Lista Blanca se aplica estrictamente cuando la audiencia se establece en <strong>Solo Lista Blanca (ALLOWLISTED_ONLY)</strong>.
+                </p>
+              </div>
+          `;
+
+          for (const num of numbers) {
+            html += `
+              <div class="flex items-center justify-between p-2.5 bg-neutral-50 border border-neutral-200 rounded-sm">
+                <div class="flex flex-col gap-0.5">
+                  <span class="font-mono text-[10px] font-bold text-primary">${num.display_phone_number} ${num.verified_name ? `(${num.verified_name})` : ''}</span>
+                  <span class="text-[9px] text-neutral-500 font-mono">Estado Agente: <strong class="${num.agent_status === 'ACTIVE' ? 'text-emerald-600' : 'text-amber-600'}">${num.agent_status || 'Elegible'}</strong></span>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" data-waba-id="${num.id}" class="sr-only peer new-contact-allowlist-toggle" checked />
+                  <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                  <span class="ml-2 text-[9px] font-mono font-bold uppercase text-neutral-600 allowlist-toggle-label">
+                    Habilitado
+                  </span>
+                </label>
+              </div>
+            `;
+          }
+
+          html += `</div>`;
+          container.innerHTML = html;
+
+          container.querySelectorAll('.new-contact-allowlist-toggle').forEach(input => {
+            input.addEventListener('change', () => {
+              const label = input.parentElement.querySelector('.allowlist-toggle-label');
+              if (label) label.textContent = input.checked ? 'Habilitado' : 'Deshabilitado';
+            });
+          });
+        } catch (e) {
+          container.innerHTML = `<span class="text-rose-600 text-[10px]">Error al cargar agentes: ${e.message}</span>`;
+        }
+      }
+
+      loadCreateAllowlistSection();
 
       modal.create({
         title: 'Crear y Vincular Nuevo Contacto',
@@ -1008,6 +1082,29 @@ export async function renderLeadDetail(leadId, onUpdate) {
                   .single();
 
                 if (contactErr) throw contactErr;
+
+                // Sync to allowlist if phone provided and toggle checked
+                if (newContact.phone) {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  const jwt = session?.access_token;
+                  const apiHeaders = { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' };
+
+                  const toggleInputs = form.querySelectorAll('.new-contact-allowlist-toggle');
+                  for (const input of toggleInputs) {
+                    if (input.checked) {
+                      const wabaId = input.dataset.wabaId;
+                      try {
+                        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
+                          method: 'POST',
+                          headers: apiHeaders,
+                          body: JSON.stringify({ phone_number_id: wabaId, consumer_phone_number: newContact.phone })
+                        });
+                      } catch (err) {
+                        console.error(`Error adding new contact to allowlist for WABA ${wabaId}:`, err);
+                      }
+                    }
+                  }
+                }
 
                 cache.addContact(contactData);
 
@@ -1647,19 +1744,27 @@ export async function renderLeadDetail(leadId, onUpdate) {
     let fetchError = null;
 
     try {
-      // 1. Fetch active numbers from database
-      const { data: numbersRes, error: numErr } = await supabase
-        .from('whatsapp_numbers')
-        .select('*')
-        .eq('is_active', true);
-      
-      if (numErr) throw numErr;
-      activeNumbers = numbersRes || [];
-
-      // 2. Fetch approved templates from Meta proxy
+      // 1. Fetch active numbers from proxy / database
       const session = await auth.getSession();
       const jwt = session?.access_token;
-      
+
+      const numProxyRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/numbers`, {
+        headers: { 'Authorization': `Bearer ${jwt}` }
+      }).catch(() => null);
+
+      if (numProxyRes && numProxyRes.ok) {
+        const numData = await numProxyRes.json();
+        activeNumbers = numData.data || [];
+      } else {
+        const { data: numbersRes, error: numErr } = await supabase
+          .from('whatsapp_numbers')
+          .select('*')
+          .eq('is_active', true);
+        if (numErr) throw numErr;
+        activeNumbers = numbersRes || [];
+      }
+
+      // 2. Fetch approved templates from Meta proxy
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/templates`, {
         headers: {
           'Authorization': `Bearer ${jwt}`
@@ -1690,15 +1795,15 @@ export async function renderLeadDetail(leadId, onUpdate) {
     }
 
     // Build filter dropdown options
-    const filterContactOptions = linkedContacts.map(c => `
-      <option value="${c.id}" data-phone="${c.phone || ''}">
+    const filterContactOptions = linkedContacts.map((c, idx) => `
+      <option value="${c.id}" data-phone="${c.phone || ''}" ${idx === 0 ? 'selected' : ''}>
         ${c.first_name} ${c.last_name} (${c.phone || 'Sin Teléfono'})
       </option>
     `).join('');
 
-    const filterSenderOptions = activeNumbers.map(n => `
-      <option value="${n.phone_number_id}">
-        ${n.verified_name || 'CRM'} (${n.display_phone_number})
+    const filterSenderOptions = activeNumbers.map((n, idx) => `
+      <option value="${n.phone_number_id || n.id}" ${idx === 0 ? 'selected' : ''}>
+        ${n.verified_name || 'CRM'} (${n.display_phone_number}) ${n.is_eligible_agent || n.agent_status === 'ACTIVE' ? '🤖' : ''}
       </option>
     `).join('');
 
@@ -1831,8 +1936,8 @@ export async function renderLeadDetail(leadId, onUpdate) {
     };
 
     // Form options
-    const numberOptions = activeNumbers.map(n => `
-      <option value="${n.phone_number_id}">${n.verified_name || 'CRM'} (${n.display_phone_number})</option>
+    const numberOptions = activeNumbers.map((n, idx) => `
+      <option value="${n.phone_number_id || n.id}" ${idx === 0 ? 'selected' : ''}>${n.verified_name || 'CRM'} (${n.display_phone_number}) ${n.is_eligible_agent || n.agent_status === 'ACTIVE' ? '🤖' : ''}</option>
     `).join('');
 
     const templateOptions = `<option value="">-- Seleccionar Plantilla --</option>` + templates.map(t => `
@@ -1845,129 +1950,229 @@ export async function renderLeadDetail(leadId, onUpdate) {
       </option>
     `).join('');
 
+    async function notifyMetaAgentStageChange(newStageId, stagesList) {
+      try {
+        const stageObj = (stagesList || []).find(s => s.id === newStageId);
+        const stageName = stageObj?.name || 'Nueva Etapa';
+        const primaryContact = linkedContacts.find(c => c.phone) || linkedContacts[0];
+        if (!primaryContact?.phone) return;
+
+        const activeNum = (activeNumbers || []).find(n => n.agent_status === 'ACTIVE' || n.is_eligible_agent);
+        if (!activeNum) return;
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const jwt = session?.access_token;
+
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-event`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${jwt}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            phone_number_id: activeNum.phone_number_id || activeNum.id,
+            recipient_phone: primaryContact.phone,
+            event_type: 'stage_changed',
+            description: `Cambio de etapa en CRM a ${stageName}`,
+            payload: { lead_id: lead.id, stage_id: newStageId, stage_name: stageName }
+          })
+        });
+        console.log(`Agent event stage_changed dispatched to Meta for lead ${lead.id}`);
+      } catch (e) {
+        console.error('Error dispatching agent event to Meta:', e);
+      }
+    }
+
     parent.innerHTML = `
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-0 font-sans text-xs">
+      <div class="flex flex-col gap-4 font-sans text-xs w-full">
         
-        <!-- Left: Chat History with Filters -->
-        <div class="flex flex-col gap-3 md:border-r md:border-neutral-100 md:pr-6 pb-6 md:pb-0">
-          <div class="flex items-center justify-between mb-0.5">
-            <h3 class="font-mono text-[10px] font-bold text-primary tracking-widest uppercase">Historial</h3>
-            <button id="wa-refresh-btn" type="button" class="px-2.5 py-1 text-[9px] border border-[#d9d9dd] hover:border-primary text-neutral-600 hover:text-primary font-mono font-bold uppercase rounded-full bg-white transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1">
-              <svg id="wa-refresh-icon" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
-                <path d="M23 4v6h-6" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
-              <span>Actualizar</span>
-            </button>
-          </div>
-
-          <!-- Filters Bar -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-neutral-50 p-2 border border-neutral-200 rounded-md">
-            <div class="flex flex-col gap-0.5">
-              <label for="wa-filter-recipient" class="font-mono font-bold text-neutral-500 uppercase tracking-wider text-[8px]">Filtrar Destinatario</label>
-              <select id="wa-filter-recipient" class="cohere-input text-[10px] py-1 px-2 w-full cursor-pointer bg-white">
-                <option value="">Todos los contactos</option>
-                ${filterContactOptions}
-              </select>
+        <!-- Row 1: Historial de Conversaciones (Collapsible Row) -->
+        <div class="border border-neutral-200 rounded-lg bg-white overflow-hidden shadow-xs">
+          <!-- Row 1 Header -->
+          <div id="wa-row-history-header" class="flex items-center justify-between px-4 py-3 bg-neutral-50 border-b border-neutral-200 cursor-pointer select-none">
+            <div class="flex items-center gap-2">
+              <span class="text-sm">💬</span>
+              <h3 class="font-mono text-[11px] font-bold text-primary tracking-widest uppercase">Historial de Conversaciones</h3>
+              <span id="wa-history-count" class="text-[9px] font-mono font-bold bg-neutral-200 text-neutral-700 px-2 py-0.5 rounded-full">${whatsappMessages.length}</span>
             </div>
-            <div class="flex flex-col gap-0.5">
-              <label for="wa-filter-sender" class="font-mono font-bold text-neutral-500 uppercase tracking-wider text-[8px]">Filtrar Línea CRM</label>
-              <select id="wa-filter-sender" class="cohere-input text-[10px] py-1 px-2 w-full cursor-pointer bg-white">
-                <option value="">Todas las líneas</option>
-                ${filterSenderOptions}
-              </select>
+            <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+              <button id="btn-release-thread-control" type="button" class="px-3 py-1 text-[9.5px] border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-mono font-bold uppercase rounded-full transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs">
+                🤖 Devolver a IA
+              </button>
+              <button id="wa-refresh-btn" type="button" class="px-2.5 py-1 text-[9.5px] border border-[#d9d9dd] hover:border-primary text-neutral-600 hover:text-primary font-mono font-bold uppercase rounded-full bg-white transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs">
+                <svg id="wa-refresh-icon" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                  <path d="M23 4v6h-6" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+                <span>Actualizar</span>
+              </button>
+              <span id="wa-history-toggle-icon" class="text-neutral-400 hover:text-primary font-mono font-bold text-xs ml-1 transition-transform duration-200">▼</span>
             </div>
           </div>
-          
-          <!-- Chat area with WhatsApp-like background -->
-          <div id="wa-chat-wrapper" style="background:#f0f2f5;border-radius:8px;padding:8px 8px;border:1px solid #e5e7eb;">
-            ${generateChatHtml(whatsappMessages)}
-          </div>
-        </div>
 
-        <!-- Right: Sending Form -->
-        <div class="flex flex-col gap-3 md:pl-6 pt-6 md:pt-0 border-t md:border-t-0 border-neutral-100">
-          <h3 class="font-mono text-[10px] font-bold text-primary tracking-widest uppercase mb-1">Enviar Plantilla</h3>
-          
-          <form id="wa-send-form" class="flex flex-col gap-3">
-            <!-- Contact Selector -->
-            <div class="flex flex-col gap-1">
-              <label for="wa-contact" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Destinatario</label>
-              <select id="wa-contact" name="contact_id" class="cohere-input text-xs w-full cursor-pointer">
-                ${contactOptions}
-              </select>
-            </div>
-
-            <!-- Recipient Phone -->
-            <div class="flex flex-col gap-1">
-              <label for="wa-phone" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Teléfono</label>
-              <input type="text" id="wa-phone" name="to_phone" required class="cohere-input text-xs w-full" placeholder="549XXXXXXXXXX" />
-              <span class="text-[9px] text-neutral-400">Incluir código de país: 549 (ARG celular), 34 (España).</span>
-            </div>
-
-            <!-- Sender Number -->
-            <div class="flex flex-col gap-1">
-              <label for="wa-sender" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Número remitente</label>
-              <select id="wa-sender" name="phone_number_id" required class="cohere-input text-xs w-full cursor-pointer">
-                ${numberOptions}
-              </select>
-            </div>
-
-            <!-- Template Selector -->
-            <div class="flex flex-col gap-1">
-              <label for="wa-template" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Plantilla de Meta</label>
-              <select id="wa-template" name="template_name" required class="cohere-input text-xs w-full cursor-pointer">
-                ${templateOptions}
-              </select>
-            </div>
-
-            <!-- Dynamic Variables Fields -->
-            <div id="wa-variables-container" class="flex flex-col gap-2 hidden">
-              <span class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Variables</span>
-              <div id="wa-variables-fields" class="flex flex-col gap-1.5"></div>
-            </div>
-
-            <!-- Live Preview -->
-            <div id="wa-preview-container" class="flex flex-col gap-1.5 hidden">
-              <span class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Vista previa</span>
-              <div style="background:#f0f2f5;border-radius:8px;padding:12px 10px;border:1px solid #e5e7eb;">
-                <div style="
-                  background:#d9fdd3;
-                  border-radius:2px 12px 12px 12px;
-                  padding:8px 12px 6px 12px;
-                  max-width:90%;
-                  box-shadow:0 1px 2px rgba(0,0,0,0.08);
-                  font-size:12px;line-height:1.5;
-                ">
-                  <p id="wa-preview-text" style="color:#1a1a1a;margin:0;white-space:pre-wrap;"></p>
-                  <div style="display:flex;justify-content:flex-end;margin-top:4px;">
-                    <span style="font-size:10px;color:#9ca3af;font-family:monospace;">12:00 ✓</span>
-                  </div>
-                </div>
-                <div id="wa-preview-buttons" class="mt-2 flex flex-col gap-1.5 hidden max-w-[90%]"></div>
+          <!-- Row 1 Body -->
+          <div id="wa-row-history-body" class="p-4 flex flex-col gap-3">
+            <!-- Filters Bar (Contacto & Línea Remitente) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-neutral-50 p-2.5 border border-neutral-200 rounded-md">
+              <div class="flex flex-col gap-1">
+                <label for="wa-filter-recipient" class="font-mono font-bold text-neutral-500 uppercase tracking-wider text-[8.5px]">Contacto Destinatario</label>
+                <select id="wa-filter-recipient" class="cohere-input text-xs py-1 px-2 w-full cursor-pointer bg-white">
+                  ${filterContactOptions}
+                </select>
+              </div>
+              <div class="flex flex-col gap-1">
+                <label for="wa-filter-sender" class="font-mono font-bold text-neutral-500 uppercase tracking-wider text-[8.5px]">Línea de WhatsApp Remitente</label>
+                <select id="wa-filter-sender" class="cohere-input text-xs py-1 px-2 w-full cursor-pointer bg-white">
+                  ${filterSenderOptions}
+                </select>
               </div>
             </div>
+            
+            <!-- Chat Container with Fixed Bottom Footer Bar -->
+            <div id="wa-chat-container" class="flex flex-col border border-neutral-200 rounded-lg overflow-hidden bg-neutral-100 shadow-2xs">
+              <!-- Messages Scrollable Area -->
+              <div id="wa-chat-wrapper" class="flex-1 p-3 overflow-y-auto" style="min-height:220px;max-height:350px;background:#f0f2f5;">
+                ${generateChatHtml(whatsappMessages)}
+              </div>
 
-            <!-- Scheduling Toggle -->
-            <div class="flex items-center gap-2">
-              <input type="checkbox" id="wa-schedule-toggle" name="schedule_active" class="cursor-pointer" />
-              <label for="wa-schedule-toggle" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider cursor-pointer select-none">Programar para más tarde</label>
-            </div>
+              <!-- Fixed Bottom Chat Footer Bar (Thread Status & Direct Chat Input) -->
+              <div id="wa-thread-status-bar" class="p-3 bg-white border-t border-neutral-200 flex flex-col gap-2.5 shrink-0">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div id="wa-owner-badge-container" class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-neutral-100 text-neutral-600 border border-neutral-200">
+                      <span class="w-2 h-2 rounded-full bg-neutral-400"></span>
+                      <span>Cargando estado del hilo...</span>
+                    </span>
+                  </div>
+                  <div id="wa-window-badge-container" class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.5px] font-mono font-bold bg-neutral-100 text-neutral-600 border border-neutral-200">
+                      <span>Verificando Ventana 24h...</span>
+                    </span>
+                  </div>
+                </div>
 
-            <!-- Scheduler Datetime Picker -->
-            <div id="wa-scheduler-container" class="flex flex-col gap-1 hidden">
-              <label for="wa-scheduled-time" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Fecha y hora</label>
-              <input type="datetime-local" id="wa-scheduled-time" name="scheduled_for" class="cohere-input text-xs w-full" />
+                <!-- Quick Direct Message Input (Service Messages API) -->
+                <div id="wa-service-chat-form" class="flex flex-col gap-2 pt-1">
+                  <div class="flex items-center justify-between">
+                    <label for="wa-quick-message-input" class="font-mono text-[9px] font-bold text-neutral-600 uppercase tracking-wider flex items-center gap-1">
+                      <span>💬 Mensaje Directo (Servicio 24h)</span>
+                    </label>
+                    <span id="wa-service-window-timer" class="text-[9px] font-mono text-neutral-500 font-medium"></span>
+                  </div>
+                  <div class="flex gap-2">
+                    <input type="text" id="wa-quick-message-input" class="cohere-input text-xs flex-1 px-3 py-2 bg-neutral-50 focus:bg-white" placeholder="Escribe un mensaje directo para responder al cliente..." />
+                    <button id="wa-send-quick-btn" type="button" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-mono font-bold uppercase rounded-md tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs shrink-0">
+                      <span>Enviar</span>
+                      <span>➔</span>
+                    </button>
+                  </div>
+                  <div id="wa-service-window-notice" class="text-[9.5px] text-amber-800 bg-amber-50 border border-amber-200 p-2.5 rounded-md hidden leading-relaxed">
+                    🔒 <strong>Ventana de Atención de 24h Cerrada:</strong> Por políticas de Meta WhatsApp, el período de atención al cliente ha finalizado. Para comunicarte debes seleccionar una <strong>Plantilla Aprobada</strong> en la sección inferior.
+                  </div>
+                </div>
+              </div>
             </div>
-
-            <!-- Submit Button -->
-            <div class="mt-1">
-              <button type="submit" id="wa-submit-btn" class="w-full px-5 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-lg tracking-wider transition-colors duration-150 focus:outline-none">
-                Enviar WhatsApp
-              </button>
-            </div>
-          </form>
+          </div>
         </div>
+
+        <!-- Row 2: Enviar Plantilla / Mensaje (Collapsible Row) -->
+        <div class="border border-neutral-200 rounded-lg bg-white overflow-hidden shadow-xs">
+          <!-- Row 2 Header -->
+          <div id="wa-row-send-header" class="flex items-center justify-between px-4 py-3 bg-neutral-50 border-b border-neutral-200 cursor-pointer select-none">
+            <div class="flex items-center gap-2">
+              <span class="text-sm">✉️</span>
+              <h3 class="font-mono text-[11px] font-bold text-primary tracking-widest uppercase">Enviar Plantilla de WhatsApp</h3>
+            </div>
+            <span id="wa-send-toggle-icon" class="text-neutral-400 hover:text-primary font-mono font-bold text-xs transition-transform duration-200">▼</span>
+          </div>
+
+          <!-- Row 2 Body -->
+          <div id="wa-row-send-body" class="p-4 flex flex-col gap-3">
+            <form id="wa-send-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-3">
+                <!-- Contact Selector -->
+                <div class="flex flex-col gap-1">
+                  <label for="wa-contact" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Destinatario</label>
+                  <select id="wa-contact" name="contact_id" class="cohere-input text-xs w-full cursor-pointer">
+                    ${contactOptions}
+                  </select>
+                </div>
+
+                <!-- Recipient Phone -->
+                <div class="flex flex-col gap-1">
+                  <label for="wa-phone" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Teléfono</label>
+                  <input type="text" id="wa-phone" name="to_phone" required class="cohere-input text-xs w-full" placeholder="549XXXXXXXXXX" />
+                  <span class="text-[9px] text-neutral-400">Incluir código de país: 549 (ARG celular), 34 (España).</span>
+                </div>
+
+                <!-- Sender Number -->
+                <div class="flex flex-col gap-1">
+                  <label for="wa-sender" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Número remitente</label>
+                  <select id="wa-sender" name="phone_number_id" required class="cohere-input text-xs w-full cursor-pointer">
+                    ${numberOptions}
+                  </select>
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-3">
+                <!-- Template Selector -->
+                <div class="flex flex-col gap-1">
+                  <label for="wa-template" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Plantilla de Meta</label>
+                  <select id="wa-template" name="template_name" required class="cohere-input text-xs w-full cursor-pointer">
+                    ${templateOptions}
+                  </select>
+                </div>
+
+                <!-- Dynamic Variables Fields -->
+                <div id="wa-variables-container" class="flex flex-col gap-2 hidden">
+                  <span class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Variables</span>
+                  <div id="wa-variables-fields" class="flex flex-col gap-1.5"></div>
+                </div>
+
+                <!-- Live Preview -->
+                <div id="wa-preview-container" class="flex flex-col gap-1.5 hidden">
+                  <span class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Vista previa</span>
+                  <div style="background:#f0f2f5;border-radius:8px;padding:12px 10px;border:1px solid #e5e7eb;">
+                    <div style="
+                      background:#d9fdd3;
+                      border-radius:2px 12px 12px 12px;
+                      padding:8px 12px 6px 12px;
+                      max-width:90%;
+                      box-shadow:0 1px 2px rgba(0,0,0,0.08);
+                      font-size:12px;line-height:1.5;
+                    ">
+                      <p id="wa-preview-text" style="color:#1a1a1a;margin:0;white-space:pre-wrap;"></p>
+                      <div style="display:flex;justify-content:flex-end;margin-top:4px;">
+                        <span style="font-size:10px;color:#9ca3af;font-family:monospace;">12:00 ✓</span>
+                      </div>
+                    </div>
+                    <div id="wa-preview-buttons" class="mt-2 flex flex-col gap-1.5 hidden max-w-[90%]"></div>
+                  </div>
+                </div>
+
+                <!-- Scheduling Toggle -->
+                <div class="flex items-center gap-2 pt-1">
+                  <input type="checkbox" id="wa-schedule-toggle" name="schedule_active" class="cursor-pointer" />
+                  <label for="wa-schedule-toggle" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider cursor-pointer select-none">Programar para más tarde</label>
+                </div>
+
+                <!-- Scheduler Datetime Picker -->
+                <div id="wa-scheduler-container" class="flex flex-col gap-1 hidden">
+                  <label for="wa-scheduled-time" class="font-mono text-[9px] font-bold text-neutral-500 uppercase tracking-wider">Fecha y hora</label>
+                  <input type="datetime-local" id="wa-scheduled-time" name="scheduled_for" class="cohere-input text-xs w-full" />
+                </div>
+
+                <!-- Submit Button -->
+                <div class="mt-1">
+                  <button type="submit" id="wa-submit-btn" class="w-full px-5 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-lg tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer">
+                    Enviar WhatsApp
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
       </div>
     `;
 
@@ -1989,6 +2194,33 @@ export async function renderLeadDetail(leadId, onUpdate) {
     const filterRecipientSelect = parent.querySelector('#wa-filter-recipient');
     const filterSenderSelect = parent.querySelector('#wa-filter-sender');
     const chatWrapper = parent.querySelector('#wa-chat-wrapper');
+
+    // Accordion toggle logic
+    const historyHeader = parent.querySelector('#wa-row-history-header');
+    const historyBody = parent.querySelector('#wa-row-history-body');
+    const historyToggleIcon = parent.querySelector('#wa-history-toggle-icon');
+
+    const sendHeader = parent.querySelector('#wa-row-send-header');
+    const sendBody = parent.querySelector('#wa-row-send-body');
+    const sendToggleIcon = parent.querySelector('#wa-send-toggle-icon');
+
+    if (historyHeader && historyBody) {
+      historyHeader.addEventListener('click', () => {
+        const isHidden = historyBody.classList.toggle('hidden');
+        if (historyToggleIcon) {
+          historyToggleIcon.textContent = isHidden ? '►' : '▼';
+        }
+      });
+    }
+
+    if (sendHeader && sendBody) {
+      sendHeader.addEventListener('click', () => {
+        const isHidden = sendBody.classList.toggle('hidden');
+        if (sendToggleIcon) {
+          sendToggleIcon.textContent = isHidden ? '►' : '▼';
+        }
+      });
+    }
 
     // Function to apply filters and re-render messages list
     const applyFiltersAndRender = () => {
@@ -2028,13 +2260,246 @@ export async function renderLeadDetail(leadId, onUpdate) {
     };
 
     // Filter event listeners
-    filterRecipientSelect.addEventListener('change', applyFiltersAndRender);
-    filterSenderSelect.addEventListener('change', applyFiltersAndRender);
+    filterRecipientSelect.addEventListener('change', () => {
+      applyFiltersAndRender();
+      refreshThreadStatus();
+      if (contactSelect && filterRecipientSelect.value) {
+        contactSelect.value = filterRecipientSelect.value;
+        handleContactChange();
+      }
+    });
+    filterSenderSelect.addEventListener('change', () => {
+      applyFiltersAndRender();
+      refreshThreadStatus();
+    });
 
-    // Initial auto-scroll
-    const initialList = chatWrapper.querySelector('#wa-messages-list');
-    if (initialList) {
-      initialList.scrollTop = initialList.scrollHeight;
+    // Thread Status & 24h Customer Service Window Logic
+    const ownerBadgeContainer = parent.querySelector('#wa-owner-badge-container');
+    const windowBadgeContainer = parent.querySelector('#wa-window-badge-container');
+    const quickMsgInput = parent.querySelector('#wa-quick-message-input');
+    const sendQuickBtn = parent.querySelector('#wa-send-quick-btn');
+    const serviceWindowTimer = parent.querySelector('#wa-service-window-timer');
+    const serviceWindowNotice = parent.querySelector('#wa-service-window-notice');
+
+    async function refreshThreadStatus() {
+      const selectedPhoneId = filterSenderSelect.value || (activeNumbers[0]?.phone_number_id || activeNumbers[0]?.id);
+      const selectedContactOption = filterRecipientSelect.options[filterRecipientSelect.selectedIndex];
+      const recipientPhone = selectedContactOption?.dataset?.phone || (linkedContacts.find(c => c.phone)?.phone) || '';
+
+      if (!selectedPhoneId) return;
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const jwt = session?.access_token;
+
+        const encodedPhone = encodeURIComponent(recipientPhone);
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/thread-status?phone_number_id=${selectedPhoneId}&recipient_phone=${encodedPhone}&lead_id=${lead.id}`, {
+          headers: { 'Authorization': `Bearer ${jwt}` }
+        });
+
+        if (res.ok) {
+          const statusData = await res.json();
+
+          const releaseBtn = parent.querySelector('#btn-release-thread-control');
+
+          // Render Owner Badge & Toggle Release to AI Button
+          if (statusData.owner === 'agent') {
+            ownerBadgeContainer.innerHTML = `
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
+                <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                <span>🤖 Control: Agente de IA Meta</span>
+              </span>
+            `;
+            if (releaseBtn) {
+              releaseBtn.disabled = true;
+              releaseBtn.classList.add('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+              releaseBtn.title = 'El Agente de IA Meta ya tiene el control de esta conversación.';
+            }
+          } else {
+            ownerBadgeContainer.innerHTML = `
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
+                <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                <span>👤 Control: Operador Humano</span>
+              </span>
+            `;
+            if (releaseBtn) {
+              releaseBtn.disabled = false;
+              releaseBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+              releaseBtn.title = 'Devolver el control de esta conversación al Agente de IA Meta';
+            }
+          }
+
+          // Render 24h Window Badge & Form Logic
+          if (statusData.is_window_open) {
+            windowBadgeContainer.innerHTML = `
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.5px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>🟢 Ventana 24h Abierta</span>
+              </span>
+            `;
+            quickMsgInput.disabled = false;
+            sendQuickBtn.disabled = false;
+            serviceWindowNotice.classList.add('hidden');
+
+            const remSec = statusData.remaining_seconds || 0;
+            const hoursLeft = Math.floor(remSec / 3600);
+            const minsLeft = Math.floor((remSec % 3600) / 60);
+            serviceWindowTimer.textContent = `Expira en: ${hoursLeft}h ${minsLeft}m`;
+          } else {
+            windowBadgeContainer.innerHTML = `
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.5px] font-mono font-bold bg-neutral-100 text-neutral-600 border border-neutral-300">
+                <span class="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
+                <span>🔒 Ventana 24h Cerrada</span>
+              </span>
+            `;
+            quickMsgInput.disabled = true;
+            sendQuickBtn.disabled = true;
+            serviceWindowNotice.classList.remove('hidden');
+            serviceWindowTimer.textContent = '';
+            
+            // Expand send template section if window is closed
+            if (sendBody && sendBody.classList.contains('hidden')) {
+              sendBody.classList.remove('hidden');
+              if (sendToggleIcon) sendToggleIcon.textContent = '▼';
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching thread status:', err);
+      }
+    }
+
+    // Direct Service Message Handler (Free-form text chat within 24h window)
+    async function sendDirectServiceMessage() {
+      const msgText = quickMsgInput.value.trim();
+      if (!msgText) return;
+
+      const selectedPhoneId = filterSenderSelect.value || (activeNumbers[0]?.phone_number_id || activeNumbers[0]?.id);
+      const selectedContactOption = filterRecipientSelect.options[filterRecipientSelect.selectedIndex];
+      const selectedContactId = filterRecipientSelect.value;
+      const recipientPhone = selectedContactOption?.dataset?.phone || '';
+
+      if (!selectedPhoneId || !recipientPhone) {
+        toast.show('Por favor selecciona un contacto con teléfono de destino válido.', 'error');
+        return;
+      }
+
+      sendQuickBtn.disabled = true;
+      sendQuickBtn.innerHTML = '<span>Enviando...</span>';
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const jwt = session?.access_token;
+
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/send-message`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${jwt}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            lead_id: lead.id,
+            contact_id: selectedContactId,
+            phone_number_id: selectedPhoneId,
+            to: recipientPhone,
+            message_text: msgText
+          })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          quickMsgInput.value = '';
+          toast.show('Mensaje enviado exitosamente', 'success');
+          await loadAllData();
+          await renderWhatsAppTab(parent);
+        } else {
+          toast.show('Error al enviar mensaje: ' + (data.message || data.error?.message || data.error || 'Fallo de envío'), 'error');
+        }
+      } catch (err) {
+        toast.show('Error de red: ' + err.message, 'error');
+      } finally {
+        sendQuickBtn.disabled = false;
+        sendQuickBtn.innerHTML = '<span>Enviar</span> <span>➔</span>';
+      }
+    }
+
+    if (sendQuickBtn && quickMsgInput) {
+      sendQuickBtn.addEventListener('click', sendDirectServiceMessage);
+      quickMsgInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          sendDirectServiceMessage();
+        }
+      });
+    }
+
+    // Initial filter apply, status check & auto-scroll
+    applyFiltersAndRender();
+    refreshThreadStatus();
+
+    // Thread Control (Release to AI Agent) button action
+    const releaseBtn = parent.querySelector('#btn-release-thread-control');
+
+    if (releaseBtn) {
+      releaseBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+
+        const selectedPhoneId = filterSenderSelect.value;
+        const numObj = activeNumbers.find(n => String(n.phone_number_id || n.id) === String(selectedPhoneId));
+
+        const hasAgent = numObj && (numObj.is_eligible_agent === true || numObj.agent_status === 'ACTIVE' || numObj.agent_status === 'ELIGIBLE');
+
+        if (!hasAgent) {
+          const lineName = numObj ? `${numObj.verified_name || 'Línea'} (${numObj.display_phone_number})` : 'La línea seleccionada';
+          toast.show(`${lineName} no tiene un Agente de IA activo en Meta.`, 'warning');
+          return;
+        }
+
+        const selectedContactOption = filterRecipientSelect.options[filterRecipientSelect.selectedIndex];
+        const recipientPhone = selectedContactOption?.dataset?.phone || (linkedContacts.find(c => c.phone)?.phone);
+
+        if (!recipientPhone) {
+          toast.show('No hay un número de teléfono de destino para esta devolución.', 'error');
+          return;
+        }
+
+        releaseBtn.disabled = true;
+        releaseBtn.innerHTML = '🤖 Devolviendo...';
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const jwt = session?.access_token;
+
+          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/thread-control`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${jwt}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              phone_number_id: selectedPhoneId,
+              recipient_phone: recipientPhone,
+              action: 'release'
+            })
+          });
+
+          if (res.ok) {
+            toast.show('Control de conversación devuelto exitosamente al Agente de IA Meta', 'success');
+            await loadAllData();
+            await renderWhatsAppTab(parent);
+          } else {
+            const err = await res.json().catch(() => ({}));
+            toast.show('Error al devolver conversación: ' + (err.detail || err.error || 'Status ' + res.status), 'error');
+            releaseBtn.disabled = false;
+            releaseBtn.innerHTML = '🤖 Devolver a IA';
+          }
+        } catch (e) {
+          toast.show('Error de red: ' + e.message, 'error');
+          releaseBtn.disabled = false;
+          releaseBtn.innerHTML = '🤖 Devolver a IA';
+        }
+      });
     }
 
     // Refresh history handler
