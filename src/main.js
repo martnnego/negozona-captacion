@@ -14,6 +14,7 @@ import { renderLeadsByCompany } from './pages/leads-by-company';
 import { renderSettings } from './pages/settings';
 import { renderLeadDetail } from './pages/lead-detail';
 import { renderUnmatchedWhatsApp } from './pages/unmatched-whatsapp';
+import { renderCampaigns } from './pages/campaigns';
 import { renderInDevelopment } from './pages/in-development';
 
 import { realtime } from './lib/realtime';
@@ -31,7 +32,7 @@ const routes = {
   '#settings-pipeline': renderSettings,
   '#settings-franquiday': renderSettings,
   '#settings-integrations': renderSettings,
-  '#campaigns': () => renderInDevelopment('Campañas'),
+  '#campaigns': renderCampaigns,
   '#automations': () => renderInDevelopment('Automatizaciones'),
 };
 

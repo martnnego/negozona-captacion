@@ -59,15 +59,18 @@ export async function fetchAllRows(tableName, selectColumns = '*', options = {})
   let from = 0;
   const pageSize = 1000;
   let hasMore = true;
-  const orderColumn = options.orderCol || 'id';
 
   while (hasMore) {
     const to = from + pageSize - 1;
     let query = supabase
       .from(tableName)
       .select(selectColumns)
-      .order(orderColumn, { ascending: true })
       .range(from, to);
+
+    if (options.orderCol !== null && options.orderCol !== false) {
+      const orderColumn = options.orderCol || 'id';
+      query = query.order(orderColumn, { ascending: options.ascending !== false });
+    }
 
     if (options.filterCol && options.filterVal) {
       query = query.eq(options.filterCol, options.filterVal);

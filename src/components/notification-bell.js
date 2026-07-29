@@ -79,7 +79,7 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
     list.innerHTML = notifications
       .map(n => {
         return `
-          <div data-id="${n.id}" data-lead-id="${n.lead_id || ''}" class="p-3 hover:bg-neutral-50 cursor-pointer transition-colors font-sans flex flex-col gap-0.5 ${!n.is_read ? 'bg-[#f1f5ff]' : ''}">
+          <div data-id="${n.id}" data-type="${n.type || ''}" data-lead-id="${n.lead_id || ''}" class="p-3 hover:bg-neutral-50 cursor-pointer transition-colors font-sans flex flex-col gap-0.5 ${!n.is_read ? 'bg-[#f1f5ff]' : ''}">
             <div class="flex items-center justify-between">
               <span class="text-xs font-semibold text-primary truncate">${n.title}</span>
               <span class="text-[9px] text-muted">${new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -94,6 +94,7 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
     list.querySelectorAll('[data-id]').forEach(el => {
       el.addEventListener('click', async () => {
         const id = el.dataset.id;
+        const type = el.dataset.type;
         const leadId = el.dataset.leadId;
         
         // Mark as read
@@ -110,7 +111,10 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
         }
 
         dropdown.classList.add('hidden');
-        if (leadId && onNotificationClick) {
+
+        if ((type === 'campaign_created' || type === 'campaign_status') && window.location.hash !== '#campaigns') {
+          window.location.hash = '#campaigns';
+        } else if (leadId && onNotificationClick) {
           onNotificationClick(leadId);
         }
       });

@@ -623,12 +623,24 @@ export async function renderDashboard(currentUser) {
                      new Date(act.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
         let typeBadge = '';
+        let linkAction = '';
+
         if (act.type === 'lead_assigned') {
           typeBadge = '<span class="text-[9px] font-mono font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-sm">ASIGNACIÓN</span>';
         } else if (act.type === 'stage_changed') {
           typeBadge = '<span class="text-[9px] font-mono font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-sm">ETAPA</span>';
+        } else if (act.type === 'campaign_created') {
+          typeBadge = '<span class="text-[9px] font-mono font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm">NUEVA CAMPAÑA</span>';
+          linkAction = `<a href="#campaigns" class="text-[10px] text-action-blue hover:underline font-semibold">Ver Campañas ➔</a>`;
+        } else if (act.type === 'campaign_status') {
+          typeBadge = '<span class="text-[9px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm">ESTADO CAMPAÑA</span>';
+          linkAction = `<a href="#campaigns" class="text-[10px] text-action-blue hover:underline font-semibold">Ver Campañas ➔</a>`;
         } else {
-          typeBadge = '<span class="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-sm">IMPORTACIÓN</span>';
+          typeBadge = '<span class="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-sm">SISTEMA</span>';
+        }
+
+        if (act.lead_id) {
+          linkAction = `<a href="#leads-table" class="text-[10px] text-action-blue hover:underline font-semibold" onclick="localStorage.setItem('lead_detail_open', '${act.lead_id}')">Ver Lead ➔</a>`;
         }
 
         return `
@@ -640,7 +652,7 @@ export async function renderDashboard(currentUser) {
             <p class="text-[11px] text-[#616161]">${act.message || ''}</p>
             <div class="mt-1 flex items-center justify-between">
               ${typeBadge}
-              ${act.lead_id ? `<a href="#leads-table" class="text-[10px] text-action-blue hover:underline font-semibold" onclick="localStorage.setItem('lead_detail_open', '${act.lead_id}')">Ver Lead ➔</a>` : ''}
+              ${linkAction}
             </div>
           </div>
         `;

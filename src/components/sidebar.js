@@ -74,16 +74,13 @@ export function renderSidebar(currentUser) {
   `;
 
   const campaignsHtml = `
-    <a href="#campaigns" class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+    <a href="#campaigns" class="flex items-center gap-3 px-4 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
       isCampaignsActive 
         ? 'bg-primary text-white font-bold' 
         : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
     }">
-      <div class="flex items-center gap-3">
-        <span>📣</span>
-        <span>Campañas</span>
-      </div>
-      <span class="text-[8px] font-mono bg-soft-stone text-[#616161] px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider scale-90 ${isCampaignsActive ? 'bg-[#333] text-white' : ''}">Desarrollo</span>
+      <span>📣</span>
+      <span>Campañas</span>
     </a>
   `;
 

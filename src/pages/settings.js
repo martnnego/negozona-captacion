@@ -1101,8 +1101,8 @@ export function renderSettings(currentUser) {
               <div class="flex flex-col gap-1 md:col-span-2">
                 <label for="wa-token" class="font-mono text-[9px] font-bold text-primary uppercase">System User Access Token (Token Permanente)</label>
                 <div class="relative flex items-center">
-                  <input type="password" id="wa-token" name="access_token" required value="${accessToken}" class="cohere-input text-xs w-full pr-10" placeholder="EAAK..." />
-                  <button type="button" id="btn-toggle-token-visibility" class="absolute right-3 text-neutral-400 hover:text-primary focus:outline-none text-[11px] font-mono font-bold cursor-pointer">MOSTRAR</button>
+                  <input type="password" id="wa-token" name="access_token" required value="${accessToken}" class="cohere-input text-xs w-full !pr-24" placeholder="EAAK..." />
+                  <button type="button" id="btn-toggle-token-visibility" class="absolute right-2 px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 rounded text-neutral-700 hover:text-primary text-[10px] font-mono font-bold cursor-pointer transition-colors shadow-xs z-10">MOSTRAR</button>
                 </div>
               </div>
 
