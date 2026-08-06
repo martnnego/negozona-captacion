@@ -33,6 +33,7 @@ const routes = {
   '#settings-franquiday': renderSettings,
   '#settings-integrations': renderSettings,
   '#campaigns': renderCampaigns,
+  '#templates': () => renderInDevelopment('Plantillas'),
   '#automations': () => renderInDevelopment('Automatizaciones'),
 };
 

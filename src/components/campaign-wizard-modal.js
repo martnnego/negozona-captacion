@@ -15,7 +15,7 @@ export function openCampaignWizardModal(onSuccess) {
     phone_number_id: '',
     objective: 'promocion',
     audience_type: 'dynamic_segment',
-    audience_filters: { pipeline_stage_id: '', days_inactive: '', selected_lead_ids: [] },
+    audience_filters: { pipeline_stage_id: '', days_inactive: '', country: '', selected_lead_ids: [] },
     template_name: '',
     template_language: 'es_AR',
     template_components: [],
@@ -363,6 +363,9 @@ export function openCampaignWizardModal(onSuccess) {
       campaignData.audience_filters.selected_lead_ids = [];
     }
 
+    // Build exact countries list requested
+    const countriesList = ['Argentina', 'Chile', 'España', 'México', 'Uruguay'];
+
     wizBody.innerHTML = `
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         
@@ -401,12 +404,20 @@ export function openCampaignWizardModal(onSuccess) {
           <div class="p-4 bg-white border border-neutral-200 rounded-lg flex flex-col gap-3">
             <h5 class="font-mono text-[9px] font-bold text-neutral-600 uppercase border-b border-neutral-200 pb-1">Reglas de Filtrado de Leads</h5>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div class="flex flex-col gap-1">
                 <label class="font-mono text-[8px] font-bold text-neutral-500 uppercase">Etapa del Pipeline</label>
                 <select id="filter-stage" class="cohere-input text-xs">
                   <option value="">Todas las etapas (${pipelineStages.length})</option>
                   ${pipelineStages.map(st => `<option value="${st.id}" ${campaignData.audience_filters.pipeline_stage_id === st.id ? 'selected' : ''}>${st.name}</option>`).join('')}
+                </select>
+              </div>
+
+              <div class="flex flex-col gap-1">
+                <label class="font-mono text-[8px] font-bold text-neutral-500 uppercase">País</label>
+                <select id="filter-country" class="cohere-input text-xs">
+                  <option value="">Todos los países</option>
+                  ${countriesList.map(c => `<option value="${c}" ${campaignData.audience_filters.country === c ? 'selected' : ''}>${c}</option>`).join('')}
                 </select>
               </div>
 
@@ -491,6 +502,7 @@ export function openCampaignWizardModal(onSuccess) {
 
     const staticContainer = wizBody.querySelector('#static-contacts-container');
     const filterStage = wizBody.querySelector('#filter-stage');
+    const filterCountry = wizBody.querySelector('#filter-country');
     const filterInactivity = wizBody.querySelector('#filter-inactivity');
     const contactSearch = wizBody.querySelector('#contact-list-search');
     const btnToggleAll = wizBody.querySelector('#btn-toggle-select-all');
@@ -516,6 +528,17 @@ export function openCampaignWizardModal(onSuccess) {
         calculateAudienceLiveCount();
       }
     });
+
+    if (filterCountry) {
+      filterCountry.addEventListener('change', async (e) => {
+        campaignData.audience_filters.country = e.target.value;
+        if (campaignData.audience_type === 'static_segment') {
+          await reloadContactsList();
+        } else {
+          calculateAudienceLiveCount();
+        }
+      });
+    }
 
     filterInactivity.addEventListener('change', async (e) => {
       campaignData.audience_filters.days_inactive = e.target.value;
@@ -570,7 +593,7 @@ export function openCampaignWizardModal(onSuccess) {
       try {
         // 1. Fetch ALL leads, links, and contacts using paginated fetchAllRows to ensure zero rows are missed
         const [leadsData, linksData, contactsData] = await Promise.all([
-          fetchAllRows('leads', 'id, company, primary_contact_id, pipeline_stage_id, updated_at, created_at'),
+          fetchAllRows('leads', 'id, company, country, primary_contact_id, pipeline_stage_id, updated_at, created_at'),
           fetchAllRows('lead_contacts_link', 'lead_id, contact_id', { orderCol: 'lead_id' }),
           fetchAllRows('contacts', 'id, first_name, last_name, phone, email')
         ]);
@@ -597,6 +620,10 @@ export function openCampaignWizardModal(onSuccess) {
         const f = campaignData.audience_filters;
         if (f.pipeline_stage_id) {
           leadRows = leadRows.filter(l => l.pipeline_stage_id === f.pipeline_stage_id);
+        }
+        if (f.country) {
+          const targetCountry = f.country.trim().toLowerCase();
+          leadRows = leadRows.filter(l => (l.country || '').trim().toLowerCase() === targetCountry);
         }
         if (f.days_inactive) {
           const daysAgo = new Date(Date.now() - parseInt(f.days_inactive, 10) * 24 * 60 * 60 * 1000).getTime();
@@ -784,6 +811,7 @@ export function openCampaignWizardModal(onSuccess) {
       let query = supabase.from('leads').select('id', { count: 'exact', head: true });
       const f = campaignData.audience_filters;
       if (f.pipeline_stage_id) query = query.eq('pipeline_stage_id', f.pipeline_stage_id);
+      if (f.country) query = query.ilike('country', f.country);
       if (f.days_inactive) {
         const daysAgo = new Date(Date.now() - parseInt(f.days_inactive, 10) * 24 * 60 * 60 * 1000).toISOString();
         query = query.lte('updated_at', daysAgo);

@@ -10,7 +10,6 @@ export function renderSidebar(currentUser) {
 
   const isDashboardActive = currentHash === '#dashboard';
   const isContactosActive = currentHash === '#leads-by-company';
-  const isCampaignsActive = currentHash === '#campaigns';
   const isAutomationsActive = currentHash === '#automations';
 
   const dashboardHtml = `
@@ -73,15 +72,31 @@ export function renderSidebar(currentUser) {
     </a>
   `;
 
-  const campaignsHtml = `
-    <a href="#campaigns" class="flex items-center gap-3 px-4 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
-      isCampaignsActive 
-        ? 'bg-primary text-white font-bold' 
-        : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
-    }">
-      <span>📣</span>
-      <span>Campañas</span>
-    </a>
+  const marketingHtml = `
+    <div class="flex flex-col gap-1 mt-1">
+      <div class="flex items-center gap-3 px-4 py-1.5 font-sans text-[10px] font-bold uppercase tracking-wider text-muted-slate select-none">
+        <span>📢</span>
+        <span>Marketing</span>
+      </div>
+      <div class="pl-4 flex flex-col gap-1 border-l border-[#d9d9dd] ml-6 mb-1">
+        <a href="#campaigns" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#campaigns'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <span>📣</span>
+          <span>Campañas</span>
+        </a>
+        <a href="#templates" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#templates'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <span>📄</span>
+          <span>Plantillas</span>
+        </a>
+      </div>
+    </div>
   `;
 
   const automationsHtml = `
@@ -157,7 +172,7 @@ export function renderSidebar(currentUser) {
     ${dashboardHtml}
     ${leadsHtml}
     ${contactosHtml}
-    ${campaignsHtml}
+    ${marketingHtml}
     ${automationsHtml}
     ${configHtml}
   `;

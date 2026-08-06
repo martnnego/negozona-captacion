@@ -9,6 +9,7 @@ export function renderUnmatchedWhatsApp(currentUser) {
   container.className = 'flex flex-col gap-6 animate-fade-in pb-12 select-none font-sans text-xs';
 
   let unmatchedList = [];
+  let groupedContacts = [];
   let isLoading = true;
 
   // Render header
@@ -19,7 +20,7 @@ export function renderUnmatchedWhatsApp(currentUser) {
           <span class="text-xl">💬</span>
           <h2 class="text-lg font-bold text-primary font-display tracking-tight">WhatsApp Sin Asignar</h2>
         </div>
-        <p class="text-neutral-500 text-xs">Mensajes recibidos de números de teléfono que no pertenecen a ningún contacto registrado en el CRM.</p>
+        <p class="text-neutral-500 text-xs">Contactos y mensajes recibidos de números de teléfono que no pertenecen a ningún lead registrado en el CRM.</p>
       </div>
       <button id="refresh-unmatched-btn" type="button" class="px-3 py-1.5 border border-[#d9d9dd] hover:border-primary text-neutral-600 hover:text-primary font-mono font-bold text-[10px] uppercase rounded-full bg-white transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1.5 self-start sm:self-auto">
         <svg id="refresh-unmatched-icon" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
@@ -30,6 +31,41 @@ export function renderUnmatchedWhatsApp(currentUser) {
       </button>
     </div>
   `;
+
+  // Helper to group raw messages by sender_phone
+  function groupMessagesByPhone(rawList) {
+    const groupsMap = new Map();
+
+    for (const msg of rawList) {
+      const phone = msg.sender_phone || 'Sin número';
+      if (!groupsMap.has(phone)) {
+        groupsMap.set(phone, {
+          phone,
+          sender_name: msg.sender_name || 'Contacto WhatsApp',
+          latest_received_at: msg.received_at,
+          messages: []
+        });
+      }
+      const group = groupsMap.get(phone);
+      if (msg.sender_name && group.sender_name === 'Contacto WhatsApp') {
+        group.sender_name = msg.sender_name;
+      }
+      if (new Date(msg.received_at) > new Date(group.latest_received_at)) {
+        group.latest_received_at = msg.received_at;
+      }
+      group.messages.push(msg);
+    }
+
+    const groupedArray = Array.from(groupsMap.values()).sort((a, b) => {
+      return new Date(b.latest_received_at) - new Date(a.latest_received_at);
+    });
+
+    groupedArray.forEach(group => {
+      group.messages.sort((a, b) => new Date(b.received_at) - new Date(a.received_at));
+    });
+
+    return groupedArray;
+  }
 
   // Fetch unmatched messages from database
   async function loadUnmatchedMessages() {
@@ -44,12 +80,13 @@ export function renderUnmatchedWhatsApp(currentUser) {
 
       if (error) throw error;
       unmatchedList = data || [];
+      groupedContacts = groupMessagesByPhone(unmatchedList);
       
       // Update badge count in sidebar if element exists
       const badge = document.getElementById('unmatched-wa-badge');
       if (badge) {
-        if (unmatchedList.length > 0) {
-          badge.textContent = unmatchedList.length;
+        if (groupedContacts.length > 0) {
+          badge.textContent = groupedContacts.length;
           badge.classList.remove('hidden');
         } else {
           badge.classList.add('hidden');
@@ -74,58 +111,75 @@ export function renderUnmatchedWhatsApp(currentUser) {
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          <span>Cargando mensajes no asignados...</span>
+          <span>Cargando contactos sin asignar...</span>
         </div>
       `;
       return;
     }
 
     let listHtml = '';
-    if (unmatchedList.length === 0) {
+    if (groupedContacts.length === 0) {
       listHtml = `
         <div class="py-20 flex flex-col items-center justify-center gap-3 text-neutral-400 italic border border-dashed border-[#d9d9dd] rounded-sm bg-neutral-50/30">
           <svg class="w-10 h-10 text-neutral-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span class="font-medium text-xs">¡Excelente! No hay mensajes de WhatsApp pendientes sin asignar.</span>
+          <span class="font-medium text-xs">¡Excelente! No hay mensajes ni contactos de WhatsApp pendientes sin asignar.</span>
         </div>
       `;
     } else {
       listHtml = `
-        <div class="grid grid-cols-1 gap-4">
-          ${unmatchedList.map(msg => `
-            <div class="border border-[#d9d9dd] rounded-md p-4 bg-white hover:border-primary/40 transition-all flex flex-col gap-3 shadow-xs">
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-2">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0">
+        <div class="grid grid-cols-1 gap-5">
+          ${groupedContacts.map(group => `
+            <div class="border border-[#d9d9dd] rounded-md p-4 bg-white hover:border-primary/40 transition-all flex flex-col gap-4 shadow-xs">
+              <!-- Contact Header -->
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-neutral-100 pb-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
                     💬
                   </div>
-                  <div class="flex flex-col">
-                    <div class="flex items-center gap-2">
-                      <span class="font-bold text-primary text-xs">${msg.sender_name || 'WhatsApp User'}</span>
-                      <span class="font-mono text-[10px] bg-neutral-100 px-2 py-0.5 rounded text-neutral-600">${msg.sender_phone}</span>
+                  <div class="flex flex-col gap-0.5">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-bold text-primary text-sm font-display">${group.sender_name}</span>
+                      <span class="font-mono text-[11px] bg-neutral-100 text-neutral-700 font-semibold px-2 py-0.5 rounded border border-neutral-200">${group.phone}</span>
+                      <span class="font-mono text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200/60">
+                        ${group.messages.length} ${group.messages.length === 1 ? 'mensaje' : 'mensajes'}
+                      </span>
                     </div>
-                    <span class="text-[9px] text-neutral-400 font-mono">Recibido: ${formatDateTime(msg.received_at)}</span>
+                    <span class="text-[10px] text-neutral-400 font-mono">Último recibido: ${formatDateTime(group.latest_received_at)}</span>
                   </div>
                 </div>
 
-                <!-- Action Buttons -->
-                <div class="flex items-center gap-2 self-end sm:self-auto">
-                  <button data-associate-msg-id="${msg.id}" type="button" class="px-3 py-1.5 bg-primary hover:bg-cohere-black text-white text-[9px] font-mono font-bold uppercase rounded-full tracking-wider transition-all cursor-pointer">
+                <!-- Action Buttons for Group -->
+                <div class="flex items-center gap-2 self-end md:self-auto flex-wrap">
+                  <button data-associate-group-phone="${group.phone}" type="button" class="px-3 py-1.5 bg-primary hover:bg-cohere-black text-white text-[9px] font-mono font-bold uppercase rounded-full tracking-wider transition-all cursor-pointer shadow-xs">
                     🔗 Asociar a Lead
                   </button>
-                  <button data-create-lead-msg-id="${msg.id}" type="button" class="px-3 py-1.5 border border-[#d9d9dd] hover:border-emerald-600 hover:text-emerald-600 text-neutral-700 text-[9px] font-mono font-bold uppercase rounded-full bg-white transition-all cursor-pointer">
+                  <button data-create-lead-group-phone="${group.phone}" type="button" class="px-3 py-1.5 border border-[#d9d9dd] hover:border-emerald-600 hover:text-emerald-600 text-neutral-700 text-[9px] font-mono font-bold uppercase rounded-full bg-white transition-all cursor-pointer shadow-xs">
                     ➕ Crear Lead
                   </button>
-                  <button data-dismiss-msg-id="${msg.id}" type="button" class="px-2 py-1.5 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-full text-xs transition-colors cursor-pointer" title="Descartar mensaje">
-                    🗑️
+                  <button data-dismiss-group-phone="${group.phone}" type="button" class="px-2.5 py-1.5 border border-transparent hover:border-rose-200 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-full text-xs transition-all cursor-pointer" title="Descartar todos los mensajes de este contacto">
+                    🗑️ Descartar todo
                   </button>
                 </div>
               </div>
 
-              <!-- Message Body -->
-              <div class="bg-[#f0f2f5] p-3 rounded-lg border border-neutral-200/60">
-                <p class="text-neutral-800 text-xs leading-relaxed whitespace-pre-wrap font-sans">${msg.body || 'Sin texto'}</p>
+              <!-- Message Stream -->
+              <div class="flex flex-col gap-2 pl-2 md:pl-4 border-l-2 border-emerald-500/20">
+                <span class="font-mono text-[9px] font-bold uppercase tracking-wider text-neutral-400">Historial de Mensajes Recibidos:</span>
+                <div class="flex flex-col gap-2.5">
+                  ${group.messages.map(msg => `
+                    <div class="bg-[#f8f9fa] p-3 rounded-lg border border-neutral-200/70 flex flex-col gap-1.5 relative group hover:border-neutral-300 transition-all">
+                      <div class="flex items-center justify-between gap-2 border-b border-neutral-200/40 pb-1">
+                        <span class="text-[10px] text-neutral-500 font-mono font-semibold">📅 ${formatDateTime(msg.received_at)}</span>
+                        <button data-dismiss-msg-id="${msg.id}" type="button" class="text-neutral-400 hover:text-rose-600 text-[10px] p-0.5 rounded transition-colors cursor-pointer" title="Descartar solo este mensaje">
+                          ✕ Descartar
+                        </button>
+                      </div>
+                      <p class="text-neutral-800 text-xs leading-relaxed whitespace-pre-wrap font-sans">${msg.body || '<span class="italic text-neutral-400">Sin contenido de texto</span>'}</p>
+                    </div>
+                  `).join('')}
+                </div>
               </div>
             </div>
           `).join('')}
@@ -146,33 +200,41 @@ export function renderUnmatchedWhatsApp(currentUser) {
       });
     }
 
-    // Attach event listeners for actions
-    container.querySelectorAll('[data-associate-msg-id]').forEach(btn => {
+    // Attach event listeners for group actions
+    container.querySelectorAll('[data-associate-group-phone]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const msgId = btn.dataset.associateMsgId;
-        const msg = unmatchedList.find(m => m.id === msgId);
-        if (msg) openAssociateModal(msg);
+        const phone = btn.dataset.associateGroupPhone;
+        const group = groupedContacts.find(g => g.phone === phone);
+        if (group) openAssociateModal(group);
       });
     });
 
-    container.querySelectorAll('[data-create-lead-msg-id]').forEach(btn => {
+    container.querySelectorAll('[data-create-lead-group-phone]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const msgId = btn.dataset.createLeadMsgId;
-        const msg = unmatchedList.find(m => m.id === msgId);
-        if (msg) openCreateLeadModal(msg);
+        const phone = btn.dataset.createLeadGroupPhone;
+        const group = groupedContacts.find(g => g.phone === phone);
+        if (group) openCreateLeadModal(group);
+      });
+    });
+
+    container.querySelectorAll('[data-dismiss-group-phone]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const phone = btn.dataset.dismissGroupPhone;
+        const group = groupedContacts.find(g => g.phone === phone);
+        if (group) dismissGroupMessages(group);
       });
     });
 
     container.querySelectorAll('[data-dismiss-msg-id]').forEach(btn => {
       btn.addEventListener('click', () => {
         const msgId = btn.dataset.dismissMsgId;
-        dismissMessage(msgId);
+        dismissSingleMessage(msgId);
       });
     });
   }
 
-  // Modal 1: Associate with existing lead
-  function openAssociateModal(msg) {
+  // Modal 1: Associate grouped contact messages with an existing lead
+  function openAssociateModal(contactGroup) {
     const leads = cache.leads || [];
     let selectedLeadId = null;
 
@@ -180,10 +242,22 @@ export function renderUnmatchedWhatsApp(currentUser) {
     modalContent.className = 'flex flex-col gap-4 select-none text-xs font-sans';
 
     modalContent.innerHTML = `
-      <div class="bg-neutral-50 p-3 rounded border border-neutral-200 flex flex-col gap-1">
-        <span class="font-mono text-[9px] font-bold text-neutral-400 uppercase">Mensaje a asociar</span>
-        <span class="font-bold text-primary">${msg.sender_name} (${msg.sender_phone})</span>
-        <p class="text-neutral-600 text-[11px] italic mt-0.5">"${msg.body}"</p>
+      <div class="bg-neutral-50 p-3 rounded border border-neutral-200 flex flex-col gap-1.5">
+        <span class="font-mono text-[9px] font-bold text-neutral-400 uppercase">Contacto a asociar</span>
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-primary text-xs">${contactGroup.sender_name}</span>
+          <span class="font-mono text-[10px] bg-neutral-200/70 text-neutral-700 px-1.5 py-0.5 rounded">${contactGroup.phone}</span>
+        </div>
+        <div class="mt-1 pt-1 border-t border-neutral-200 flex flex-col gap-1">
+          <span class="text-[10px] font-semibold text-neutral-500 font-mono">Mensajes a vincular (${contactGroup.messages.length}):</span>
+          <div class="max-h-28 overflow-y-auto flex flex-col gap-1 pr-1">
+            ${contactGroup.messages.map(m => `
+              <div class="text-[10px] text-neutral-700 bg-white p-1.5 rounded border border-neutral-200/60 truncate">
+                <span class="font-mono text-[9px] text-neutral-400">[${formatDateTime(m.received_at)}]</span> ${m.body}
+              </div>
+            `).join('')}
+          </div>
+        </div>
       </div>
 
       <div class="flex flex-col gap-1.5">
@@ -191,7 +265,7 @@ export function renderUnmatchedWhatsApp(currentUser) {
         <input type="text" id="search-lead-input" class="cohere-input text-xs w-full" placeholder="Escribe el nombre de la empresa..." />
       </div>
 
-      <div id="leads-results-list" class="max-h-[220px] overflow-y-auto flex flex-col gap-1 border border-neutral-200 rounded p-1">
+      <div id="leads-results-list" class="max-h-[200px] overflow-y-auto flex flex-col gap-1 border border-neutral-200 rounded p-1">
         <!-- Injected dynamically -->
       </div>
     `;
@@ -237,7 +311,7 @@ export function renderUnmatchedWhatsApp(currentUser) {
     renderLeadsList();
 
     modal.create({
-      title: 'Asociar Mensaje a Lead',
+      title: 'Asociar Contacto de WhatsApp a Lead',
       content: modalContent,
       actions: [
         { text: 'Cancelar' },
@@ -251,42 +325,48 @@ export function renderUnmatchedWhatsApp(currentUser) {
             }
 
             try {
-              // 1. Insert into whatsapp_messages
-              await supabase.from('whatsapp_messages').insert({
+              const whatsappInserts = contactGroup.messages.map(msg => ({
                 lead_id: selectedLeadId,
                 phone_number_id: msg.phone_number_id || null,
                 direction: 'inbound',
-                recipient_phone: msg.sender_phone,
+                recipient_phone: contactGroup.phone,
                 body: msg.body,
                 status: 'received',
                 sent_at: msg.received_at || new Date().toISOString()
-              });
+              }));
 
-              // 2. Insert into lead_interactions
-              await supabase.from('lead_interactions').insert({
+              const interactionInserts = contactGroup.messages.map(msg => ({
                 lead_id: selectedLeadId,
                 contact_type: 'whatsapp',
                 direction: 'inbound',
                 subject: 'Respuesta WhatsApp (Asociado)',
                 body: msg.body,
                 contacted_at: msg.received_at || new Date().toISOString()
-              });
+              }));
 
-              // 3. Mark as assigned in whatsapp_unmatched_messages
+              const msgIds = contactGroup.messages.map(m => m.id);
+
+              // 1. Insert into whatsapp_messages
+              await supabase.from('whatsapp_messages').insert(whatsappInserts);
+
+              // 2. Insert into lead_interactions
+              await supabase.from('lead_interactions').insert(interactionInserts);
+
+              // 3. Mark all as assigned in whatsapp_unmatched_messages
               await supabase
                 .from('whatsapp_unmatched_messages')
                 .update({
                   is_assigned: true,
                   assigned_lead_id: selectedLeadId
                 })
-                .eq('id', msg.id);
+                .in('id', msgIds);
 
-              toast.show('Mensaje asociado con éxito al lead', 'success');
+              toast.show(`${contactGroup.messages.length} mensaje(s) asociado(s) con éxito al lead`, 'success');
               closeSubModal();
               loadUnmatchedMessages();
             } catch (err) {
-              console.error('Error associating message:', err);
-              toast.show('Error al asociar el mensaje: ' + err.message, 'error');
+              console.error('Error associating contact group messages:', err);
+              toast.show('Error al asociar el contacto: ' + err.message, 'error');
             }
           }
         }
@@ -294,14 +374,15 @@ export function renderUnmatchedWhatsApp(currentUser) {
     });
   }
 
-  // Modal 2: Create new lead and associate
-  function openCreateLeadModal(msg) {
+  // Modal 2: Create new lead and associate all messages from group
+  function openCreateLeadModal(contactGroup) {
     const form = document.createElement('form');
     form.className = 'flex flex-col gap-3.5 select-none text-xs font-sans';
     form.innerHTML = `
       <div class="bg-neutral-50 p-3 rounded border border-neutral-200 flex flex-col gap-1">
-        <span class="font-mono text-[9px] font-bold text-neutral-400 uppercase">Mensaje recibido</span>
-        <span class="font-bold text-primary">${msg.sender_name} (${msg.sender_phone})</span>
+        <span class="font-mono text-[9px] font-bold text-neutral-400 uppercase">Contacto de WhatsApp</span>
+        <span class="font-bold text-primary">${contactGroup.sender_name} (${contactGroup.phone})</span>
+        <span class="text-[10px] text-neutral-500 font-mono mt-0.5">Se vincularán los ${contactGroup.messages.length} mensaje(s) recibido(s).</span>
       </div>
 
       <div class="flex flex-col gap-1">
@@ -312,11 +393,11 @@ export function renderUnmatchedWhatsApp(currentUser) {
       <div class="grid grid-cols-2 gap-3">
         <div class="flex flex-col gap-1">
           <label for="new-contact-firstname" class="font-mono text-[9px] font-bold text-primary uppercase">Nombre Contacto</label>
-          <input type="text" id="new-contact-firstname" name="first_name" value="${msg.sender_name || ''}" class="cohere-input text-xs w-full" />
+          <input type="text" id="new-contact-firstname" name="first_name" value="${contactGroup.sender_name !== 'Contacto WhatsApp' ? contactGroup.sender_name : ''}" class="cohere-input text-xs w-full" />
         </div>
         <div class="flex flex-col gap-1">
           <label for="new-contact-phone" class="font-mono text-[9px] font-bold text-primary uppercase">Teléfono Contacto *</label>
-          <input type="text" id="new-contact-phone" name="phone" value="${msg.sender_phone || ''}" required class="cohere-input text-xs w-full" />
+          <input type="text" id="new-contact-phone" name="phone" value="${contactGroup.phone || ''}" required class="cohere-input text-xs w-full" />
         </div>
       </div>
     `;
@@ -380,8 +461,8 @@ export function renderUnmatchedWhatsApp(currentUser) {
               cache.addLead(newLead);
               cache.addContact(newContact);
 
-              // 5. Insert into whatsapp_messages & lead_interactions
-              await supabase.from('whatsapp_messages').insert({
+              // 5. Insert messages & interactions for all messages in group
+              const whatsappInserts = contactGroup.messages.map(msg => ({
                 lead_id: newLead.id,
                 contact_id: newContact.id,
                 phone_number_id: msg.phone_number_id || null,
@@ -390,27 +471,32 @@ export function renderUnmatchedWhatsApp(currentUser) {
                 body: msg.body,
                 status: 'received',
                 sent_at: msg.received_at || new Date().toISOString()
-              });
+              }));
 
-              await supabase.from('lead_interactions').insert({
+              const interactionInserts = contactGroup.messages.map(msg => ({
                 lead_id: newLead.id,
                 contact_type: 'whatsapp',
                 direction: 'inbound',
                 subject: 'Primer contacto WhatsApp',
                 body: msg.body,
                 contacted_at: msg.received_at || new Date().toISOString()
-              });
+              }));
 
-              // 6. Mark unmatched message as assigned
+              const msgIds = contactGroup.messages.map(m => m.id);
+
+              await supabase.from('whatsapp_messages').insert(whatsappInserts);
+              await supabase.from('lead_interactions').insert(interactionInserts);
+
+              // 6. Mark unmatched messages as assigned
               await supabase
                 .from('whatsapp_unmatched_messages')
                 .update({
                   is_assigned: true,
                   assigned_lead_id: newLead.id
                 })
-                .eq('id', msg.id);
+                .in('id', msgIds);
 
-              toast.show('Nuevo lead creado y mensaje asociado con éxito', 'success');
+              toast.show('Nuevo lead creado y mensajes asociados con éxito', 'success');
               closeSubModal();
               loadUnmatchedMessages();
             } catch (err) {
@@ -423,9 +509,27 @@ export function renderUnmatchedWhatsApp(currentUser) {
     });
   }
 
-  // Dismiss message
-  async function dismissMessage(msgId) {
-    if (!confirm('¿Deseas descartar este mensaje de la lista sin asignarlo?')) return;
+  // Dismiss all messages from a group
+  async function dismissGroupMessages(contactGroup) {
+    if (!confirm(`¿Deseas descartar los ${contactGroup.messages.length} mensaje(s) de ${contactGroup.sender_name} (${contactGroup.phone}) sin asignarlos?`)) return;
+    try {
+      const msgIds = contactGroup.messages.map(m => m.id);
+      const { error } = await supabase
+        .from('whatsapp_unmatched_messages')
+        .update({ is_assigned: true })
+        .in('id', msgIds);
+
+      if (error) throw error;
+      toast.show('Mensajes descartados con éxito', 'info');
+      loadUnmatchedMessages();
+    } catch (err) {
+      toast.show('Error al descartar mensajes: ' + err.message, 'error');
+    }
+  }
+
+  // Dismiss a single message
+  async function dismissSingleMessage(msgId) {
+    if (!confirm('¿Deseas descartar este mensaje individual de la lista sin asignarlo?')) return;
     try {
       const { error } = await supabase
         .from('whatsapp_unmatched_messages')
@@ -445,3 +549,4 @@ export function renderUnmatchedWhatsApp(currentUser) {
 
   return container;
 }
+

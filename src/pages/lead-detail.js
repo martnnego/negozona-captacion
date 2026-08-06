@@ -85,27 +85,20 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
     const stages = cache.getStages();
     const profiles = cache.getProfiles();
-    const activePipelineMode = localStorage.getItem('crm_active_pipeline_mode') || 'comercial';
     
-    // Resolve active stage based on pipeline mode
-    let currentStageId = '';
-    let headerStageLabel = 'Etapa Comercial';
-    if (activePipelineMode === 'franquiday') {
-      headerStageLabel = 'Etapa Franquiday';
-      const activeEvent = cache.getActiveEvent();
-      const participations = cache.getLeadParticipations(lead.id) || [];
-      const activeParticipation = activeEvent 
-        ? participations.find(p => p.evento_id === activeEvent.id)
-        : null;
-      currentStageId = lead.franquiday_stage_id || activeParticipation?.pipeline_stage_id || stages[0]?.id;
-    } else {
-      headerStageLabel = 'Etapa Comercial';
-      currentStageId = lead.pipeline_stage_id;
-    }
+    // Resolve stage IDs for Comercial and Franquiday
+    const commercialStageId = lead.pipeline_stage_id || stages[0]?.id;
+
+    const activeEvent = cache.getActiveEvent();
+    const participations = cache.getLeadParticipations(lead.id) || [];
+    const activeParticipation = activeEvent 
+      ? participations.find(p => p.evento_id === activeEvent.id)
+      : null;
+    const franquidayStageId = cache.getMostRecentFranquidayStageId(lead.id) || lead.franquiday_stage_id || activeParticipation?.pipeline_stage_id || stages[0]?.id;
     
     // Modal Header Info
     const summaryHeader = document.createElement('div');
-    summaryHeader.className = 'grid grid-cols-1 sm:grid-cols-3 gap-4 border-b border-neutral-100 pb-4 select-none';
+    summaryHeader.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-b border-neutral-100 pb-4 select-none';
     summaryHeader.innerHTML = `
       <div>
         <h4 class="text-xs font-mono font-bold text-muted-slate uppercase tracking-wider">Empresa / Marca</h4>
@@ -126,9 +119,15 @@ export async function renderLeadDetail(leadId, onUpdate) {
         </p>
       </div>
       <div class="flex flex-col gap-0.5">
-        <h4 class="text-xs font-mono font-bold text-muted-slate uppercase tracking-wider">${headerStageLabel}</h4>
-        <select id="header-stage-select" class="mt-0.5 bg-white border border-[#d9d9dd] rounded-sm py-1 px-2 font-mono text-[10px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
-          ${stages.map(s => `<option value="${s.id}" ${currentStageId === s.id ? 'selected' : ''}>${s.name.toUpperCase()}</option>`).join('')}
+        <h4 class="text-xs font-mono font-bold text-muted-slate uppercase tracking-wider">Etapa Comercial</h4>
+        <select id="header-comercial-stage-select" class="mt-0.5 bg-white border border-[#d9d9dd] rounded-sm py-1 px-2 font-mono text-[10px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
+          ${stages.map(s => `<option value="${s.id}" ${commercialStageId === s.id ? 'selected' : ''}>${s.name.toUpperCase()}</option>`).join('')}
+        </select>
+      </div>
+      <div class="flex flex-col gap-0.5">
+        <h4 class="text-xs font-mono font-bold text-muted-slate uppercase tracking-wider">Etapa Franquiday</h4>
+        <select id="header-franquiday-stage-select" class="mt-0.5 bg-white border border-[#d9d9dd] rounded-sm py-1 px-2 font-mono text-[10px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
+          ${stages.map(s => `<option value="${s.id}" ${franquidayStageId === s.id ? 'selected' : ''}>${s.name.toUpperCase()}</option>`).join('')}
         </select>
       </div>
     `;
@@ -169,11 +168,41 @@ export async function renderLeadDetail(leadId, onUpdate) {
     bodyEl.appendChild(tabsBar);
     bodyEl.appendChild(tabContent);
 
-    // Event listener for stage change dropdown
-    summaryHeader.querySelector('#header-stage-select').addEventListener('change', async (e) => {
-      const stageId = e.target.value;
-      try {
-        if (activePipelineMode === 'franquiday') {
+    // Event listener for Comercial stage change dropdown
+    const comercialSelect = summaryHeader.querySelector('#header-comercial-stage-select');
+    if (comercialSelect) {
+      comercialSelect.addEventListener('change', async (e) => {
+        const stageId = e.target.value;
+        try {
+          const { error } = await supabase
+            .from('leads')
+            .update({ pipeline_stage_id: stageId })
+            .eq('id', lead.id);
+
+          if (error) throw error;
+          lead.pipeline_stage_id = stageId;
+          toast.show('Etapa Comercial actualizada con éxito', 'success');
+
+          cache.updateLead(lead);
+          await cache.loadAll();
+          refreshHistory();
+          renderContent();
+
+          // Dispatch agent_event to Meta
+          notifyMetaAgentStageChange(stageId, stages);
+        } catch (err) {
+          toast.show('Error al cambiar etapa comercial: ' + err.message, 'error');
+          e.target.value = commercialStageId;
+        }
+      });
+    }
+
+    // Event listener for Franquiday stage change dropdown
+    const franquidaySelect = summaryHeader.querySelector('#header-franquiday-stage-select');
+    if (franquidaySelect) {
+      franquidaySelect.addEventListener('change', async (e) => {
+        const stageId = e.target.value;
+        try {
           // 1. Update franquiday_stage_id in leads
           const { error: leadErr } = await supabase
             .from('leads')
@@ -184,43 +213,30 @@ export async function renderLeadDetail(leadId, onUpdate) {
           lead.franquiday_stage_id = stageId;
 
           // 2. Update/Upsert in participaciones_franquiday if there is an active event
-          const activeEvent = cache.getActiveEvent();
-          if (activeEvent) {
+          const activeEv = cache.getActiveEvent();
+          if (activeEv) {
             const { error: partErr } = await supabase
               .from('participaciones_franquiday')
               .upsert({
                 lead_id: lead.id,
-                evento_id: activeEvent.id,
+                evento_id: activeEv.id,
                 pipeline_stage_id: stageId
               }, { onConflict: 'lead_id,evento_id' });
 
             if (partErr) throw partErr;
           }
           toast.show('Etapa Franquiday actualizada con éxito', 'success');
-        } else {
-          // Commercial Mode
-          const { error } = await supabase
-            .from('leads')
-            .update({ pipeline_stage_id: stageId })
-            .eq('id', lead.id);
 
-          if (error) throw error;
-          lead.pipeline_stage_id = stageId;
-          toast.show('Etapa Comercial actualizada con éxito', 'success');
+          cache.updateLead(lead);
+          await cache.loadAll();
+          refreshHistory();
+          renderContent();
+        } catch (err) {
+          toast.show('Error al cambiar etapa Franquiday: ' + err.message, 'error');
+          e.target.value = franquidayStageId;
         }
-
-        cache.updateLead(lead);
-        await cache.loadAll();
-        refreshHistory();
-        renderContent();
-
-        // Dispatch agent_event to Meta
-        notifyMetaAgentStageChange(stageId, currentStages);
-      } catch (err) {
-        toast.show('Error al cambiar etapa: ' + err.message, 'error');
-        e.target.value = currentStageId;
-      }
-    });
+      });
+    }
 
     // Tab click listeners
     tabsBar.querySelectorAll('[data-tab]').forEach(btn => {
