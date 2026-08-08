@@ -267,13 +267,14 @@ export function renderSettings(currentUser) {
                   <th class="px-6 py-3">Nombre</th>
                   <th class="px-6 py-3">Email</th>
                   <th class="px-6 py-3">Rol</th>
+                  <th class="px-6 py-3">Remitente Mailing</th>
                   <th class="px-6 py-3">Estado</th>
                   <th class="px-6 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody id="users-tbody" class="divide-y divide-[#e5e7eb] text-neutral-700">
                 <tr>
-                  <td colspan="5" class="py-8 text-center text-neutral-400">Cargando comerciales...</td>
+                  <td colspan="6" class="py-8 text-center text-neutral-400">Cargando comerciales...</td>
                 </tr>
               </tbody>
             </table>
@@ -286,7 +287,7 @@ export function renderSettings(currentUser) {
     loadUsers();
 
     async function loadUsers() {
-      tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-neutral-400">Cargando comerciales...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-neutral-400">Cargando comerciales...</td></tr>`;
       try {
         const { data, error } = await supabase
           .from('profiles')
@@ -315,6 +316,14 @@ export function renderSettings(currentUser) {
               </select>
             </td>
             <td class="px-6 py-3.5 select-none">
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" class="mailing-sender-checkbox rounded-xs text-primary focus:ring-0 cursor-pointer" ${profile.is_mailing_sender ? 'checked' : ''} />
+                <span class="font-mono text-[10px] ${profile.is_mailing_sender ? 'text-emerald-700 font-bold' : 'text-neutral-500'}">
+                  ${profile.is_mailing_sender ? 'Habilitado' : 'Deshabilitado'}
+                </span>
+              </label>
+            </td>
+            <td class="px-6 py-3.5 select-none">
               <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
                 profile.is_active 
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
@@ -325,12 +334,32 @@ export function renderSettings(currentUser) {
             </td>
             <td class="px-6 py-3.5 text-right select-none">
               ${!isSelf ? `
-                <button class="status-toggle-btn px-3 py-1 border border-[#d9d9dd] hover:border-primary hover:text-primary rounded-full font-mono text-[9px] font-bold uppercase bg-white transition-all focus:outline-none">
+                <button class="status-toggle-btn px-3 py-1 border border-[#d9d9dd] hover:border-primary hover:text-primary rounded-full font-mono text-[9px] font-bold uppercase bg-white transition-all focus:outline-none cursor-pointer">
                   ${profile.is_active ? 'Desactivar' : 'Activar'}
                 </button>
               ` : '—'}
             </td>
           `;
+
+          // Handle Mailing Sender Checkbox Toggle
+          const senderCheckbox = row.querySelector('.mailing-sender-checkbox');
+          senderCheckbox.addEventListener('change', async () => {
+            const isSender = senderCheckbox.checked;
+            try {
+              const { error: err } = await supabase
+                .from('profiles')
+                .update({ is_mailing_sender: isSender })
+                .eq('id', profile.id);
+
+              if (err) throw err;
+              toast.show(`Usuario ${isSender ? 'habilitado' : 'deshabilitado'} como remitente de mailing`, 'success');
+              await cache.loadAll();
+              await loadUsers();
+            } catch (err) {
+              toast.show('Error al actualizar remitente: ' + err.message, 'error');
+              senderCheckbox.checked = !isSender;
+            }
+          });
 
           // Handle Role Change
           if (!isSelf) {
@@ -883,7 +912,9 @@ export function renderSettings(currentUser) {
 
     // 1. Fetch credentials status
     let whatsappConnected = false;
+    let mailingConnected = false;
     let zapierSecret = '';
+    let mailingSettings = {};
     
     try {
       const { data: settingsData } = await supabase
@@ -892,6 +923,10 @@ export function renderSettings(currentUser) {
         
       const settings = Object.fromEntries((settingsData || []).map(item => [item.key, item.value]));
       whatsappConnected = !!(settings.whatsapp_waba_id && settings.whatsapp_access_token);
+      mailingConnected = !!settings.google_service_account_config;
+      if (settings.google_service_account_config) {
+        try { mailingSettings = JSON.parse(settings.google_service_account_config); } catch (e) {}
+      }
       zapierSecret = settings.zapier_webhook_secret || 'No configurado';
     } catch (e) {
       console.error('Error fetching integration settings status:', e);
@@ -936,26 +971,30 @@ export function renderSettings(currentUser) {
             </button>
           </div>
 
-          <!-- Card 2: Mailing (Próximamente) -->
-          <div class="bg-white border border-[#d9d9dd] opacity-60 rounded-sm p-6 flex flex-col justify-between gap-6">
+          <!-- Card 2: Mailing Automático (Google Workspace) -->
+          <div class="bg-white border border-[#d9d9dd] rounded-sm p-6 flex flex-col justify-between gap-6 transition-shadow duration-150 hover:shadow-xs">
             <div class="flex flex-col gap-3">
               <div class="flex items-center justify-between">
-                <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center text-xl">
+                <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl">
                   ✉️
                 </div>
-                <span class="font-mono text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-neutral-100 text-neutral-500 border border-neutral-200">
-                  Próximamente
+                <span class="font-mono text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                  mailingConnected 
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                    : 'bg-neutral-100 text-neutral-500 border border-neutral-200'
+                }">
+                  ${mailingConnected ? 'Conectado' : 'Sin Configurar'}
                 </span>
               </div>
               <div class="flex flex-col gap-1">
-                <h4 class="font-bold text-primary font-display text-sm">Mailing Automático</h4>
+                <h4 class="font-bold text-primary font-display text-sm">Google Workspace Mailing</h4>
                 <p class="text-neutral-500 text-[11px] leading-relaxed">
-                  Automatiza el envío de correos electrónicos y campañas personalizadas para nutrir y calificar tus leads.
+                  Configura tu Service Account de Google Cloud con delegación de dominio para permitir envíos desde las cuentas de tus comerciales.
                 </p>
               </div>
             </div>
-            <button disabled class="w-full py-2 bg-neutral-100 text-neutral-400 text-[10px] font-mono font-bold uppercase rounded-full tracking-wider focus:outline-none cursor-not-allowed text-center">
-              Próximamente
+            <button id="btn-configure-mailing" class="w-full py-2 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer text-center">
+              Configurar
             </button>
           </div>
 
@@ -989,6 +1028,90 @@ export function renderSettings(currentUser) {
     // Configure WhatsApp click handler
     parent.querySelector('#btn-configure-whatsapp').addEventListener('click', () => {
       renderWhatsAppConfig(parent);
+    });
+
+    // Configure Mailing (Google Workspace) click handler
+    parent.querySelector('#btn-configure-mailing').addEventListener('click', () => {
+      modal.create({
+        title: 'Configurar Google Workspace Service Account',
+        content: `
+          <form id="mailing-config-form" class="flex flex-col gap-4 font-sans text-xs max-h-[75vh] overflow-y-auto pr-1">
+            <p class="text-neutral-600 leading-relaxed">
+              Ingresa el contenido JSON de tu <b>Service Account</b> creada en Google Cloud Console con delegación de dominio (*Domain-Wide Delegation*) otorgada en la consola de Google Workspace.
+            </p>
+
+            <div class="flex flex-col gap-1">
+              <label for="mailing-domain" class="font-mono text-[9px] font-bold text-primary uppercase">Dominio Corporativo Autorizado *</label>
+              <input type="text" id="mailing-domain" required value="${mailingSettings.domain || 'negozona.com'}" placeholder="ej: negozona.com" class="cohere-input text-xs" />
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label for="mailing-sa-json" class="font-mono text-[9px] font-bold text-primary uppercase">JSON de la Service Account *</label>
+              <textarea id="mailing-sa-json" rows="8" required class="cohere-input text-xs font-mono p-3 leading-relaxed" placeholder='{ "type": "service_account", "project_id": "...", "private_key_id": "...", "private_key": "-----BEGIN PRIVATE KEY-----\\n...", "client_email": "...", "client_id": "..." }'>${mailingSettings.json ? JSON.stringify(mailingSettings.json, null, 2) : ''}</textarea>
+            </div>
+
+            <div class="bg-blue-50 border border-blue-200 text-blue-900 rounded-sm p-3 flex flex-col gap-1 text-[11px]">
+              <span class="font-bold">🔑 Scopes autorizados en Google Workspace Admin Console:</span>
+              <code class="font-mono text-[10px] bg-white p-1 rounded-xs border border-blue-200 select-all">https://www.googleapis.com/auth/gmail.send</code>
+            </div>
+          </form>
+        `,
+        actions: [
+          { text: 'Cancelar', primary: false },
+          {
+            text: 'Guardar Credenciales',
+            primary: true,
+            onClick: async (closeModal) => {
+              const modalEl = document.querySelector('.modal-overlay') || document;
+              const domain = modalEl.querySelector('#mailing-domain').value.trim();
+              const jsonRaw = modalEl.querySelector('#mailing-sa-json').value.trim();
+
+              if (!domain || !jsonRaw) {
+                toast.show('Por favor completa todos los campos requeridos', 'error');
+                return;
+              }
+
+              let jsonParsed = null;
+              try {
+                jsonParsed = JSON.parse(jsonRaw);
+                if (!jsonParsed.client_email || !jsonParsed.private_key) {
+                  throw new Error('El JSON no contiene los campos client_email o private_key');
+                }
+              } catch (err) {
+                toast.show('JSON de Service Account inválido: ' + err.message, 'error');
+                return;
+              }
+
+              const configObject = {
+                domain,
+                client_email: jsonParsed.client_email,
+                client_id: jsonParsed.client_id,
+                json: jsonParsed,
+                updated_at: new Date().toISOString()
+              };
+
+              try {
+                const { error } = await supabase
+                  .from('crm_settings')
+                  .upsert({
+                    key: 'google_service_account_config',
+                    value: JSON.stringify(configObject),
+                    description: 'Credenciales de Google Service Account para Mailing B2B',
+                    updated_at: new Date().toISOString()
+                  }, { onConflict: 'key' });
+
+                if (error) throw error;
+                toast.show('Credenciales de Google Workspace guardadas con éxito', 'success');
+                if (typeof closeModal === 'function') closeModal();
+                await renderIntegrationsTab(parent);
+              } catch (err) {
+                console.error('Error saving Google SA credentials:', err);
+                toast.show('Error guardando credenciales: ' + err.message, 'error');
+              }
+            }
+          }
+        ]
+      });
     });
 
     // View Zapier Webhook secret handler

@@ -12,6 +12,7 @@ export function renderNavbar(currentUser, onNotificationClick) {
   else if (hash === '#leads-by-company') viewTitle = 'Contactos';
   else if (hash === '#campaigns') viewTitle = 'Campañas';
   else if (hash === '#templates') viewTitle = 'Plantillas';
+  else if (hash === '#mailing-stats') viewTitle = 'Estadísticas Mailing';
   else if (hash === '#automations') viewTitle = 'Automatizaciones';
   else if (hash === '#settings-profile') viewTitle = 'Mi perfil';
   else if (hash === '#settings-users') viewTitle = 'Gestión de usuarios';

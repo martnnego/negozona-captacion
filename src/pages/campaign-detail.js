@@ -175,7 +175,12 @@ export async function renderCampaignDetail(campaignId) {
   // ----------------------------------------------------
   // TAB 1: General
   // ----------------------------------------------------
+  // ----------------------------------------------------
+  // TAB 1: General
+  // ----------------------------------------------------
   function renderTabGeneral(tabContent) {
+    const isEmail = campaign.channel === 'email';
+
     tabContent.innerHTML = `
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
         <div class="p-5 bg-white border border-neutral-200 rounded-xl flex flex-col gap-4 shadow-xs">
@@ -184,17 +189,17 @@ export async function renderCampaignDetail(campaignId) {
           <div class="grid grid-cols-2 gap-3 text-xs">
             <div>
               <span class="text-[9px] font-mono text-neutral-400 block uppercase">Canal</span>
-              <span class="font-bold text-neutral-800 uppercase">🟢 ${campaign.channel}</span>
+              <span class="font-bold text-neutral-800 uppercase">${isEmail ? '✉️ Email' : '🟢 WhatsApp'}</span>
             </div>
 
             <div>
-              <span class="text-[9px] font-mono text-neutral-400 block uppercase">Número Remitente</span>
-              <span class="font-mono text-neutral-700">${campaign.phone_number_id}</span>
+              <span class="text-[9px] font-mono text-neutral-400 block uppercase">${isEmail ? 'Estrategia Remitente' : 'Número Remitente'}</span>
+              <span class="font-mono text-neutral-700">${isEmail ? (campaign.sender_strategy === 'lead_owner' ? 'Comercial del Lead' : (campaign.sender_strategy === 'single' ? 'Remitente Único' : 'Round-Robin')) : campaign.phone_number_id}</span>
             </div>
 
             <div>
               <span class="text-[9px] font-mono text-neutral-400 block uppercase">Objetivo Comercial</span>
-              <span class="capitalize text-neutral-800 font-medium">${campaign.objective}</span>
+              <span class="capitalize text-neutral-800 font-medium">${campaign.objective || 'General'}</span>
             </div>
 
             <div>
@@ -254,9 +259,10 @@ export async function renderCampaignDetail(campaignId) {
   // TAB 2: Audiencia & Descartados
   // ----------------------------------------------------
   function renderTabAudience(tabContent) {
+    const isEmail = campaign.channel === 'email';
     const discardedRecs = recipients.filter(r => r.status === 'discarded');
     const rule24hCount = discardedRecs.filter(r => r.discard_reason === 'rule_24h').length;
-    const invalidPhoneCount = discardedRecs.filter(r => r.discard_reason === 'invalid_whatsapp').length;
+    const invalidPhoneCount = discardedRecs.filter(r => r.discard_reason === 'invalid_whatsapp' || r.discard_reason === 'missing_email').length;
     const optOutCount = discardedRecs.filter(r => r.discard_reason === 'opt_out').length;
 
     tabContent.innerHTML = `
@@ -283,29 +289,47 @@ export async function renderCampaignDetail(campaignId) {
           <h4 class="font-mono text-xs font-bold text-neutral-800 uppercase border-b border-neutral-200 pb-2">Motivos de Descarte de Audiencia</h4>
           
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-            <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex items-center justify-between">
-              <div>
-                <strong class="block text-neutral-800 font-bold">🛡️ Regla 24h Anti-Spam</strong>
-                <span class="text-[10px] text-neutral-500">Recibieron campaña reciente</span>
+            ${isEmail ? `
+              <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex items-center justify-between">
+                <div>
+                  <strong class="block text-neutral-800 font-bold">✉️ Email Faltante / Inválido</strong>
+                  <span class="text-[10px] text-neutral-500">Sin correo electrónico o con sintaxis errónea</span>
+                </div>
+                <span class="text-base font-mono font-bold text-amber-600">${invalidPhoneCount}</span>
               </div>
-              <span class="text-base font-mono font-bold text-rose-600">${rule24hCount}</span>
-            </div>
 
-            <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex items-center justify-between">
-              <div>
-                <strong class="block text-neutral-800 font-bold">📱 Teléfono Inválido</strong>
-                <span class="text-[10px] text-neutral-500">Sin formato internacional</span>
+              <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex items-center justify-between">
+                <div>
+                  <strong class="block text-neutral-800 font-bold">🚫 Opt-Out / Solicitó Baja</strong>
+                  <span class="text-[10px] text-neutral-500">Suscriptores dados de baja</span>
+                </div>
+                <span class="text-base font-mono font-bold text-neutral-600">${optOutCount}</span>
               </div>
-              <span class="text-base font-mono font-bold text-amber-600">${invalidPhoneCount}</span>
-            </div>
+            ` : `
+              <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex items-center justify-between">
+                <div>
+                  <strong class="block text-neutral-800 font-bold">🛡️ Regla 24h Anti-Spam</strong>
+                  <span class="text-[10px] text-neutral-500">Recibieron campaña reciente</span>
+                </div>
+                <span class="text-base font-mono font-bold text-rose-600">${rule24hCount}</span>
+              </div>
 
-            <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex items-center justify-between">
-              <div>
-                <strong class="block text-neutral-800 font-bold">🚫 Opt-Out / Baja</strong>
-                <span class="text-[10px] text-neutral-500">Solicitaron no ser contactados</span>
+              <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex items-center justify-between">
+                <div>
+                  <strong class="block text-neutral-800 font-bold">📱 Teléfono Inválido</strong>
+                  <span class="text-[10px] text-neutral-500">Sin formato internacional</span>
+                </div>
+                <span class="text-base font-mono font-bold text-amber-600">${invalidPhoneCount}</span>
               </div>
-              <span class="text-base font-mono font-bold text-neutral-600">${optOutCount}</span>
-            </div>
+
+              <div class="p-3 bg-neutral-50 rounded-lg border border-neutral-200 flex items-center justify-between">
+                <div>
+                  <strong class="block text-neutral-800 font-bold">🚫 Opt-Out / Baja</strong>
+                  <span class="text-[10px] text-neutral-500">Solicitaron no ser contactados</span>
+                </div>
+                <span class="text-base font-mono font-bold text-neutral-600">${optOutCount}</span>
+              </div>
+            `}
           </div>
         </div>
       </div>
@@ -315,7 +339,68 @@ export async function renderCampaignDetail(campaignId) {
   // ----------------------------------------------------
   // TAB 3: Contenido
   // ----------------------------------------------------
-  function renderTabContent(tabContent) {
+  async function renderTabContent(tabContent) {
+    const isEmail = campaign.channel === 'email';
+
+    if (isEmail) {
+      tabContent.innerHTML = `
+        <div class="p-8 text-center text-neutral-400 font-mono text-xs">
+          <span class="animate-pulse">🔄 Cargando plantilla de email...</span>
+        </div>
+      `;
+
+      let tmpl = null;
+      if (campaign.email_template_id) {
+        const { data: tData } = await supabase.from('email_templates').select('*').eq('id', campaign.email_template_id).single();
+        tmpl = tData;
+      }
+
+      tabContent.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="p-5 bg-white border border-neutral-200 rounded-xl flex flex-col gap-3">
+            <h4 class="font-mono text-xs font-bold text-primary uppercase border-b border-neutral-200 pb-2">Configuración del Email</h4>
+            
+            <div class="flex flex-col gap-2 text-xs">
+              <div>
+                <span class="text-[9px] font-mono text-neutral-400 block uppercase">Plantilla de Email</span>
+                <strong class="font-mono text-primary font-bold text-sm">${tmpl?.name || campaign.template_name || 'Plantilla de Email'}</strong>
+              </div>
+
+              <div>
+                <span class="text-[9px] font-mono text-neutral-400 block uppercase">Asunto</span>
+                <span class="font-semibold text-neutral-800">${tmpl?.subject || 'Sin asunto'}</span>
+              </div>
+
+              ${tmpl?.preview_text ? `
+                <div>
+                  <span class="text-[9px] font-mono text-neutral-400 block uppercase">Texto de Vista Previa (Preheader)</span>
+                  <span class="font-mono text-neutral-600 italic text-[11px]">${tmpl.preview_text}</span>
+                </div>
+              ` : ''}
+
+              <div class="pt-2 border-t border-neutral-100">
+                <span class="text-[9px] font-mono text-neutral-400 block uppercase mb-1">Variables Dinámicas Detectadas</span>
+                <div class="flex flex-wrap gap-1 font-mono text-[10px]">
+                  ${(tmpl?.variables || []).map(v => `<span class="px-2 py-0.5 bg-neutral-100 border border-neutral-200 rounded text-primary font-bold">${v}</span>`).join('') || '<span class="text-neutral-400">Ninguna variable</span>'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex flex-col gap-3">
+            <div class="font-mono text-xs font-bold text-neutral-800 border-b border-neutral-100 pb-2 flex items-center justify-between">
+              <span>Vista Previa del Cuerpo HTML</span>
+              <span class="text-[10px] text-neutral-400 font-normal">Renderizado final</span>
+            </div>
+            <div class="p-4 bg-neutral-50 border border-neutral-200 rounded-lg font-sans text-xs text-neutral-800 leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap">
+              ${tmpl?.body_html || '<span class="text-neutral-400 italic">No hay vista previa disponible</span>'}
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     tabContent.innerHTML = `
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div class="p-5 bg-white border border-neutral-200 rounded-xl flex flex-col gap-3">
@@ -382,21 +467,18 @@ export async function renderCampaignDetail(campaignId) {
       </div>
     `;
   }
-
   // ----------------------------------------------------
   // TAB 5: Resultados / Métricas
   // ----------------------------------------------------
-  // ----------------------------------------------------
-  // TAB 5: Resultados / Métricas Completa (Meta WABA & CRM)
-  // ----------------------------------------------------
   function renderTabResults(tabContent) {
+    const isEmail = campaign.channel === 'email';
     const totalAudience = campaign.total_to_send || 1;
     const totalSent = campaign.total_sent || 0;
     const totalDelivered = campaign.total_delivered || totalSent;
     const totalFailed = campaign.total_failed || 0;
     const totalDiscarded = campaign.total_discarded || 0;
-    const totalRead = campaign.total_read || totalDelivered; // Meta Cloud API delivered/read
-    const totalClicks = campaign.total_clicks || Math.round(totalDelivered * 0.187); // Interactive clicks
+    const totalRead = campaign.total_read || 0;
+    const totalClicks = campaign.total_clicks || 0;
 
     // Calculated Rates
     const sendRate = Math.round((totalSent / totalAudience) * 100);
@@ -405,10 +487,10 @@ export async function renderCampaignDetail(campaignId) {
     const clickRate = totalDelivered > 0 ? Math.round((totalClicks / totalDelivered) * 100) : 0;
     const errorRate = totalAudience > 0 ? Math.round((totalFailed / totalAudience) * 100) : 0;
 
-    // Cost calculations (Meta Marketing Message rate ~ $0.062 USD in LATAM)
-    const estimatedCostUSD = (totalDelivered * 0.062).toFixed(2);
-    const costPerDeliveredUSD = totalDelivered > 0 ? '0.062' : '0.000';
-    const costPerClickUSD = totalClicks > 0 ? (parseFloat(estimatedCostUSD) / totalClicks).toFixed(3) : '0.000';
+    // Cost calculations
+    const estimatedCostUSD = isEmail ? '0.00' : (totalDelivered * 0.062).toFixed(2);
+    const costPerDeliveredUSD = isEmail ? '0.000' : (totalDelivered > 0 ? '0.062' : '0.000');
+    const costPerClickUSD = isEmail ? '0.000' : (totalClicks > 0 ? (parseFloat(estimatedCostUSD) / totalClicks).toFixed(3) : '0.000');
 
     tabContent.innerHTML = `
       <div class="flex flex-col gap-6">
@@ -418,16 +500,13 @@ export async function renderCampaignDetail(campaignId) {
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">📊</div>
             <div>
-              <h3 class="font-mono text-sm font-bold text-neutral-900 uppercase">Panel Integrado de Resultados y Rendimiento</h3>
-              <p class="text-xs text-neutral-500">Métricas sincronizadas en tiempo real con Meta Cloud API & CRM NegoZona</p>
+              <h3 class="font-mono text-sm font-bold text-neutral-900 uppercase">Panel de Resultados y Rendimiento ${isEmail ? 'Mailing B2B' : 'WhatsApp'}</h3>
+              <p class="text-xs text-neutral-500">${isEmail ? 'Métricas sincronizadas en tiempo real vía Google Workspace Gmail API' : 'Métricas sincronizadas en tiempo real con Meta Cloud API'}</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <span class="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-mono text-[10px] font-bold rounded-full border border-emerald-200">
-              🟢 Meta WABA Activo
-            </span>
-            <span class="px-2.5 py-1 bg-blue-50 text-blue-700 font-mono text-[10px] font-bold rounded-full border border-blue-200">
-              Plantilla: ${campaign.template_name || 'Marketing'}
+            <span class="px-2.5 py-1 ${isEmail ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'} font-mono text-[10px] font-bold rounded-full border">
+              ${isEmail ? '✉️ Gmail API Activo' : '🟢 Meta WABA Activo'}
             </span>
           </div>
         </div>
@@ -447,25 +526,25 @@ export async function renderCampaignDetail(campaignId) {
           </div>
 
           <div class="p-3.5 bg-white border border-neutral-200 rounded-xl shadow-xs flex flex-col justify-between">
-            <span class="text-[9px] font-mono text-neutral-400 uppercase block font-bold">Tasa de Lectura</span>
+            <span class="text-[9px] font-mono text-neutral-400 uppercase block font-bold">Aperturas Detectadas</span>
             <strong class="text-2xl font-mono text-blue-600 mt-1">${readRate}%</strong>
-            <span class="text-[9px] text-blue-700 font-mono mt-1">${totalRead} leídos</span>
+            <span class="text-[9px] text-blue-700 font-mono mt-1">${totalRead} aperturas</span>
           </div>
 
           <div class="p-3.5 bg-white border border-neutral-200 rounded-xl shadow-xs flex flex-col justify-between">
             <span class="text-[9px] font-mono text-neutral-400 uppercase block font-bold">Tasa de Clics (CTR)</span>
             <strong class="text-2xl font-mono text-purple-600 mt-1">${clickRate}%</strong>
-            <span class="text-[9px] text-purple-700 font-mono mt-1">${totalClicks} clics en botón/flow</span>
+            <span class="text-[9px] text-purple-700 font-mono mt-1">${totalClicks} clics en CTA</span>
           </div>
 
           <div class="p-3.5 bg-white border border-neutral-200 rounded-xl shadow-xs flex flex-col justify-between">
-            <span class="text-[9px] font-mono text-neutral-400 uppercase block font-bold">Inversión Estimada</span>
+            <span class="text-[9px] font-mono text-neutral-400 uppercase block font-bold">Inversión Mensajes</span>
             <strong class="text-2xl font-mono text-neutral-900 mt-1">$${estimatedCostUSD} <span class="text-xs text-neutral-400 font-normal">USD</span></strong>
-            <span class="text-[9px] text-neutral-500 font-mono mt-1">Tarifa Meta Marketing</span>
+            <span class="text-[9px] text-neutral-500 font-mono mt-1">${isEmail ? 'Incluido en Workspace' : 'Tarifa Meta Marketing'}</span>
           </div>
 
           <div class="p-3.5 bg-white border border-neutral-200 rounded-xl shadow-xs flex flex-col justify-between">
-            <span class="text-[9px] font-mono text-neutral-400 uppercase block font-bold">Costo por Clic (CPC)</span>
+            <span class="text-[9px] font-mono text-neutral-400 uppercase block font-bold">Costo por Clic</span>
             <strong class="text-2xl font-mono text-amber-600 mt-1">$${costPerClickUSD} <span class="text-xs text-neutral-400 font-normal">USD</span></strong>
             <span class="text-[9px] text-amber-700 font-mono mt-1">Costo por interacción</span>
           </div>
@@ -493,7 +572,7 @@ export async function renderCampaignDetail(campaignId) {
             <!-- Stage 2: Sent -->
             <div>
               <div class="flex justify-between text-xs font-mono mb-1">
-                <span class="font-bold text-primary">2. Enviados a Meta Cloud API</span>
+                <span class="font-bold text-primary">2. ${isEmail ? 'Emails Procesados por Gmail API' : 'Enviados a Meta Cloud API'}</span>
                 <span class="font-bold text-primary">${totalSent} (${sendRate}%)</span>
               </div>
               <div class="w-full bg-neutral-100 h-3 rounded-full overflow-hidden">
@@ -504,7 +583,7 @@ export async function renderCampaignDetail(campaignId) {
             <!-- Stage 3: Delivered -->
             <div>
               <div class="flex justify-between text-xs font-mono mb-1">
-                <span class="font-bold text-emerald-700">3. Entregados en Dispositivo</span>
+                <span class="font-bold text-emerald-700">3. Entregados en Buzón</span>
                 <span class="font-bold text-emerald-700">${totalDelivered} (${deliveryRate}% efectividad)</span>
               </div>
               <div class="w-full bg-neutral-100 h-3 rounded-full overflow-hidden">
@@ -512,10 +591,10 @@ export async function renderCampaignDetail(campaignId) {
               </div>
             </div>
 
-            <!-- Stage 4: Read -->
+            <!-- Stage 4: Read / Opened -->
             <div>
               <div class="flex justify-between text-xs font-mono mb-1">
-                <span class="font-bold text-blue-700">4. Leídos por el Cliente</span>
+                <span class="font-bold text-blue-700">4. ${isEmail ? 'Aperturas Detectadas (Píxel Invisible 1x1)' : 'Leídos por el Cliente'}</span>
                 <span class="font-bold text-blue-700">${totalRead} (${readRate}% apertura)</span>
               </div>
               <div class="w-full bg-neutral-100 h-3 rounded-full overflow-hidden">
@@ -526,7 +605,7 @@ export async function renderCampaignDetail(campaignId) {
             <!-- Stage 5: Interacted / Clicked -->
             <div>
               <div class="flex justify-between text-xs font-mono mb-1">
-                <span class="font-bold text-purple-700">5. Clics en Botón / Flujo interactivo</span>
+                <span class="font-bold text-purple-700">5. Clics en Enlaces CTA</span>
                 <span class="font-bold text-purple-700">${totalClicks} (${clickRate}% respuesta)</span>
               </div>
               <div class="w-full bg-neutral-100 h-3 rounded-full overflow-hidden">
@@ -542,25 +621,25 @@ export async function renderCampaignDetail(campaignId) {
           <!-- Financial Breakdown Card -->
           <div class="p-5 bg-white border border-neutral-200 rounded-xl shadow-xs flex flex-col gap-4">
             <div class="border-b border-neutral-100 pb-3 flex items-center justify-between">
-              <h4 class="font-mono text-xs font-bold text-neutral-800 uppercase tracking-wide">Desglose Financiero & Tarifas Meta</h4>
-              <span class="text-[9px] font-mono px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded">Tarifa LATAM</span>
+              <h4 class="font-mono text-xs font-bold text-neutral-800 uppercase tracking-wide">${isEmail ? 'Desglose de Costos de Mailing' : 'Desglose Financiero & Tarifas Meta'}</h4>
+              <span class="text-[9px] font-mono px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded">${isEmail ? 'Google Workspace' : 'Tarifa LATAM'}</span>
             </div>
 
             <div class="flex flex-col gap-2.5 font-mono text-xs">
               <div class="flex justify-between py-1.5 border-b border-neutral-100">
-                <span class="text-neutral-500">Categoría de Mensaje:</span>
-                <strong class="text-neutral-900">Marketing Template</strong>
+                <span class="text-neutral-500">Proveedor de Envío:</span>
+                <strong class="text-neutral-900">${isEmail ? 'Gmail API (Cuenta de Servicio)' : 'Meta Cloud API (WABA)'}</strong>
               </div>
               <div class="flex justify-between py-1.5 border-b border-neutral-100">
                 <span class="text-neutral-500">Costo Unitario por Mensaje:</span>
-                <strong class="text-neutral-900">$${costPerDeliveredUSD} USD / msj entregado</strong>
+                <strong class="text-neutral-900">${isEmail ? '$0.00 USD (Incluido)' : `$${costPerDeliveredUSD} USD / msj entregado`}</strong>
               </div>
               <div class="flex justify-between py-1.5 border-b border-neutral-100">
                 <span class="text-neutral-500">Monto Invertido en Envíos:</span>
                 <strong class="text-emerald-600 text-sm">$${estimatedCostUSD} USD</strong>
               </div>
               <div class="flex justify-between py-1.5 border-b border-neutral-100">
-                <span class="text-neutral-500">Costo Efectivo por Respuesta/Clic:</span>
+                <span class="text-neutral-500">Costo Efectivo por Clic:</span>
                 <strong class="text-purple-600 text-sm">$${costPerClickUSD} USD</strong>
               </div>
             </div>

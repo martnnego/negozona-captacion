@@ -95,6 +95,14 @@ export function renderSidebar(currentUser) {
           <span>📄</span>
           <span>Plantillas</span>
         </a>
+        <a href="#mailing-stats" class="flex items-center gap-2 px-3 py-2 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#mailing-stats'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <span>📊</span>
+          <span>Estadísticas Mailing</span>
+        </a>
       </div>
     </div>
   `;

@@ -141,6 +141,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       { id: 'linked_contacts', label: `CONTACTOS (${linkedContacts.length})` },
       { id: 'interactions', label: `GESTIONES (${interactions.length})` },
       { id: 'whatsapp', label: '🟢 WHATSAPP' },
+      { id: 'email', label: '✉️ ENVIAR EMAIL' },
       { id: 'comments', label: `COMENTARIOS (${comments.length})` },
       { id: 'franquiday', label: '🎪 FRANQUIDAY' },
       { id: 'history', label: 'HISTORIAL' }
@@ -256,6 +257,8 @@ export async function renderLeadDetail(leadId, onUpdate) {
       renderInteractionsTab(tabContent, profiles);
     } else if (activeTab === 'whatsapp') {
       renderWhatsAppTab(tabContent);
+    } else if (activeTab === 'email') {
+      renderEmailTab(tabContent);
     } else if (activeTab === 'comments') {
       renderCommentsTab(tabContent, profiles);
     } else if (activeTab === 'franquiday') {
@@ -2845,5 +2848,485 @@ export async function renderLeadDetail(leadId, onUpdate) {
         submitBtn.textContent = originalBtnText;
       }
     });
+  }
+
+  async function renderEmailTab(parent) {
+    parent.innerHTML = `
+      <div class="flex items-center justify-center p-8 text-neutral-400 font-sans text-xs">
+        <span class="animate-pulse mr-2">🔄</span> Cargando módulo de email...
+      </div>
+    `;
+
+    try {
+      // 1. Load active email templates
+      const { data: templates } = await supabase
+        .from('email_templates')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+
+      // 2. Load previous sent emails for this lead
+      const { data: sentEmails } = await supabase
+        .from('email_messages')
+        .select('*')
+        .eq('lead_id', lead.id)
+        .order('created_at', { ascending: false });
+
+      // 3. Load tracking events for these emails
+      const emailIds = (sentEmails || []).map(e => e.id);
+      let trackingEvents = [];
+      if (emailIds.length > 0) {
+        const { data: eventsData } = await supabase
+          .from('email_events')
+          .select('*')
+          .in('email_message_id', emailIds);
+        trackingEvents = eventsData || [];
+      }
+
+      // 4. Resolve commercial senders (profiles with is_mailing_sender === true, or fallback to active profiles)
+      const allProfiles = cache.getProfiles() || [];
+      let senderProfiles = allProfiles.filter(p => p.is_mailing_sender);
+      if (senderProfiles.length === 0) {
+        senderProfiles = allProfiles; // Fallback
+      }
+
+      // Default selected sender
+      const defaultSenderId = lead.assigned_to || currentUser?.id || senderProfiles[0]?.id;
+
+      // Contact email options
+      const contactEmails = linkedContacts.map(c => ({
+        id: c.id,
+        name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
+        email: c.email
+      })).filter(c => c.email);
+
+      // Calculate lead email statistics
+      const totalSentLeadMsgs = (sentEmails || []).filter(m => m.status === 'SENT' || m.status === 'QUEUED').length;
+      const openEventsLead = trackingEvents.filter(e => e.event_type === 'OPEN_DETECTED');
+      const clickEventsLead = trackingEvents.filter(e => e.event_type === 'CLICKED');
+
+      const uniqueLeadOpens = new Set(openEventsLead.map(e => e.email_message_id)).size;
+      const uniqueLeadClicks = new Set(clickEventsLead.map(e => e.email_message_id)).size;
+
+      const leadOpenRate = totalSentLeadMsgs > 0 ? ((uniqueLeadOpens / totalSentLeadMsgs) * 100).toFixed(1) : '0.0';
+      const leadClickRate = totalSentLeadMsgs > 0 ? ((uniqueLeadClicks / totalSentLeadMsgs) * 100).toFixed(1) : '0.0';
+
+      parent.innerHTML = `
+        <div class="flex flex-col gap-6 font-sans text-xs select-none">
+          <!-- Lead Interaction Stats Summary -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-neutral-50 p-3.5 rounded-sm border border-[#d9d9dd]">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-sm">📧</div>
+              <div>
+                <div class="text-[10px] font-bold uppercase tracking-wider text-muted-slate">Enviados</div>
+                <div class="text-sm font-bold text-slate">${totalSentLeadMsgs} <span class="text-[10px] font-normal text-muted">correos</span></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm">👁️</div>
+              <div>
+                <div class="text-[10px] font-bold uppercase tracking-wider text-muted-slate">Aperturas Detectadas</div>
+                <div class="text-sm font-bold text-emerald-600">${uniqueLeadOpens} <span class="text-[10px] font-normal text-muted">(${leadOpenRate}%)</span></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center text-sm">🔗</div>
+              <div>
+                <div class="text-[10px] font-bold uppercase tracking-wider text-muted-slate">Clics en Enlaces</div>
+                <div class="text-sm font-bold text-purple-600">${uniqueLeadClicks} <span class="text-[10px] font-normal text-muted">(${leadClickRate}%)</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Compose Email Box -->
+          <div class="bg-white border border-[#d9d9dd] rounded-sm p-5 flex flex-col gap-4 shadow-2xs">
+            <h4 class="font-mono text-[10px] font-bold text-primary uppercase tracking-wider border-b border-neutral-100 pb-2">Redactar y Enviar Email</h4>
+            
+            <form id="lead-send-email-form" class="flex flex-col gap-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Sender Selection -->
+                <div class="flex flex-col gap-1">
+                  <label for="email-sender" class="font-mono text-[9px] font-bold text-primary uppercase">Remitente Comercial *</label>
+                  <select id="email-sender" required class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm p-2">
+                    ${senderProfiles.map(p => `
+                      <option value="${p.id}" data-email="${p.mailing_email || p.email}" ${p.id === defaultSenderId ? 'selected' : ''}>
+                        👔 ${p.full_name || p.email} (${p.mailing_email || p.email})
+                      </option>
+                    `).join('')}
+                  </select>
+                </div>
+
+                <!-- Recipient Selection -->
+                <div class="flex flex-col gap-1">
+                  <label for="email-recipient" class="font-mono text-[9px] font-bold text-primary uppercase">Destinatario *</label>
+                  ${contactEmails.length > 0 ? `
+                    <select id="email-recipient" required class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm p-2">
+                      ${contactEmails.map(c => `
+                        <option value="${c.email}" data-contact-id="${c.id}">
+                          👤 ${c.name} &lt;${c.email}&gt;
+                        </option>
+                      `).join('')}
+                    </select>
+                  ` : `
+                    <input type="email" id="email-recipient" required placeholder="correo@ejemplo.com" class="cohere-input text-xs" />
+                  `}
+                </div>
+              </div>
+
+              <!-- Template Selector -->
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-neutral-50 p-3 rounded-sm border border-neutral-200">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-[9px] font-bold text-muted-slate uppercase">Usar Plantilla Reutilizable:</span>
+                  <select id="select-email-template" class="cohere-input text-xs bg-white max-w-xs border border-[#d9d9dd] rounded-sm p-1.5">
+                    <option value="">-- Redacción Libre (Sin Plantilla) --</option>
+                    ${(templates || []).map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                  </select>
+                </div>
+                <span class="text-[10px] text-neutral-400 italic">Al elegir una plantilla se autocompletará el asunto y cuerpo</span>
+              </div>
+
+              <!-- Subject & Preheader -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="flex flex-col gap-1">
+                  <label for="email-subject-input" class="font-mono text-[9px] font-bold text-primary uppercase">Asunto *</label>
+                  <input type="text" id="email-subject-input" required placeholder="Asunto del correo electrónico..." class="cohere-input text-xs" />
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label for="email-preview-text-input" class="font-mono text-[9px] font-bold text-primary uppercase">Vista Previa (Preheader en bandeja de entrada)</label>
+                  <input type="text" id="email-preview-text-input" placeholder="Texto de vista previa en bandeja de entrada..." class="cohere-input text-xs" />
+                </div>
+              </div>
+
+              <!-- Body -->
+              <div class="flex flex-col gap-1">
+                <label for="email-body-input" class="font-mono text-[9px] font-bold text-primary uppercase">Cuerpo del Email (HTML / Texto) *</label>
+                <textarea id="email-body-input" rows="6" required placeholder="Escribe el mensaje..." class="cohere-input text-xs font-mono p-3 leading-relaxed"></textarea>
+              </div>
+
+              <!-- Attachments Uploader -->
+              <div class="flex flex-col gap-1.5 bg-neutral-50 p-3 rounded-sm border border-neutral-200">
+                <div class="flex items-center justify-between">
+                  <label class="font-mono text-[9px] font-bold text-primary uppercase flex items-center gap-1.5">
+                    <span>📎</span> Archivos Adjuntos (Límite total: 10 MB)
+                  </label>
+                  <span id="attachments-size-indicator" class="font-mono text-[10px] text-muted">0.0 MB / 10 MB</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label for="email-attachments-input" class="px-3 py-1.5 bg-white border border-[#d9d9dd] hover:bg-soft-stone text-slate font-mono text-[11px] font-semibold rounded-xs cursor-pointer transition-colors inline-flex items-center gap-1.5">
+                    <span>➕ Añadir Archivo</span>
+                  </label>
+                  <input type="file" id="email-attachments-input" multiple class="hidden" />
+                  <span class="text-[10px] text-neutral-400">PDF, imágenes, documentos Office (Max. 10 MB)</span>
+                </div>
+                <div id="attachments-list-container" class="flex flex-wrap gap-2 mt-1">
+                  <!-- Rendered attachment chips dynamically -->
+                </div>
+              </div>
+
+              <!-- Submit Button -->
+              <div class="flex justify-end pt-2">
+                <button type="submit" id="btn-submit-send-email" class="px-6 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 cursor-pointer flex items-center gap-2">
+                  <span>✉️ Enviar Email</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- History of Email Activity for this Lead -->
+          <div class="bg-white border border-[#d9d9dd] rounded-sm overflow-hidden flex flex-col">
+            <div class="px-5 py-4 border-b border-[#d9d9dd] bg-neutral-50 flex items-center justify-between select-none">
+              <span class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase">Historial de Emails Enviados (${(sentEmails || []).length})</span>
+            </div>
+
+            <div class="p-4 overflow-x-auto">
+              ${(!sentEmails || sentEmails.length === 0) ? `
+                <div class="py-8 text-center text-neutral-400 text-xs italic">
+                  No hay correos registrados para este lead.
+                </div>
+              ` : `
+                <div class="flex flex-col gap-3">
+                  ${sentEmails.map(em => {
+                    const opens = trackingEvents.filter(ev => ev.email_message_id === em.id && ev.event_type === 'OPEN_DETECTED').length;
+                    const clicks = trackingEvents.filter(ev => ev.email_message_id === em.id && ev.event_type === 'CLICKED').length;
+                    const statusBadge = em.status === 'SENT' 
+                      ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">Enviado</span>'
+                      : (em.status === 'FAILED'
+                        ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-rose-50 text-rose-700 border border-rose-200">Fallido</span>'
+                        : '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">En Cola</span>');
+
+                    return `
+                      <div class="border border-[#d9d9dd] rounded-sm p-4 bg-neutral-50/50 flex flex-col gap-2">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-200 pb-2">
+                          <div class="flex items-center gap-2">
+                            ${statusBadge}
+                            <span class="font-bold text-primary">${em.subject}</span>
+                          </div>
+                          <div class="flex items-center gap-3 text-[10px] text-muted-slate">
+                            <span>De: <b>${em.sender_email}</b></span>
+                            <span>Para: <b>${em.recipient_email}</b></span>
+                            <span class="font-mono">${formatDateTime(em.sent_at || em.created_at)}</span>
+                          </div>
+                        </div>
+
+                        ${em.preview_text ? `<div class="text-[11px] text-neutral-500 font-mono italic">Preheader: "${em.preview_text}"</div>` : ''}
+
+                        <div class="text-neutral-600 text-xs leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+                          ${em.body_text || em.body_html.replace(/<[^>]*>?/gm, '')}
+                        </div>
+
+                        ${Array.isArray(em.attachments) && em.attachments.length > 0 ? `
+                          <div class="flex items-center gap-2 flex-wrap pt-1 font-mono text-[10px] text-muted-slate">
+                            <span class="font-bold">📎 Adjuntos (${em.attachments.length}):</span>
+                            ${em.attachments.map(att => `<span class="px-2 py-0.5 bg-neutral-200 text-slate rounded-xs">${att.filename || 'Adjunto'}</span>`).join('')}
+                          </div>
+                        ` : ''}
+
+                        <!-- Tracking Badges -->
+                        <div class="flex items-center gap-4 pt-2 border-t border-neutral-100 font-mono text-[10px]">
+                          <span class="${opens > 0 ? 'text-emerald-700 font-bold' : 'text-neutral-400'}">
+                            👁️ ${opens} ${opens === 1 ? 'Apertura detectada' : 'Aperturas detectadas'}
+                          </span>
+                          <span class="${clicks > 0 ? 'text-blue-700 font-bold' : 'text-neutral-400'}">
+                            🔗 ${clicks} ${clicks === 1 ? 'Click registrado' : 'Clicks registrados'}
+                          </span>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Handle Template Selection change
+      const templateSelect = parent.querySelector('#select-email-template');
+      const subjectInput = parent.querySelector('#email-subject-input');
+      const previewTextInput = parent.querySelector('#email-preview-text-input');
+      const bodyInput = parent.querySelector('#email-body-input');
+
+      templateSelect.addEventListener('change', () => {
+        const tmplId = templateSelect.value;
+        if (!tmplId) return;
+        const selectedTmpl = (templates || []).find(t => t.id === tmplId);
+        if (selectedTmpl) {
+          const senderSelect = parent.querySelector('#email-sender');
+          const senderOpt = senderSelect.options[senderSelect.selectedIndex];
+          const senderEmail = senderOpt ? senderOpt.dataset.email : '';
+          const senderName = senderOpt ? senderOpt.text.split('(')[0].replace('👔', '').trim() : '';
+
+          let replacedSubj = selectedTmpl.subject
+            .replace(/\{\{lead\.first_name\}\}/g, lead.company || 'Cliente')
+            .replace(/\{\{lead\.company_name\}\}/g, lead.company || '')
+            .replace(/\{\{lead\.country\}\}/g, lead.country || '')
+            .replace(/\{\{lead\.industry\}\}/g, lead.industry || '')
+            .replace(/\{\{comercial\.full_name\}\}/g, senderName)
+            .replace(/\{\{comercial\.email\}\}/g, senderEmail);
+
+          let replacedPrevText = (selectedTmpl.preview_text || '')
+            .replace(/\{\{lead\.first_name\}\}/g, lead.company || 'Cliente')
+            .replace(/\{\{lead\.company_name\}\}/g, lead.company || '')
+            .replace(/\{\{lead\.country\}\}/g, lead.country || '')
+            .replace(/\{\{lead\.industry\}\}/g, lead.industry || '')
+            .replace(/\{\{comercial\.full_name\}\}/g, senderName)
+            .replace(/\{\{comercial\.email\}\}/g, senderEmail);
+
+          let replacedBody = selectedTmpl.body_html
+            .replace(/\{\{lead\.first_name\}\}/g, lead.company || 'Cliente')
+            .replace(/\{\{lead\.company_name\}\}/g, lead.company || '')
+            .replace(/\{\{lead\.country\}\}/g, lead.country || '')
+            .replace(/\{\{lead\.industry\}\}/g, lead.industry || '')
+            .replace(/\{\{comercial\.full_name\}\}/g, senderName)
+            .replace(/\{\{comercial\.email\}\}/g, senderEmail);
+
+          subjectInput.value = replacedSubj;
+          if (previewTextInput) previewTextInput.value = replacedPrevText;
+          bodyInput.value = replacedBody;
+        }
+      });
+
+      // Handle Attachments Selection
+      let selectedFiles = []; // Array of { name, size, type, base64 }
+      const fileInput = parent.querySelector('#email-attachments-input');
+      const attachmentsListContainer = parent.querySelector('#attachments-list-container');
+      const attachmentsSizeIndicator = parent.querySelector('#attachments-size-indicator');
+
+      function updateAttachmentChips() {
+        const totalBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+        const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
+        if (attachmentsSizeIndicator) {
+          attachmentsSizeIndicator.textContent = `${totalMB} MB / 10 MB`;
+        }
+
+        if (!attachmentsListContainer) return;
+
+        if (selectedFiles.length === 0) {
+          attachmentsListContainer.innerHTML = '';
+          return;
+        }
+
+        attachmentsListContainer.innerHTML = selectedFiles.map((f, idx) => `
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#d9d9dd] rounded-full font-mono text-[10px] text-slate shadow-2xs">
+            <span>📎 ${f.name}</span>
+            <span class="text-muted text-[9px]">(${(f.size / 1024).toFixed(0)} KB)</span>
+            <button type="button" class="remove-att-btn text-rose-500 hover:text-rose-700 font-bold ml-1 cursor-pointer" data-index="${idx}">✕</button>
+          </div>
+        `).join('');
+
+        attachmentsListContainer.querySelectorAll('.remove-att-btn').forEach(btn => {
+          btn.addEventListener('click', (ev) => {
+            const idx = parseInt(ev.target.dataset.index);
+            selectedFiles.splice(idx, 1);
+            updateAttachmentChips();
+          });
+        });
+      }
+
+      if (fileInput) {
+        fileInput.addEventListener('change', async (ev) => {
+          const newFiles = Array.from(ev.target.files || []);
+          let currentTotalBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+
+          for (const f of newFiles) {
+            if (currentTotalBytes + f.size > 10 * 1024 * 1024) {
+              toast.show(`El archivo "${f.name}" supera el límite total acumulado de 10 MB por correo.`, 'warning');
+              continue;
+            }
+
+            try {
+              const base64Data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(f);
+              });
+
+              selectedFiles.push({
+                name: f.name,
+                size: f.size,
+                type: f.type || 'application/octet-stream',
+                base64: base64Data
+              });
+              currentTotalBytes += f.size;
+            } catch (err) {
+              console.error('Error reading attachment file:', err);
+              toast.show(`Error al leer el archivo ${f.name}`, 'error');
+            }
+          }
+
+          fileInput.value = '';
+          updateAttachmentChips();
+        });
+      }
+
+      // Handle Form Submit
+      const sendForm = parent.querySelector('#lead-send-email-form');
+      sendForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const submitBtn = parent.querySelector('#btn-submit-send-email');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span>🔄 Enviando...</span>`;
+
+        try {
+          const senderSelect = parent.querySelector('#email-sender');
+          const senderProfileId = senderSelect.value;
+          const senderEmail = senderSelect.options[senderSelect.selectedIndex].dataset.email;
+
+          const recipientSelect = parent.querySelector('#email-recipient');
+          let recipientEmail = '';
+          let contactId = null;
+          if (recipientSelect.tagName === 'SELECT') {
+            recipientEmail = recipientSelect.value;
+            contactId = recipientSelect.options[recipientSelect.selectedIndex].dataset.contactId || null;
+          } else {
+            recipientEmail = recipientSelect.value.trim();
+          }
+
+          const subject = subjectInput.value.trim();
+          const preview_text = previewTextInput?.value?.trim() || null;
+          const body_html = bodyInput.value.trim();
+
+          const attachmentsPayload = selectedFiles.map(f => ({
+            filename: f.name,
+            content_type: f.type,
+            base64_content: f.base64
+          }));
+
+          // 1. Save record in email_messages
+          const { data: newMsg, error: insertErr } = await supabase
+            .from('email_messages')
+            .insert({
+              lead_id: lead.id,
+              contact_id: contactId,
+              sender_profile_id: senderProfileId,
+              sender_email: senderEmail,
+              recipient_email: recipientEmail,
+              subject: subject,
+              preview_text: preview_text,
+              body_html: body_html,
+              body_text: body_html.replace(/<[^>]*>?/gm, ''),
+              status: 'QUEUED',
+              sent_at: null,
+              attachments: attachmentsPayload
+            })
+            .select()
+            .single();
+
+          if (insertErr) throw insertErr;
+
+          // 2. Call Edge Function send-email synchronously for actual Gmail API dispatch
+          const session = await auth.getSession();
+          const edgeRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session?.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email_message_id: newMsg.id })
+          });
+
+          const resData = await edgeRes.json().catch(() => ({}));
+          if (!edgeRes.ok || resData.error) {
+            throw new Error(resData.error || `Error en envío de Gmail (${edgeRes.status})`);
+          }
+
+          // 3. Insert record into lead_interactions
+          await supabase.from('lead_interactions').insert({
+            lead_id: lead.id,
+            created_by: currentUser?.id,
+            contact_type: 'email',
+            direction: 'outbound',
+            subject: `📧 Email enviado: ${subject}`,
+            body: `De: ${senderEmail}\nPara: ${recipientEmail}\n\n${body_html.replace(/<[^>]*>?/gm, '')}`,
+            contacted_at: new Date().toISOString()
+          });
+
+          // 4. Update fecha_ultimo_contacto on lead
+          await supabase.from('leads').update({
+            fecha_ultimo_contacto: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }).eq('id', lead.id);
+
+          toast.show('¡Email procesado y enviado con éxito por Gmail!', 'success');
+          await refreshInteractions();
+          await renderEmailTab(parent);
+        } catch (err) {
+          console.error('Error sending email:', err);
+          toast.show('Error al enviar el email: ' + err.message, 'error');
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = `<span>✉️ Enviar Email</span>`;
+        }
+      });
+
+    } catch (err) {
+      console.error('Error in renderEmailTab:', err);
+      parent.innerHTML = `
+        <div class="p-8 text-center text-rose-500 font-mono text-xs">
+          Error cargando módulo de email: ${err.message}
+        </div>
+      `;
+    }
   }
 }

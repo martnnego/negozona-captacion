@@ -393,7 +393,7 @@ export function openCampaignWizardModal(onSuccess) {
               <label class="p-3 border ${campaignData.audience_type === 'all' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex items-start gap-3">
                 <input type="radio" name="wiz_aud_type" value="all" ${campaignData.audience_type === 'all' ? 'checked' : ''} class="mt-1 accent-primary" />
                 <div>
-                  <strong class="block text-xs text-neutral-800">👥 Todos los Contactos con Teléfono</strong>
+                  <strong class="block text-xs text-neutral-800">${campaignData.channel === 'email' ? '✉️ Todos los Contactos con Email' : '👥 Todos los Contactos con Teléfono'}</strong>
                   <span class="block text-[10px] text-neutral-500">Envía a todos los prospectos activos registrados en el CRM.</span>
                 </div>
               </label>
@@ -482,8 +482,8 @@ export function openCampaignWizardModal(onSuccess) {
                 <span>En tiempo real</span>
               </div>
               <div class="flex items-center justify-between text-neutral-400 font-mono text-[10px]">
-                <span>⚡ WhatsApp habilitado</span>
-                <span>Cloud API</span>
+                <span>${campaignData.channel === 'email' ? '✉️ Email Mailing' : '⚡ WhatsApp habilitado'}</span>
+                <span>${campaignData.channel === 'email' ? 'Gmail API' : 'Cloud API'}</span>
               </div>
             </div>
           </div>
@@ -668,9 +668,11 @@ export function openCampaignWizardModal(onSuccess) {
             linkedContacts.forEach(c => {
               const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Contacto sin nombre';
               const phoneNum = c.phone || '';
+              const emailAddr = c.email || '';
 
               const displayTitle = fullName;
-              const displaySubtitle = companyName ? `${companyName} • 📞 ${phoneNum || 'Sin teléfono'}` : `📞 ${phoneNum || 'Sin teléfono'}`;
+              const contactInfoStr = campaignData.channel === 'email' ? `✉️ ${emailAddr || 'Sin email'}` : `📞 ${phoneNum || 'Sin teléfono'}`;
+              const displaySubtitle = companyName ? `${companyName} • ${contactInfoStr}` : contactInfoStr;
 
               contactItems.push({
                 itemKey: `${l.id}_${c.id}`,
@@ -829,16 +831,115 @@ export function openCampaignWizardModal(onSuccess) {
   // STEP 3: Contenido & Plantilla
   // ----------------------------------------------------
   async function renderStep3() {
-    wizStepTitle.textContent = 'Contenido del Mensaje';
+    wizStepTitle.textContent = 'Contenido del Mensaje y Remitentes';
 
     if (campaignData.channel === 'email') {
+      const { data: emailTemplates } = await supabase
+        .from('email_templates')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+
+      const allProfiles = cache.getProfiles() || [];
+      let senderProfiles = allProfiles.filter(p => p.is_mailing_sender);
+      if (senderProfiles.length === 0) senderProfiles = allProfiles;
+
       wizBody.innerHTML = `
-        <div class="p-8 bg-amber-50 border border-amber-200 rounded-xl text-center flex flex-col items-center gap-3 max-w-lg mx-auto">
-          <span class="text-3xl">📧</span>
-          <h4 class="font-mono text-sm font-bold text-amber-900 uppercase">Plantillas de Email en Desarrollo</h4>
-          <p class="text-xs text-amber-700">La funcionalidad para diseño y envío de plantillas HTML de Email se encuentra en etapa de desarrollo. Por favor selecciona el canal **WhatsApp** para continuar.</p>
+        <div class="flex flex-col gap-6 max-w-2xl mx-auto font-sans text-xs">
+          <!-- Template Selector -->
+          <div class="flex flex-col gap-2">
+            <label for="select-email-tmpl-wiz" class="font-mono text-[10px] font-bold text-primary uppercase">Plantilla de Email *</label>
+            <select id="select-email-tmpl-wiz" class="cohere-input text-xs font-medium">
+              <option value="">-- Seleccionar Plantilla de Email --</option>
+              ${(emailTemplates || []).map(t => `<option value="${t.id}" ${t.id === campaignData.email_template_id ? 'selected' : ''}>📄 ${t.name}</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- Subject & Body Preview -->
+          <div id="email-tmpl-preview-box" class="p-4 bg-white border border-neutral-200 rounded-lg flex flex-col gap-2 shadow-inner min-h-[120px]">
+            <span class="text-neutral-400 italic">Selecciona una plantilla para ver su previsualización...</span>
+          </div>
+
+          <!-- Commercial Senders Strategy -->
+          <div class="flex flex-col gap-3 border-t border-neutral-200 pt-4">
+            <label class="font-mono text-[10px] font-bold text-primary uppercase">Estrategia de Asignación de Remitente Comercial *</label>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label class="p-3 border ${campaignData.sender_strategy === 'lead_owner' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1">
+                <div class="flex items-center gap-2">
+                  <input type="radio" name="wiz_sender_strategy" value="lead_owner" ${campaignData.sender_strategy === 'lead_owner' ? 'checked' : ''} class="accent-primary" />
+                  <span class="font-bold text-primary text-xs">Comercial del Lead</span>
+                </div>
+                <span class="text-[10px] text-neutral-500">Envía desde la cuenta del comercial asignado a cada lead.</span>
+              </label>
+
+              <label class="p-3 border ${campaignData.sender_strategy === 'single' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1">
+                <div class="flex items-center gap-2">
+                  <input type="radio" name="wiz_sender_strategy" value="single" ${campaignData.sender_strategy === 'single' ? 'checked' : ''} class="accent-primary" />
+                  <span class="font-bold text-primary text-xs">Remitente Único</span>
+                </div>
+                <span class="text-[10px] text-neutral-500">Envía todos los emails de la campaña desde un único comercial.</span>
+              </label>
+
+              <label class="p-3 border ${campaignData.sender_strategy === 'round_robin' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1">
+                <div class="flex items-center gap-2">
+                  <input type="radio" name="wiz_sender_strategy" value="round_robin" ${campaignData.sender_strategy === 'round_robin' ? 'checked' : ''} class="accent-primary" />
+                  <span class="font-bold text-primary text-xs">Round-Robin</span>
+                </div>
+                <span class="text-[10px] text-neutral-500">Distribuye equitativamente los contactos entre los comerciales seleccionados.</span>
+              </label>
+            </div>
+
+            <!-- Sender Profiles Selection Box -->
+            <div id="senders-selection-container" class="mt-2 flex flex-col gap-2">
+              <label class="font-mono text-[9px] font-bold text-neutral-600 uppercase">Comerciales Remitentes Autorizados:</label>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-neutral-50 p-3 rounded-lg border border-neutral-200 max-h-40 overflow-y-auto">
+                ${senderProfiles.map(p => `
+                  <label class="flex items-center gap-2 cursor-pointer text-xs">
+                    <input type="checkbox" class="wiz-sender-checkbox accent-primary" value="${p.id}" ${(!campaignData.sender_profile_ids || campaignData.sender_profile_ids.includes(p.id)) ? 'checked' : ''} />
+                    <span class="truncate">👔 ${p.full_name || p.email} (${p.mailing_email || p.email})</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          </div>
         </div>
       `;
+
+      const selectTmpl = wizBody.querySelector('#select-email-tmpl-wiz');
+      const previewBox = wizBody.querySelector('#email-tmpl-preview-box');
+
+      selectTmpl.addEventListener('change', (e) => {
+        campaignData.email_template_id = e.target.value;
+        const tmpl = (emailTemplates || []).find(t => t.id === campaignData.email_template_id);
+        if (tmpl) {
+          campaignData.template_name = tmpl.name;
+          previewBox.innerHTML = `
+            <div><span class="font-bold text-neutral-800">Asunto:</span> ${tmpl.subject}</div>
+            <div class="text-neutral-600 border-t border-neutral-100 pt-2 leading-relaxed whitespace-pre-wrap">${tmpl.body_html.replace(/<[^>]*>?/gm, '')}</div>
+          `;
+        } else {
+          previewBox.innerHTML = `<span class="text-neutral-400 italic">Selecciona una plantilla para ver su previsualización...</span>`;
+        }
+      });
+
+      if (campaignData.email_template_id) {
+        selectTmpl.dispatchEvent(new Event('change'));
+      }
+
+      wizBody.querySelectorAll('input[name="wiz_sender_strategy"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          campaignData.sender_strategy = e.target.value;
+        });
+      });
+
+      wizBody.querySelectorAll('.wiz-sender-checkbox').forEach(chk => {
+        chk.addEventListener('change', () => {
+          const checked = Array.from(wizBody.querySelectorAll('.wiz-sender-checkbox:checked')).map(c => c.value);
+          campaignData.sender_profile_ids = checked;
+        });
+      });
+
       return;
     }
 
@@ -1251,7 +1352,7 @@ export function openCampaignWizardModal(onSuccess) {
     try {
       const user = await auth.getCurrentUser();
       const payload = {
-        phone_number_id: campaignData.phone_number_id,
+        phone_number_id: campaignData.phone_number_id || 'email_channel',
         name: campaignData.name.trim(),
         description: campaignData.description.trim(),
         channel: campaignData.channel,
@@ -1265,6 +1366,9 @@ export function openCampaignWizardModal(onSuccess) {
         template_language: campaignData.template_language,
         template_components: campaignData.template_components,
         variable_mappings: campaignData.variable_mappings,
+        email_template_id: campaignData.email_template_id || null,
+        sender_strategy: campaignData.sender_strategy || 'lead_owner',
+        sender_profile_ids: campaignData.sender_profile_ids || [],
         options: campaignData.options,
         created_by: user?.id
       };
@@ -1298,9 +1402,10 @@ export function openCampaignWizardModal(onSuccess) {
       modalOverlay.remove();
       if (onSuccess) onSuccess(data);
 
-      // Trigger runner via proxy endpoint or async call
+      // Trigger appropriate runner based on channel
       const headers = await getAuthHeaders();
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-campaign-runner`, {
+      const runnerEndpoint = campaignData.channel === 'email' ? 'email-campaign-runner' : 'whatsapp-campaign-runner';
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${runnerEndpoint}`, {
         method: 'POST',
         headers
       }).catch(() => {});

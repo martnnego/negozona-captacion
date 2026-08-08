@@ -15,6 +15,8 @@ import { renderSettings } from './pages/settings';
 import { renderLeadDetail } from './pages/lead-detail';
 import { renderUnmatchedWhatsApp } from './pages/unmatched-whatsapp';
 import { renderCampaigns } from './pages/campaigns';
+import { renderEmailTemplates } from './pages/email-templates';
+import { renderMailingStats } from './pages/mailing-stats';
 import { renderInDevelopment } from './pages/in-development';
 
 import { realtime } from './lib/realtime';
@@ -33,7 +35,8 @@ const routes = {
   '#settings-franquiday': renderSettings,
   '#settings-integrations': renderSettings,
   '#campaigns': renderCampaigns,
-  '#templates': () => renderInDevelopment('Plantillas'),
+  '#templates': renderEmailTemplates,
+  '#mailing-stats': renderMailingStats,
   '#automations': () => renderInDevelopment('Automatizaciones'),
 };
 
