@@ -1,22 +1,75 @@
 import { supabase } from '../lib/supabase';
 import { realtime } from '../lib/realtime';
 
+let lastChimeTime = 0;
+
+function playNotificationChime() {
+  const isMuted = localStorage.getItem('crm_bell_sound_muted') === 'true';
+  if (isMuted) return;
+
+  const now = Date.now();
+  if (now - lastChimeTime < 3000) return; // 3 seconds debounce
+  lastChimeTime = now;
+
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+
+    const playTone = (freq, startTime, duration) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      // Fast attack, smooth crystal decay
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.15, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+
+    const t = ctx.currentTime;
+    // F5 (698.46 Hz) -> C6 (1046.50 Hz) delightful crystal chime
+    playTone(698.46, t, 0.18);
+    playTone(1046.50, t + 0.08, 0.35);
+
+    setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 600);
+  } catch (err) {
+    // Silently handle audio context restrictions
+  }
+}
+
 export function renderNotificationBell(currentUser, onNotificationClick) {
   const container = document.createElement('div');
   container.className = 'relative select-none';
 
   let notifications = [];
   let unreadCount = 0;
+  let isMuted = localStorage.getItem('crm_bell_sound_muted') === 'true';
 
   container.innerHTML = `
-    <button id="bell-btn" class="relative p-2 text-neutral-600 hover:text-primary transition-colors focus:outline-none">
-      <span class="text-lg">🔔</span>
+    <button id="bell-btn" class="relative p-2 text-neutral-600 hover:text-primary transition-colors focus:outline-none cursor-pointer">
+      <span id="bell-icon" class="text-lg inline-block transition-transform duration-300">🔔</span>
       <span id="bell-badge" class="absolute top-1.5 right-1.5 w-4 h-4 bg-coral text-white text-[9px] font-bold rounded-full flex items-center justify-center hidden">0</span>
     </button>
     
     <div id="bell-dropdown" class="absolute right-0 mt-2 w-80 bg-white border border-[#d9d9dd] rounded-sm shadow-lg overflow-hidden hidden z-50 flex flex-col max-h-96">
       <div class="px-4 py-3 border-b border-[#d9d9dd] bg-neutral-50 flex items-center justify-between">
-        <span class="font-sans text-xs font-semibold text-primary uppercase tracking-wider">Notificaciones</span>
+        <div class="flex items-center gap-2">
+          <span class="font-sans text-xs font-semibold text-primary uppercase tracking-wider">Notificaciones</span>
+          <button id="sound-toggle-btn" title="${isMuted ? 'Activar sonido de notificación' : 'Silenciar sonido de notificación'}" class="text-neutral-500 hover:text-primary transition-colors text-xs cursor-pointer p-0.5">
+            ${isMuted ? '🔇' : '🔔'}
+          </button>
+        </div>
         <button id="mark-all-read-btn" class="font-sans text-[10px] text-action-blue hover:underline uppercase font-medium">Marcar leídas</button>
       </div>
       <div id="notifications-list" class="flex-1 overflow-y-auto divide-y divide-[#d9d9dd] max-h-72">
@@ -26,10 +79,25 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
   `;
 
   const btn = container.querySelector('#bell-btn');
+  const bellIcon = container.querySelector('#bell-icon');
   const badge = container.querySelector('#bell-badge');
   const dropdown = container.querySelector('#bell-dropdown');
   const list = container.querySelector('#notifications-list');
   const markAllBtn = container.querySelector('#mark-all-read-btn');
+  const soundToggleBtn = container.querySelector('#sound-toggle-btn');
+
+  // Sound Toggle Handler
+  soundToggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    isMuted = !isMuted;
+    localStorage.setItem('crm_bell_sound_muted', String(isMuted));
+    soundToggleBtn.textContent = isMuted ? '🔇' : '🔔';
+    soundToggleBtn.title = isMuted ? 'Activar sonido de notificación' : 'Silenciar sonido de notificación';
+    
+    if (!isMuted) {
+      playNotificationChime();
+    }
+  });
 
   // Toggle Dropdown
   btn.addEventListener('click', (e) => {
@@ -60,6 +128,14 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
     } catch (err) {
       console.error('Error fetching notifications:', err);
     }
+  }
+
+  function triggerBellAnimation() {
+    if (!bellIcon) return;
+    bellIcon.classList.add('animate-bounce');
+    setTimeout(() => {
+      bellIcon.classList.remove('animate-bounce');
+    }, 1000);
   }
 
   function updateUI() {
@@ -148,6 +224,8 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
       notifications.unshift(newNotification);
       if (notifications.length > 15) notifications.pop();
       updateUI();
+      playNotificationChime();
+      triggerBellAnimation();
     });
     
     // Clean up function ref

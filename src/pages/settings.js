@@ -1289,6 +1289,34 @@ export function renderSettings(currentUser) {
                 <p class="text-neutral-400 text-[10px] max-w-xs leading-normal">Asegúrate de agregar al menos un número en tu panel de WhatsApp Manager en Meta.</p>
               </div>
             ` : `
+              <!-- Desplegable Informativo de Estados de Agente -->
+              <div id="agent-help-banner" class="hidden bg-neutral-900 text-white rounded-sm p-4 text-[10px] font-sans leading-relaxed border border-neutral-700 animate-fade-in shadow-md">
+                <div class="flex items-center justify-between border-b border-neutral-700 pb-2 mb-2">
+                  <span class="font-mono text-[9px] font-bold text-coral uppercase tracking-wider">💡 Guía de Estados del Agente de IA</span>
+                  <button id="btn-close-agent-help" class="text-neutral-400 hover:text-white font-bold font-mono text-xs cursor-pointer px-1">✕</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-[10px]">
+                  <div class="bg-neutral-800/80 p-2.5 rounded border border-neutral-700">
+                    <div class="font-mono font-bold text-emerald-400 mb-1 flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span> ACTIVO
+                    </div>
+                    <p class="text-neutral-300 leading-normal">El agente de IA está incorporado y listo para interactuar o gestionar mensajes automáticamente.</p>
+                  </div>
+                  <div class="bg-neutral-800/80 p-2.5 rounded border border-neutral-700">
+                    <div class="font-mono font-bold text-amber-400 mb-1 flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span> ELEGIBLE
+                    </div>
+                    <p class="text-neutral-300 leading-normal">La línea está verificada en Cloud API y apta para incorporar el agente de IA cuando se desee activar.</p>
+                  </div>
+                  <div class="bg-neutral-800/80 p-2.5 rounded border border-neutral-700">
+                    <div class="font-mono font-bold text-neutral-400 mb-1 flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-neutral-400 inline-block"></span> NO ELEGIBLE
+                    </div>
+                    <p class="text-neutral-300 leading-normal">La línea no cumple con los requisitos o permisos en Meta para habilitar el agente.</p>
+                  </div>
+                </div>
+              </div>
+
               <div class="overflow-x-auto border border-[#d9d9dd] rounded-sm">
                 <table class="w-full text-left border-collapse font-sans text-xs">
                   <thead>
@@ -1298,7 +1326,12 @@ export function renderSettings(currentUser) {
                       <th class="py-3 px-4 font-bold">Nombre de Mostrar</th>
                       <th class="py-3 px-4 font-bold text-center">Calidad</th>
                       <th class="py-3 px-4 font-bold text-center">Estado WABA</th>
-                      <th class="py-3 px-4 font-bold text-center">Estado Agente</th>
+                      <th class="py-3 px-4 font-bold text-center select-none">
+                        <button type="button" id="btn-toggle-agent-help" class="inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer focus:outline-none uppercase font-bold">
+                          <span>Estado Agente</span>
+                          <span class="text-neutral-400 font-mono text-[9px] bg-neutral-200 hover:bg-neutral-300 px-1 py-0.2 rounded-full">ⓘ</span>
+                        </button>
+                      </th>
                       <th class="py-3 px-4 font-bold text-center">Acción Agente</th>
                       <th class="py-3 px-4 font-bold text-right">Acciones WABA</th>
                     </tr>
@@ -1387,6 +1420,21 @@ export function renderSettings(currentUser) {
       parent.querySelector('#btn-back-to-hub').addEventListener('click', () => {
         renderIntegrationsTab(parent);
       });
+
+      // Toggle Agent Status Help Banner
+      const toggleHelpBtn = parent.querySelector('#btn-toggle-agent-help');
+      const helpBanner = parent.querySelector('#agent-help-banner');
+      const closeHelpBtn = parent.querySelector('#btn-close-agent-help');
+      if (toggleHelpBtn && helpBanner) {
+        toggleHelpBtn.addEventListener('click', () => {
+          helpBanner.classList.toggle('hidden');
+        });
+      }
+      if (closeHelpBtn && helpBanner) {
+        closeHelpBtn.addEventListener('click', () => {
+          helpBanner.classList.add('hidden');
+        });
+      }
 
       // Show/Hide Token Toggle
       const tokenInput = parent.querySelector('#wa-token');

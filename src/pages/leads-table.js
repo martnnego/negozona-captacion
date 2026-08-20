@@ -21,8 +21,8 @@ export function renderLeadsTable(currentUser) {
   let rowsPerPage = parseInt(localStorage.getItem('table_rows_per_page')) || 25;
   let sortColumn = 'created_at';
   let sortAscending = false;
-  // Period filter: 30, 90, 180 days, or 0 = all time
-  let periodDays = parseInt(localStorage.getItem('table_period_days') || '30');
+  // Period filter: 30, 90, 180 days, or 0 = all time (default 0)
+  let periodDays = parseInt(localStorage.getItem('table_period_days') || '0');
   let activePipelineMode = localStorage.getItem('crm_active_pipeline_mode') || 'comercial'; // 'comercial' or 'franquiday'
 
   let activeFilters = {
@@ -268,8 +268,8 @@ export function renderLeadsTable(currentUser) {
         filtered = filtered.filter(l => l.valoracion === activeFilters.valoracion);
       }
 
-      // Period filter
-      if (periodDays > 0) {
+      // Period filter (only if no active search query)
+      if (periodDays > 0 && !activeFilters.search) {
         const fromDate = new Date();
         fromDate.setDate(fromDate.getDate() - periodDays);
         filtered = filtered.filter(l => new Date(l.created_at) >= fromDate);

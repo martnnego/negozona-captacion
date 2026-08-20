@@ -58,6 +58,7 @@ async function initApp() {
     if (userSession) {
       if (!cache.isLoaded) {
         await cache.loadAll();
+        router.handleRouting();
       }
       
       // Global Realtime Sync

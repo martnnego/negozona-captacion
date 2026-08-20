@@ -1,4 +1,5 @@
 import { auth } from './auth';
+import { cache } from './cache';
 
 class Router {
   constructor() {
@@ -55,9 +56,12 @@ class Router {
       this.appContainer.innerHTML = '';
       this.appContainer.appendChild(buildPageSkeleton());
 
-      // Yield to the browser so it actually paints the skeleton before we
-      // start building the real page DOM. Without this, sync renderFns
-      // resolve in the same JS task and the skeleton is never drawn.
+      // Guarantee cache is fully loaded before invoking page renderer
+      if (userSession && !cache.isLoaded) {
+        await cache.loadAll();
+      }
+
+      // Yield to the browser so it actually paints the skeleton
       await new Promise(resolve => requestAnimationFrame(resolve));
 
       // Execute the page renderer

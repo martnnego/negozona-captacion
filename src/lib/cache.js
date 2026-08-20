@@ -11,8 +11,8 @@ class CacheManager {
     this.participations = [];
     this.isLoaded = false;
     this.listeners = new Set();
-    // Default: last 30 days. 0 = all time.
-    this.dateWindowDays = parseInt(localStorage.getItem('cache_date_window') || '30');
+    // Default: 0 = all time (fetch all leads from Supabase).
+    this.dateWindowDays = parseInt(localStorage.getItem('cache_date_window') || '0');
   }
 
   async loadAll() {
@@ -27,10 +27,7 @@ class CacheManager {
           .from('profiles')
           .select('*')
           .eq('is_active', true),
-        fetchAllLeads(
-          'id, created_at, company, country, source, source_detail, pipeline_stage_id, industry, investment, branches, assigned_to, valoracion, motivo_descarte, notes, updated_at, primary_contact_id, nombre_validado, franquiday_stage_id, franquiday_notes, fecha_ultimo_contacto, ultimo_comentario',
-          { from_date }
-        ),
+        fetchAllLeads('*', { from_date }),
         fetchAllRows('contacts', '*'),
         fetchAllRows('lead_contacts_link', '*', { orderCol: 'lead_id' }),
         fetchAllRows('eventos_franquiday', '*', { orderCol: 'fecha' }),
