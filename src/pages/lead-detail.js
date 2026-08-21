@@ -1855,6 +1855,36 @@ export async function renderLeadDetail(leadId, onUpdate) {
         return '';
       };
 
+      const formatWhatsAppText = (rawText) => {
+        if (!rawText) return '';
+
+        // 1. Escape HTML special characters to prevent XSS
+        let text = String(rawText)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+
+        // 2. Format Monospace ```code``` or `code`
+        text = text.replace(/```([^`]+)```/g, '<code class="bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded text-[11px] font-mono block whitespace-pre-wrap my-1 font-normal text-neutral-800">$1</code>');
+        text = text.replace(/`([^`]+)`/g, '<code class="bg-neutral-100 border border-neutral-200 px-1 py-0.5 rounded text-[11px] font-mono font-normal text-neutral-800">$1</code>');
+
+        // 3. Format Bold (*text*)
+        text = text.replace(/(^|[^\w*])\*([^*\n]+)\*([^\w*]|$)/g, '$1<strong class="font-bold">$2</strong>$3');
+
+        // 4. Format Italic (_text_)
+        text = text.replace(/(^|[^\w_])_([^_\n]+)_([^\w_]|$)/g, '$1<em class="italic">$2</em>$3');
+
+        // 5. Format Strikethrough (~text~)
+        text = text.replace(/(^|[^\w~])~([^~\n]+)~([^\w~]|$)/g, '$1<del class="line-through opacity-80">$2</del>$3');
+
+        // 6. Format Clickable Links (http/https URLs)
+        const urlRegex = /(https?:\/\/[^\s<]+)/g;
+        text = text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all font-medium">$1</a>');
+
+        return text;
+      };
+
       const bubbles = messagesList.map(msg => {
         const isOut = msg.direction === 'outbound';
         const ts = new Date(msg.sent_at || msg.created_at);
@@ -1908,7 +1938,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
                 word-break:break-word;
               ">
                 <div style="display:flex;flex-direction:column;gap:2.5px;">
-                  <div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);">${msg.body || ''}</div>
+                  <div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);white-space:pre-wrap;word-break:break-word;">${formatWhatsAppText(msg.body || '')}</div>
                   <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
                     <span>${timeStr}</span>
                     ${statusTick(msg)}
@@ -1934,7 +1964,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
                 word-break:break-word;
               ">
                 <div style="display:flex;flex-direction:column;gap:2.5px;">
-                  <div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);">${msg.body || ''}</div>
+                  <div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);white-space:pre-wrap;word-break:break-word;">${formatWhatsAppText(msg.body || '')}</div>
                   <div style="display:flex;align-items:center;justify-content:flex-end;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
                     <span>${timeStr}</span>
                   </div>
@@ -2598,7 +2628,64 @@ export async function renderLeadDetail(leadId, onUpdate) {
       let totalVars = 0;
 
       (currentTemplate.components || []).forEach(comp => {
-        if ((comp.type === 'HEADER' && comp.format === 'TEXT') || comp.type === 'BODY') {
+        if (comp.type === 'HEADER' && ['IMAGE', 'DOCUMENT', 'VIDEO'].includes(comp.format)) {
+          totalVars++;
+          const mediaLabel = comp.format === 'IMAGE' ? 'Imagen' : comp.format === 'VIDEO' ? 'Video' : 'Documento';
+          const mediaAccept = comp.format === 'IMAGE' ? 'image/*' : comp.format === 'VIDEO' ? 'video/*' : '.pdf,.doc,.docx,.xlsx';
+
+          const fieldWrapper = document.createElement('div');
+          fieldWrapper.className = 'flex flex-col gap-2 p-3 bg-neutral-50 rounded-lg border border-neutral-200';
+          fieldWrapper.innerHTML = `
+            <label class="text-[10px] font-mono text-neutral-700 font-bold uppercase flex items-center gap-1.5">
+              <span>🖼️</span> <span>${mediaLabel} de Encabezado (Requerida)</span>
+            </label>
+            <div class="flex flex-col gap-2">
+              <div>
+                <span class="text-[9px] text-neutral-500 font-medium block mb-1">Cargar desde tu PC:</span>
+                <input type="file" id="wa-header-file" accept="${mediaAccept}" class="text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200 cursor-pointer w-full" />
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[9px] text-neutral-400 uppercase font-bold">o URL directa:</span>
+                <input type="url" id="wa-header-url" placeholder="https://..." class="cohere-input text-xs flex-1 py-1" />
+              </div>
+            </div>
+            <div id="wa-header-media-preview" class="hidden mt-1">
+              <img src="" alt="Vista previa" class="max-h-28 rounded border border-neutral-200 object-cover" />
+            </div>
+          `;
+          variablesFields.appendChild(fieldWrapper);
+
+          const fileInput = fieldWrapper.querySelector('#wa-header-file');
+          const urlInput = fieldWrapper.querySelector('#wa-header-url');
+          const imgPreview = fieldWrapper.querySelector('#wa-header-media-preview img');
+          const previewContainer = fieldWrapper.querySelector('#wa-header-media-preview');
+
+          fileInput.addEventListener('change', () => {
+            if (fileInput.files && fileInput.files[0]) {
+              const file = fileInput.files[0];
+              urlInput.value = '';
+              if (file.type.startsWith('image/')) {
+                imgPreview.src = URL.createObjectURL(file);
+                previewContainer.classList.remove('hidden');
+              } else {
+                previewContainer.classList.add('hidden');
+              }
+            }
+          });
+
+          urlInput.addEventListener('input', () => {
+            const url = urlInput.value.trim();
+            if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+              fileInput.value = '';
+              if (comp.format === 'IMAGE') {
+                imgPreview.src = url;
+                previewContainer.classList.remove('hidden');
+              }
+            } else {
+              previewContainer.classList.add('hidden');
+            }
+          });
+        } else if ((comp.type === 'HEADER' && comp.format === 'TEXT') || comp.type === 'BODY') {
           const compText = comp.text || '';
           const matches = [...compText.matchAll(/\{\{(\d+)\}\}/g)];
           if (matches.length > 0) {
@@ -2643,7 +2730,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       let bodyText = bodyComponent ? bodyComponent.text : '';
       let footerText = footerComponent ? footerComponent.text : '';
 
-      const varInputs = variablesFields.querySelectorAll('input');
+      const varInputs = variablesFields.querySelectorAll('input[data-comp]');
       varInputs.forEach((input) => {
         const compType = input.dataset.comp;
         const num = input.dataset.var;
@@ -2711,8 +2798,48 @@ export async function renderLeadDetail(leadId, onUpdate) {
         toast.show('Advertencia: Los celulares de Argentina suelen requerir "549" en WhatsApp.', 'info');
       }
 
+      // Handle media header if template has IMAGE, VIDEO, or DOCUMENT format
+      const headerMediaComp = currentTemplate && (currentTemplate.components || []).find(c => c.type === 'HEADER' && ['IMAGE', 'DOCUMENT', 'VIDEO'].includes(c.format));
+      let headerMediaUrl = null;
+
+      submitBtn.disabled = true;
+      const originalBtnText = submitBtn.textContent;
+
+      if (headerMediaComp) {
+        const fileInput = variablesFields.querySelector('#wa-header-file');
+        const urlInput = variablesFields.querySelector('#wa-header-url');
+        const rawUrl = urlInput ? urlInput.value.trim() : '';
+
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          submitBtn.textContent = 'Subiendo imagen/archivo...';
+          const file = fileInput.files[0];
+          const fileExt = file.name.split('.').pop();
+          const filePath = `headers/${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+          const { error: uploadErr } = await supabase.storage.from('whatsapp-media').upload(filePath, file);
+          if (uploadErr) {
+            toast.show(`Error al subir archivo de encabezado: ${uploadErr.message}`, 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalBtnText;
+            return;
+          }
+
+          const { data: publicUrlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
+          headerMediaUrl = publicUrlData?.publicUrl || null;
+        } else if (rawUrl) {
+          headerMediaUrl = rawUrl;
+        }
+
+        if (!headerMediaUrl) {
+          toast.show(`Por favor selecciona o ingresa una ${headerMediaComp.format === 'IMAGE' ? 'imagen' : 'archivo'} para el encabezado de la plantilla.`, 'error');
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalBtnText;
+          return;
+        }
+      }
+
       // Validate non-empty variables and build components payload
-      const varInputs = variablesFields.querySelectorAll('input');
+      const varInputs = variablesFields.querySelectorAll('input[data-comp]');
       let hasEmptyVar = false;
       const variablesArray = [];
 
@@ -2738,13 +2865,29 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
       if (hasEmptyVar) {
         toast.show('Por favor completa todos los campos de variables de la plantilla.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalBtnText;
         return;
       }
 
       const payloadComponents = [];
-      if (headerParams.length > 0) {
+      if (headerMediaComp && headerMediaUrl) {
+        const paramType = headerMediaComp.format.toLowerCase(); // 'image', 'document', 'video'
+        payloadComponents.push({
+          type: 'header',
+          parameters: [
+            {
+              type: paramType,
+              [paramType]: {
+                link: headerMediaUrl
+              }
+            }
+          ]
+        });
+      } else if (headerParams.length > 0) {
         payloadComponents.push({ type: 'header', parameters: headerParams });
       }
+
       if (bodyParams.length > 0) {
         payloadComponents.push({ type: 'body', parameters: bodyParams });
       }
@@ -2808,8 +2951,6 @@ export async function renderLeadDetail(leadId, onUpdate) {
         payload.scheduled_for = localDate.toISOString();
       }
 
-      submitBtn.disabled = true;
-      const originalBtnText = submitBtn.textContent;
       submitBtn.textContent = 'Enviando...';
 
       try {

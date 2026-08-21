@@ -1027,41 +1027,113 @@ export function openCampaignWizardModal(onSuccess) {
     const bodyComp = (selectedT.components || []).find((c) => c.type === 'BODY');
     const bodyTextStr = bodyComp?.text || 'Mensaje de plantilla sin cuerpo de texto.';
 
+    // Check for Media Header
+    const headerMediaComp = (selectedT.components || []).find((c) => c.type === 'HEADER' && ['IMAGE', 'DOCUMENT', 'VIDEO'].includes(c.format));
+    let mediaHeaderHtml = '';
+
+    if (headerMediaComp) {
+      const mediaLabel = headerMediaComp.format === 'IMAGE' ? 'Imagen' : headerMediaComp.format === 'VIDEO' ? 'Video' : 'Documento';
+      const mediaAccept = headerMediaComp.format === 'IMAGE' ? 'image/*' : headerMediaComp.format === 'VIDEO' ? 'video/*' : '.pdf,.doc,.docx,.xlsx';
+
+      mediaHeaderHtml = `
+        <div class="p-3.5 bg-neutral-50 border border-neutral-200 rounded-lg flex flex-col gap-2 mb-3">
+          <label class="font-mono text-[10px] font-bold text-primary uppercase flex items-center gap-1.5">
+            <span>🖼️</span> <span>${mediaLabel} de Encabezado de la Campaña (Requerida)</span>
+          </label>
+          <div class="flex flex-col gap-2">
+            <div>
+              <span class="text-[9px] text-neutral-500 font-medium block mb-1">Cargar desde tu PC:</span>
+              <input type="file" id="wiz-header-file" accept="${mediaAccept}" class="text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200 cursor-pointer w-full" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[9px] text-neutral-400 uppercase font-bold">o URL directa:</span>
+              <input type="url" id="wiz-header-url" placeholder="https://..." value="${campaignData.options?.header_media_url || ''}" class="cohere-input text-xs flex-1 py-1" />
+            </div>
+          </div>
+          <div id="wiz-header-media-preview" class="${campaignData.options?.header_media_url ? '' : 'hidden'} mt-1">
+            <img src="${campaignData.options?.header_media_url || ''}" alt="Vista previa" class="max-h-28 rounded border border-neutral-200 object-cover" />
+          </div>
+        </div>
+      `;
+    }
+
     // Extract variables {{1}}, {{2}}, etc.
     const matches = [...bodyTextStr.matchAll(/\{\{(\d+)\}\}/g)];
     const varNumbers = [...new Set(matches.map(m => m[1]))];
 
+    let varsMappingHtml = '';
     if (varNumbers.length === 0) {
-      listContainer.innerHTML = `<p class="text-emerald-600 text-xs font-medium">✓ Esta plantilla no requiere variables dinámicas adicionales.</p>`;
-      if (previewText) previewText.textContent = bodyTextStr;
-      return;
-    }
+      varsMappingHtml = `<p class="text-emerald-600 text-xs font-medium">✓ Esta plantilla no requiere variables dinámicas en el cuerpo.</p>`;
+    } else {
+      varsMappingHtml = varNumbers.map(num => {
+        const existing = campaignData.variable_mappings[num] || { field: 'lead.first_name', fallback: 'Cliente' };
+        campaignData.variable_mappings[num] = existing;
 
-    listContainer.innerHTML = varNumbers.map(num => {
-      const existing = campaignData.variable_mappings[num] || { field: 'lead.first_name', fallback: 'Cliente' };
-      campaignData.variable_mappings[num] = existing;
-
-      return `
-        <div class="p-3 bg-white border border-neutral-200 rounded-lg flex flex-col gap-2">
-          <span class="font-mono text-[9px] font-bold text-primary uppercase">Variable {{${num}}}</span>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <div class="flex flex-col gap-1">
-              <label class="font-mono text-[8px] text-neutral-500 uppercase">Campo del Lead</label>
-              <select data-var-num="${num}" class="var-field-select cohere-input text-xs">
-                <option value="lead.first_name" ${existing.field === 'lead.first_name' ? 'selected' : ''}>Nombre (lead.first_name)</option>
-                <option value="lead.company" ${existing.field === 'lead.company' ? 'selected' : ''}>Empresa (lead.company)</option>
-                <option value="lead.phone" ${existing.field === 'lead.phone' ? 'selected' : ''}>Teléfono (lead.phone)</option>
-                <option value="static:Texto" ${existing.field.startsWith('static:') ? 'selected' : ''}>Texto Fijo</option>
-              </select>
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="font-mono text-[8px] text-neutral-500 uppercase">Valor Fallback (Por defecto)</label>
-              <input type="text" data-var-num="${num}" class="var-fallback-input cohere-input text-xs" placeholder="Ej. Cliente / Estimado" value="${existing.fallback || ''}" />
+        return `
+          <div class="p-3 bg-white border border-neutral-200 rounded-lg flex flex-col gap-2">
+            <span class="font-mono text-[9px] font-bold text-primary uppercase">Variable {{${num}}}</span>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div class="flex flex-col gap-1">
+                <label class="font-mono text-[8px] text-neutral-500 uppercase">Campo del Lead</label>
+                <select data-var-num="${num}" class="var-field-select cohere-input text-xs">
+                  <option value="lead.first_name" ${existing.field === 'lead.first_name' ? 'selected' : ''}>Nombre (lead.first_name)</option>
+                  <option value="lead.company" ${existing.field === 'lead.company' ? 'selected' : ''}>Empresa (lead.company)</option>
+                  <option value="lead.phone" ${existing.field === 'lead.phone' ? 'selected' : ''}>Teléfono (lead.phone)</option>
+                  <option value="static:Texto" ${existing.field.startsWith('static:') ? 'selected' : ''}>Texto Fijo</option>
+                </select>
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="font-mono text-[8px] text-neutral-500 uppercase">Valor Fallback (Por defecto)</label>
+                <input type="text" data-var-num="${num}" class="var-fallback-input cohere-input text-xs" placeholder="Ej. Cliente / Estimado" value="${existing.fallback || ''}" />
+              </div>
             </div>
           </div>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
+    }
+
+    listContainer.innerHTML = mediaHeaderHtml + varsMappingHtml;
+
+    // Media header input listeners
+    if (headerMediaComp) {
+      const fileInput = listContainer.querySelector('#wiz-header-file');
+      const urlInput = listContainer.querySelector('#wiz-header-url');
+      const imgPreview = listContainer.querySelector('#wiz-header-media-preview img');
+      const previewContainer = listContainer.querySelector('#wiz-header-media-preview');
+
+      if (fileInput) {
+        fileInput.addEventListener('change', () => {
+          if (fileInput.files && fileInput.files[0]) {
+            const file = fileInput.files[0];
+            if (urlInput) urlInput.value = '';
+            campaignData.header_file = file;
+            if (file.type.startsWith('image/') && imgPreview && previewContainer) {
+              imgPreview.src = URL.createObjectURL(file);
+              previewContainer.classList.remove('hidden');
+            } else if (previewContainer) {
+              previewContainer.classList.add('hidden');
+            }
+          }
+        });
+      }
+
+      if (urlInput) {
+        urlInput.addEventListener('input', () => {
+          const url = urlInput.value.trim();
+          if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+            if (fileInput) fileInput.value = '';
+            campaignData.header_file = null;
+            campaignData.options = { ...(campaignData.options || {}), header_media_url: url };
+            if (headerMediaComp.format === 'IMAGE' && imgPreview && previewContainer) {
+              imgPreview.src = url;
+              previewContainer.classList.remove('hidden');
+            }
+          } else if (previewContainer) {
+            previewContainer.classList.add('hidden');
+          }
+        });
+      }
+    }
 
     // Update listeners
     listContainer.querySelectorAll('.var-field-select').forEach(sel => {
@@ -1350,6 +1422,25 @@ export function openCampaignWizardModal(onSuccess) {
     btnNext.textContent = 'Guardando...';
 
     try {
+      if (campaignData.header_file) {
+        btnNext.textContent = 'Subiendo imagen/archivo...';
+        const file = campaignData.header_file;
+        const fileExt = file.name.split('.').pop();
+        const filePath = `campaigns/${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+        const { error: uploadErr } = await supabase.storage.from('whatsapp-media').upload(filePath, file);
+        if (uploadErr) {
+          toast.show(`Error al subir archivo de encabezado de la campaña: ${uploadErr.message}`, 'error');
+          btnNext.disabled = false;
+          btnNext.textContent = 'Crear y Lanzar Campaña 🚀';
+          return;
+        }
+
+        const { data: publicUrlData } = supabase.storage.from('whatsapp-media').getPublicUrl(filePath);
+        const mediaUrl = publicUrlData?.publicUrl || null;
+        campaignData.options = { ...(campaignData.options || {}), header_media_url: mediaUrl };
+      }
+
       const user = await auth.getCurrentUser();
       const payload = {
         phone_number_id: campaignData.phone_number_id || 'email_channel',
