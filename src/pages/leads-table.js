@@ -104,6 +104,7 @@ export function renderLeadsTable(currentUser) {
               <th data-col="pipeline_stage_id" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Etapa</th>
               <th data-col="assigned_to" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Comercial</th>
               <th data-col="fecha_ultimo_contacto" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Última Gestión</th>
+              <th data-col="novedad" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Novedad</th>
               <th class="px-6 py-3 text-muted-slate select-none">Último Comentario</th>
               <th data-col="valoracion" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Val.</th>
             </tr>
@@ -111,7 +112,7 @@ export function renderLeadsTable(currentUser) {
           <tbody id="leads-tbody" class="divide-y divide-[#e5e7eb]">
             <!-- Row items go here -->
             <tr>
-              <td colspan="11" class="py-12 text-center text-xs text-neutral-400 font-sans">
+              <td colspan="12" class="py-12 text-center text-xs text-neutral-400 font-sans">
                 Cargando leads...
               </td>
             </tr>
@@ -299,6 +300,15 @@ export function renderLeadsTable(currentUser) {
           return sortAscending ? posA - posB : posB - posA;
         }
 
+        // Handle novedad (latest interaction date) sorting
+        if (actualSortCol === 'novedad') {
+          const intA = cache.getLeadLatestInteraction(a.id);
+          const intB = cache.getLeadLatestInteraction(b.id);
+          const dateA = intA ? new Date(intA.contacted_at || intA.created_at).getTime() : 0;
+          const dateB = intB ? new Date(intB.contacted_at || intB.created_at).getTime() : 0;
+          return sortAscending ? dateA - dateB : dateB - dateA;
+        }
+
         // Default sorting
         if (valA === undefined || valA === null) valA = '';
         if (valB === undefined || valB === null) valB = '';
@@ -339,7 +349,7 @@ export function renderLeadsTable(currentUser) {
     if (leads.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="10" class="py-12 text-center text-xs text-neutral-400 font-sans">
+          <td colspan="12" class="py-12 text-center text-xs text-neutral-400 font-sans">
             No se encontraron leads con los filtros seleccionados.
           </td>
         </tr>

@@ -1,15 +1,22 @@
 import { supabase } from '../lib/supabase';
 import { realtime } from '../lib/realtime';
 
-let lastChimeTime = 0;
+let chimeTimestamps = [];
 
 function playNotificationChime() {
   const isMuted = localStorage.getItem('crm_bell_sound_muted') === 'true';
   if (isMuted) return;
 
   const now = Date.now();
-  if (now - lastChimeTime < 3000) return; // 3 seconds debounce
-  lastChimeTime = now;
+  // Filter out timestamps older than 10 seconds
+  chimeTimestamps = chimeTimestamps.filter(t => now - t < 10000);
+
+  // If there are already 3 chimes in the last 10 seconds, suppress sound
+  if (chimeTimestamps.length >= 3) {
+    return;
+  }
+
+  chimeTimestamps.push(now);
 
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -191,6 +198,9 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
         if ((type === 'campaign_created' || type === 'campaign_status') && window.location.hash !== '#campaigns') {
           window.location.hash = '#campaigns';
         } else if (leadId && onNotificationClick) {
+          if (type === 'lead_interaction') {
+            localStorage.setItem('lead_detail_active_tab', 'interactions');
+          }
           onNotificationClick(leadId);
         }
       });
@@ -224,7 +234,11 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
       notifications.unshift(newNotification);
       if (notifications.length > 15) notifications.pop();
       updateUI();
-      playNotificationChime();
+      
+      // Do not play sound if this notification was originated by the current user
+      if (!newNotification.created_by || newNotification.created_by !== currentUser.id) {
+        playNotificationChime();
+      }
       triggerBellAnimation();
     });
     

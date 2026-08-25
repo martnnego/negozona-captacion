@@ -132,5 +132,27 @@ export const realtime = {
     return () => {
       supabase.removeChannel(channel);
     };
+  },
+
+  subscribeToInteractions(callback) {
+    const uniqueChannelId = `interactions-changes-${Math.random().toString(36).substring(2, 9)}`;
+    const channel = supabase
+      .channel(uniqueChannelId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'lead_interactions'
+        },
+        (payload) => {
+          callback(payload);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }
 };

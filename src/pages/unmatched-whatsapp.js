@@ -3,6 +3,7 @@ import { cache } from '../lib/cache';
 import { modal } from '../components/modal';
 import { toast } from '../components/toast';
 import { formatDateTime } from '../utils/date-format';
+import { notifyNewInteraction } from '../utils/interaction-notifications';
 
 export function renderUnmatchedWhatsApp(currentUser) {
   const container = document.createElement('div');
@@ -352,6 +353,22 @@ export function renderUnmatchedWhatsApp(currentUser) {
               // 2. Insert into lead_interactions
               await supabase.from('lead_interactions').insert(interactionInserts);
 
+              const selectedLead = cache.getLeads().find(l => l.id === selectedLeadId);
+              const lastInteraction = interactionInserts[interactionInserts.length - 1];
+              if (lastInteraction && selectedLead) {
+                cache.addInteraction(lastInteraction);
+                await supabase.from('leads').update({
+                  fecha_ultimo_contacto: lastInteraction.contacted_at,
+                  updated_at: lastInteraction.contacted_at
+                }).eq('id', selectedLeadId);
+
+                await notifyNewInteraction({
+                  lead: selectedLead,
+                  interaction: lastInteraction,
+                  currentUser
+                });
+              }
+
               // 3. Mark all as assigned in whatsapp_unmatched_messages
               await supabase
                 .from('whatsapp_unmatched_messages')
@@ -486,6 +503,16 @@ export function renderUnmatchedWhatsApp(currentUser) {
 
               await supabase.from('whatsapp_messages').insert(whatsappInserts);
               await supabase.from('lead_interactions').insert(interactionInserts);
+
+              const lastInteraction = interactionInserts[interactionInserts.length - 1];
+              if (lastInteraction) {
+                cache.addInteraction(lastInteraction);
+                await notifyNewInteraction({
+                  lead: newLead,
+                  interaction: lastInteraction,
+                  currentUser
+                });
+              }
 
               // 6. Mark unmatched messages as assigned
               await supabase

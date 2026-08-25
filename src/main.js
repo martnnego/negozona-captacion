@@ -116,12 +116,24 @@ async function initApp() {
           }
         });
 
+        const unsubInteractions = realtime.subscribeToInteractions((payload) => {
+          const { eventType, new: newInt, old: oldInt } = payload;
+          if (eventType === 'INSERT') {
+            cache.addInteraction(newInt);
+          } else if (eventType === 'UPDATE') {
+            cache.updateInteraction(newInt);
+          } else if (eventType === 'DELETE') {
+            cache.deleteInteraction(oldInt.id, oldInt.lead_id);
+          }
+        });
+
         unsubscribeRealtime = () => {
           unsubLeads();
           unsubContacts();
           unsubLinks();
           unsubEvents();
           unsubParticipations();
+          unsubInteractions();
         };
       }
 

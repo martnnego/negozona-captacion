@@ -9,6 +9,7 @@ class CacheManager {
     this.links = [];
     this.events = [];
     this.participations = [];
+    this.latestInteractions = new Map(); // lead_id -> latest lead_interaction object
     this.isLoaded = false;
     this.listeners = new Set();
     // Default: 0 = all time (fetch all leads from Supabase).
@@ -18,7 +19,7 @@ class CacheManager {
   async loadAll() {
     try {
       const from_date = getFromDate(this.dateWindowDays);
-      const [stagesRes, profilesRes, leadsData, contactsData, linksData, eventsData, participationsData] = await Promise.all([
+      const [stagesRes, profilesRes, leadsData, contactsData, linksData, eventsData, participationsData, interactionsData] = await Promise.all([
         supabase
           .from('pipeline_stages')
           .select('*')
@@ -31,7 +32,8 @@ class CacheManager {
         fetchAllRows('contacts', '*'),
         fetchAllRows('lead_contacts_link', '*', { orderCol: 'lead_id' }),
         fetchAllRows('eventos_franquiday', '*', { orderCol: 'fecha' }),
-        fetchAllRows('participaciones_franquiday', '*', { orderCol: 'lead_id' })
+        fetchAllRows('participaciones_franquiday', '*', { orderCol: 'lead_id' }),
+        fetchAllRows('lead_interactions', '*', { orderCol: 'contacted_at', ascending: false })
       ]);
 
       if (stagesRes.error) throw stagesRes.error;
@@ -58,8 +60,19 @@ class CacheManager {
       this.events = eventsData || [];
       this.participations = participationsData || [];
       this.leads = leadsData || [];
+
+      this.latestInteractions.clear();
+      if (interactionsData) {
+        // Because interactionsData is ordered by contacted_at DESC, the first one encountered per lead_id is the newest
+        interactionsData.forEach(item => {
+          if (item.lead_id && !this.latestInteractions.has(item.lead_id)) {
+            this.latestInteractions.set(item.lead_id, item);
+          }
+        });
+      }
+
       this.isLoaded = true;
-      console.log(`Cache initialized: ${this.leads.length} leads, ${this.contacts.size} contacts, ${this.links.length} links, ${this.events.length} events, ${this.participations.length} participations (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'})`);
+      console.log(`Cache initialized: ${this.leads.length} leads, ${this.contacts.size} contacts, ${this.links.length} links, ${this.events.length} events, ${this.participations.length} participations, ${this.latestInteractions.size} latest interactions (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'})`);
       this.triggerChange();
     } catch (err) {
       console.error('Error loading metadata cache:', err);
@@ -330,6 +343,52 @@ class CacheManager {
     const len = this.participations.length;
     this.participations = this.participations.filter(p => p.id !== id);
     if (this.participations.length !== len) {
+      this.triggerChange();
+    }
+  }
+
+  // --- INTERACTIONS METHODS ---
+
+  getLeadLatestInteraction(leadId) {
+    return this.latestInteractions.get(leadId) || null;
+  }
+
+  addInteraction(interaction) {
+    if (!interaction || !interaction.lead_id) return;
+    const current = this.latestInteractions.get(interaction.lead_id);
+    if (!current || new Date(interaction.contacted_at || interaction.created_at) >= new Date(current.contacted_at || current.created_at)) {
+      this.latestInteractions.set(interaction.lead_id, interaction);
+    }
+    
+    // Also update lead's fecha_ultimo_contacto in cache
+    const contactDate = interaction.contacted_at || interaction.created_at || new Date().toISOString();
+    this.leads = this.leads.map(l => {
+      if (l.id === interaction.lead_id) {
+        return {
+          ...l,
+          fecha_ultimo_contacto: contactDate
+        };
+      }
+      return l;
+    });
+
+    this.triggerChange();
+  }
+
+  updateInteraction(interaction) {
+    if (!interaction || !interaction.lead_id) return;
+    const current = this.latestInteractions.get(interaction.lead_id);
+    if (current && current.id === interaction.id) {
+      this.latestInteractions.set(interaction.lead_id, { ...current, ...interaction });
+      this.triggerChange();
+    }
+  }
+
+  deleteInteraction(id, leadId) {
+    if (!leadId) return;
+    const current = this.latestInteractions.get(leadId);
+    if (current && current.id === id) {
+      this.latestInteractions.delete(leadId);
       this.triggerChange();
     }
   }

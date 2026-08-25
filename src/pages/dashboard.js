@@ -635,11 +635,17 @@ export async function renderDashboard(currentUser) {
         } else if (act.type === 'campaign_status') {
           typeBadge = '<span class="text-[9px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm">ESTADO CAMPAÑA</span>';
           linkAction = `<a href="#campaigns" class="text-[10px] text-action-blue hover:underline font-semibold">Ver Campañas ➔</a>`;
+        } else if (act.type === 'lead_interaction') {
+          const isIncoming = (act.title || '').toLowerCase().includes('entrante');
+          typeBadge = isIncoming
+            ? '<span class="text-[9px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm border border-emerald-200">GESTIÓN ENTRANTE</span>'
+            : '<span class="text-[9px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm border border-blue-200">GESTIÓN SALIENTE</span>';
+          linkAction = `<a href="#leads-table" class="text-[10px] text-action-blue hover:underline font-semibold" onclick="localStorage.setItem('lead_detail_open', '${act.lead_id}'); localStorage.setItem('lead_detail_active_tab', 'interactions');">Ver Gestión ➔</a>`;
         } else {
           typeBadge = '<span class="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-sm">SISTEMA</span>';
         }
 
-        if (act.lead_id) {
+        if (act.lead_id && act.type !== 'lead_interaction') {
           linkAction = `<a href="#leads-table" class="text-[10px] text-action-blue hover:underline font-semibold" onclick="localStorage.setItem('lead_detail_open', '${act.lead_id}')">Ver Lead ➔</a>`;
         }
 

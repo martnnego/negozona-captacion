@@ -5,6 +5,7 @@ import { formatDate, formatDateTime } from '../utils/date-format';
 import { modal } from '../components/modal';
 import { toast } from '../components/toast';
 import { openContactEditModal } from '../components/contact-edit-modal';
+import { notifyNewInteraction } from '../utils/interaction-notifications';
 
 export async function renderLeadDetail(leadId, onUpdate) {
   const currentUser = await auth.getCurrentUser();
@@ -1376,8 +1377,19 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
                 if (error) throw error;
                 
+                // Update fecha_ultimo_contacto on lead
+                const contactTime = newInteraction.contacted_at;
+                await supabase
+                  .from('leads')
+                  .update({ fecha_ultimo_contacto: contactTime, updated_at: contactTime })
+                  .eq('id', lead.id);
+
+                lead.fecha_ultimo_contacto = contactTime;
+                cache.updateLead(lead);
+                cache.addInteraction(newInteraction);
+
                 // Update fecha_ultimo_contacto on all contacts linked to this company
-                const today = new Date().toISOString().split('T')[0];
+                const today = contactTime.split('T')[0];
                 if (linkedContacts.length > 0) {
                   const contactIds = linkedContacts.map(c => c.id);
                   await supabase
@@ -1390,6 +1402,13 @@ export async function renderLeadDetail(leadId, onUpdate) {
                     cache.updateContact(c);
                   });
                 }
+
+                // Send real-time notifications to team members
+                await notifyNewInteraction({
+                  lead,
+                  interaction: newInteraction,
+                  currentUser
+                });
 
                 toast.show('Gestión registrada correctamente', 'success');
                 closeSubModal();
@@ -3052,6 +3071,48 @@ export async function renderLeadDetail(leadId, onUpdate) {
       const leadOpenRate = totalSentLeadMsgs > 0 ? ((uniqueLeadOpens / totalSentLeadMsgs) * 100).toFixed(1) : '0.0';
       const leadClickRate = totalSentLeadMsgs > 0 ? ((uniqueLeadClicks / totalSentLeadMsgs) * 100).toFixed(1) : '0.0';
 
+      // Helper to format email body content with clean typography and spacing
+      function formatEmailContentForDisplay(bodyHtml, bodyText) {
+        if (bodyHtml && typeof bodyHtml === 'string') {
+          // 1. Remove tracking pixel <img> tags
+          let cleaned = bodyHtml
+            .replace(/<img[^>]*email-track-open[^>]*>/gi, '')
+            .replace(/<img[^>]*style=["'][^"']*display:\s*none[^"']*["'][^>]*>/gi, '')
+            .replace(/<img[^>]*width=["']1["'][^>]*height=["']1["'][^>]*>/gi, '');
+
+          // 2. Remove hidden preheader container if present
+          cleaned = cleaned
+            .replace(/<div\s+style=["'][^"']*max-height:\s*0px[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<div\s+style=["'][^"']*display:\s*none[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
+
+          cleaned = cleaned.trim();
+
+          // 3. If there are no HTML block tags like <p>, <div>, <ul>, <br>, convert linebreaks to paragraphs
+          const hasHtmlBlocks = /<(p|div|ul|ol|li|br|table|h[1-6]|blockquote)[^>]*>/i.test(cleaned);
+          if (!hasHtmlBlocks) {
+            cleaned = cleaned
+              .split(/\n{2,}/)
+              .map(paragraph => `<p class="mb-2.5">${paragraph.replace(/\n/g, '<br/>')}</p>`)
+              .join('');
+          }
+
+          return cleaned || '<span class="text-neutral-400 italic">Sin contenido</span>';
+        }
+
+        if (bodyText && typeof bodyText === 'string') {
+          const escaped = bodyText
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          return escaped
+            .split(/\n{2,}/)
+            .map(paragraph => `<p class="mb-2.5">${paragraph.replace(/\n/g, '<br/>')}</p>`)
+            .join('');
+        }
+
+        return '<span class="text-neutral-400 italic">Sin contenido</span>';
+      }
+
       parent.innerHTML = `
         <div class="flex flex-col gap-6 font-sans text-xs select-none">
           <!-- Lead Interaction Stats Summary -->
@@ -3177,7 +3238,10 @@ export async function renderLeadDetail(leadId, onUpdate) {
           <!-- History of Email Activity for this Lead -->
           <div class="bg-white border border-[#d9d9dd] rounded-sm overflow-hidden flex flex-col">
             <div class="px-5 py-4 border-b border-[#d9d9dd] bg-neutral-50 flex items-center justify-between select-none">
-              <span class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase">Historial de Emails Enviados (${(sentEmails || []).length})</span>
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase">Historial de Emails Enviados (${(sentEmails || []).length})</span>
+                <span class="text-[10px] text-neutral-400 font-sans italic hidden sm:inline">(Hacé clic en cualquier correo para expandir el detalle)</span>
+              </div>
             </div>
 
             <div class="p-4 overflow-x-auto">
@@ -3186,7 +3250,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
                   No hay correos registrados para este lead.
                 </div>
               ` : `
-                <div class="flex flex-col gap-3">
+                <div class="flex flex-col gap-2.5">
                   ${sentEmails.map(em => {
                     const opens = trackingEvents.filter(ev => ev.email_message_id === em.id && ev.event_type === 'OPEN_DETECTED').length;
                     const clicks = trackingEvents.filter(ev => ev.email_message_id === em.id && ev.event_type === 'CLICKED').length;
@@ -3197,42 +3261,84 @@ export async function renderLeadDetail(leadId, onUpdate) {
                         : '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">En Cola</span>');
 
                     return `
-                      <div class="border border-[#d9d9dd] rounded-sm p-4 bg-neutral-50/50 flex flex-col gap-2">
-                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-200 pb-2">
-                          <div class="flex items-center gap-2">
+                      <details class="group border border-[#d9d9dd] rounded-sm bg-white overflow-hidden transition-all duration-150 shadow-2xs hover:border-neutral-400">
+                        <summary class="p-3.5 bg-neutral-50/60 hover:bg-neutral-100/70 cursor-pointer list-none flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 select-none transition-colors">
+                          <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                            <span class="text-neutral-400 group-open:rotate-90 transition-transform duration-150 font-mono text-[10px] select-none inline-block">▶</span>
                             ${statusBadge}
-                            <span class="font-bold text-primary">${em.subject}</span>
+                            <span class="font-bold text-primary text-xs truncate max-w-xs sm:max-w-md" title="${em.subject || ''}">${em.subject || '(Sin Asunto)'}</span>
                           </div>
-                          <div class="flex items-center gap-3 text-[10px] text-muted-slate">
-                            <span>De: <b>${em.sender_email}</b></span>
-                            <span>Para: <b>${em.recipient_email}</b></span>
-                            <span class="font-mono">${formatDateTime(em.sent_at || em.created_at)}</span>
+                          <div class="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                            ${Array.isArray(em.attachments) && em.attachments.length > 0 ? `
+                              <span class="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono bg-neutral-200/80 text-neutral-700 inline-flex items-center gap-1" title="${em.attachments.length} archivo(s) adjunto(s)">
+                                📎 ${em.attachments.length}
+                              </span>
+                            ` : ''}
+                            <span class="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono inline-flex items-center gap-1 ${opens > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-neutral-100 text-neutral-400'}" title="${opens} aperturas detectadas">
+                              👁️ ${opens}
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono inline-flex items-center gap-1 ${clicks > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-neutral-100 text-neutral-400'}" title="${clicks} clics en enlaces">
+                              🔗 ${clicks}
+                            </span>
+                            <span class="text-[10px] text-muted-slate font-mono ml-1">${formatDateTime(em.sent_at || em.created_at)}</span>
+                          </div>
+                        </summary>
+
+                        <div class="p-4 border-t border-neutral-200 bg-white flex flex-col gap-3.5 animate-fade-in">
+                          <!-- Meta Info Box -->
+                          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-neutral-50/80 p-3 rounded-xs border border-neutral-200/70 text-[11px] text-neutral-600 font-sans">
+                            <div><span class="text-muted-slate font-semibold">De:</span> <b class="text-neutral-800">${em.sender_email || '-'}</b></div>
+                            <div><span class="text-muted-slate font-semibold">Para:</span> <b class="text-neutral-800">${em.recipient_email || '-'}</b></div>
+                            <div><span class="text-muted-slate font-semibold">Fecha:</span> <span class="font-mono text-neutral-700">${formatDateTime(em.sent_at || em.created_at)}</span></div>
+                            ${em.preview_text ? `<div class="sm:col-span-2"><span class="text-muted-slate font-semibold">Preheader:</span> <span class="italic text-neutral-700 font-mono text-[10px]">"${em.preview_text}"</span></div>` : ''}
+                          </div>
+
+                          <!-- Email Body with rich/clean formatting -->
+                          <div class="bg-neutral-50/60 p-4 rounded-sm border border-neutral-200/80 text-xs text-neutral-800 leading-relaxed font-sans max-h-96 overflow-y-auto break-words select-text [&_p]:mb-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2.5 [&_li]:mb-1 [&_a]:text-blue-600 [&_a]:underline hover:[&_a]:text-blue-800 [&_blockquote]:border-l-4 [&_blockquote]:border-neutral-300 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-2.5 [&_blockquote]:text-neutral-600 [&_h1]:text-base [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-bold [&_h3]:mb-1.5 [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-neutral-300 [&_th]:p-1.5 [&_th]:bg-neutral-100 [&_td]:border [&_td]:border-neutral-200 [&_td]:p-1.5">
+                            ${formatEmailContentForDisplay(em.body_html, em.body_text)}
+                          </div>
+
+                          <!-- Attachments (if any) -->
+                          ${Array.isArray(em.attachments) && em.attachments.length > 0 ? `
+                            <div class="flex flex-col gap-1.5 pt-2 border-t border-neutral-100">
+                              <span class="font-mono text-[10px] font-bold text-primary uppercase flex items-center gap-1.5">
+                                <span>📎</span> Archivos Adjuntos (${em.attachments.length}):
+                              </span>
+                              <div class="flex items-center gap-2 flex-wrap">
+                                ${em.attachments.map(att => {
+                                  const hasBase64 = !!att.base64_content;
+                                  const dataUrl = hasBase64 
+                                    ? (att.base64_content.startsWith('data:') ? att.base64_content : `data:${att.content_type || 'application/octet-stream'};base64,${att.base64_content}`)
+                                    : null;
+                                  return `
+                                    <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-neutral-100 border border-neutral-200 rounded-sm font-mono text-[11px] text-neutral-700 shadow-2xs">
+                                      <span>📎 ${att.filename || 'Archivo'}</span>
+                                      ${dataUrl ? `
+                                        <a href="${dataUrl}" download="${att.filename || 'adjunto'}" class="text-primary hover:text-cohere-black font-bold text-[10px] underline ml-1 cursor-pointer" title="Descargar archivo">Descargar</a>
+                                      ` : ''}
+                                    </div>
+                                  `;
+                                }).join('')}
+                              </div>
+                            </div>
+                          ` : ''}
+
+                          <!-- Footer Tracking status -->
+                          <div class="flex items-center justify-between gap-4 pt-2 border-t border-neutral-100 font-mono text-[10px] text-muted-slate flex-wrap">
+                            <div class="flex items-center gap-4">
+                              <span class="${opens > 0 ? 'text-emerald-700 font-bold' : 'text-neutral-400'} flex items-center gap-1">
+                                👁️ ${opens} ${opens === 1 ? 'Apertura detectada' : 'Aperturas detectadas'}
+                              </span>
+                              <span class="${clicks > 0 ? 'text-blue-700 font-bold' : 'text-neutral-400'} flex items-center gap-1">
+                                🔗 ${clicks} ${clicks === 1 ? 'Clic registrado' : 'Clics registrados'}
+                              </span>
+                            </div>
+                            ${em.gmail_message_id ? `
+                              <span class="text-neutral-400 text-[9px]">ID Gmail: ${em.gmail_message_id}</span>
+                            ` : ''}
                           </div>
                         </div>
-
-                        ${em.preview_text ? `<div class="text-[11px] text-neutral-500 font-mono italic">Preheader: "${em.preview_text}"</div>` : ''}
-
-                        <div class="text-neutral-600 text-xs leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
-                          ${em.body_text || em.body_html.replace(/<[^>]*>?/gm, '')}
-                        </div>
-
-                        ${Array.isArray(em.attachments) && em.attachments.length > 0 ? `
-                          <div class="flex items-center gap-2 flex-wrap pt-1 font-mono text-[10px] text-muted-slate">
-                            <span class="font-bold">📎 Adjuntos (${em.attachments.length}):</span>
-                            ${em.attachments.map(att => `<span class="px-2 py-0.5 bg-neutral-200 text-slate rounded-xs">${att.filename || 'Adjunto'}</span>`).join('')}
-                          </div>
-                        ` : ''}
-
-                        <!-- Tracking Badges -->
-                        <div class="flex items-center gap-4 pt-2 border-t border-neutral-100 font-mono text-[10px]">
-                          <span class="${opens > 0 ? 'text-emerald-700 font-bold' : 'text-neutral-400'}">
-                            👁️ ${opens} ${opens === 1 ? 'Apertura detectada' : 'Aperturas detectadas'}
-                          </span>
-                          <span class="${clicks > 0 ? 'text-blue-700 font-bold' : 'text-neutral-400'}">
-                            🔗 ${clicks} ${clicks === 1 ? 'Click registrado' : 'Clicks registrados'}
-                          </span>
-                        </div>
-                      </div>
+                      </details>
                     `;
                   }).join('')}
                 </div>
@@ -3434,21 +3540,35 @@ export async function renderLeadDetail(leadId, onUpdate) {
           }
 
           // 3. Insert record into lead_interactions
-          await supabase.from('lead_interactions').insert({
+          const emailInteraction = {
             lead_id: lead.id,
             created_by: currentUser?.id,
             contact_type: 'email',
             direction: 'outbound',
-            subject: `📧 Email enviado: ${subject}`,
+            subject: `📧 Email: ${subject}`,
             body: `De: ${senderEmail}\nPara: ${recipientEmail}\n\n${body_html.replace(/<[^>]*>?/gm, '')}`,
             contacted_at: new Date().toISOString()
-          });
+          };
+
+          await supabase.from('lead_interactions').insert(emailInteraction);
+          cache.addInteraction(emailInteraction);
 
           // 4. Update fecha_ultimo_contacto on lead
+          const emailTime = emailInteraction.contacted_at;
           await supabase.from('leads').update({
-            fecha_ultimo_contacto: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            fecha_ultimo_contacto: emailTime,
+            updated_at: emailTime
           }).eq('id', lead.id);
+
+          lead.fecha_ultimo_contacto = emailTime;
+          cache.updateLead(lead);
+
+          // Send real-time notifications to team members
+          await notifyNewInteraction({
+            lead,
+            interaction: emailInteraction,
+            currentUser
+          });
 
           toast.show('¡Email procesado y enviado con éxito por Gmail!', 'success');
           await refreshInteractions();
