@@ -1832,12 +1832,24 @@ export async function renderLeadDetail(leadId, onUpdate) {
       return;
     }
 
+    // Sort contacts placing the lead's primary contact first
+    const primaryContactId = lead.primary_contact_id;
+    const sortedContacts = [...linkedContacts].sort((a, b) => {
+      if (a.id === primaryContactId) return -1;
+      if (b.id === primaryContactId) return 1;
+      return 0;
+    });
+
     // Build filter dropdown options
-    const filterContactOptions = linkedContacts.map((c, idx) => `
-      <option value="${c.id}" data-phone="${c.phone || ''}" ${idx === 0 ? 'selected' : ''}>
-        ${c.first_name} ${c.last_name} (${c.phone || 'Sin Teléfono'})
-      </option>
-    `).join('');
+    const filterContactOptions = sortedContacts.map((c, idx) => {
+      const isPrimary = c.id === primaryContactId || (!primaryContactId && idx === 0);
+      const primaryBadge = c.id === primaryContactId ? ' ⭐ (Principal)' : '';
+      return `
+        <option value="${c.id}" data-phone="${c.phone || ''}" ${isPrimary ? 'selected' : ''}>
+          ${c.first_name} ${c.last_name}${primaryBadge} (${c.phone || 'Sin Teléfono'})
+        </option>
+      `;
+    }).join('');
 
     const filterSenderOptions = activeNumbers.map((n, idx) => `
       <option value="${n.phone_number_id || n.id}" ${idx === 0 ? 'selected' : ''}>
@@ -1941,6 +1953,36 @@ export async function renderLeadDetail(leadId, onUpdate) {
           ? `<div class="text-[8.5px] text-rose-500 mt-0.5 px-1.5 font-mono">⚠ error: ${msg.error_message}</div>`
           : '';
 
+        const renderMessageContent = (m) => {
+          const isAudio = !!m.media_url || (m.media_type && m.media_type.startsWith('audio')) || (m.body && (m.body.includes('[Nota de voz]') || m.body.includes('[Archivo de audio]')));
+
+          if (isAudio && m.media_url) {
+            return `
+              <div class="flex flex-col gap-1.5 py-1 min-w-[220px] max-w-[280px]">
+                <div class="flex items-center gap-1.5 text-neutral-700 select-none">
+                  <span class="text-sm">${m.is_voice ? '🎤' : '🎵'}</span>
+                  <span class="text-[10.5px] font-semibold tracking-wide font-sans">${m.is_voice ? 'Nota de voz' : 'Audio'}</span>
+                </div>
+                <audio controls preload="metadata" class="w-full h-8 rounded" style="outline:none;">
+                  <source src="${m.media_url}" type="${m.media_type || 'audio/ogg'}">
+                  Tu navegador no soporta reproducción de audio.
+                </audio>
+              </div>
+            `;
+          }
+
+          if (isAudio && !m.media_url) {
+            return `
+              <div class="flex items-center gap-2 py-1 text-neutral-600 italic text-[11px]">
+                <span>${m.is_voice ? '🎤' : '🎵'}</span>
+                <span>${formatWhatsAppText(m.body || (m.is_voice ? '[Nota de voz]' : '[Archivo de audio]'))}</span>
+              </div>
+            `;
+          }
+
+          return `<div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);white-space:pre-wrap;word-break:break-word;">${formatWhatsAppText(m.body || '')}</div>`;
+        };
+
         let bubbleHtml = '';
         if (isOut) {
           bubbleHtml = `
@@ -1957,7 +1999,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
                 word-break:break-word;
               ">
                 <div style="display:flex;flex-direction:column;gap:2.5px;">
-                  <div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);white-space:pre-wrap;word-break:break-word;">${formatWhatsAppText(msg.body || '')}</div>
+                  ${renderMessageContent(msg)}
                   <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
                     <span>${timeStr}</span>
                     ${statusTick(msg)}
@@ -1983,7 +2025,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
                 word-break:break-word;
               ">
                 <div style="display:flex;flex-direction:column;gap:2.5px;">
-                  <div style="color:#1f1f23;font-size:12px;line-height:1.45;font-family:var(--font-sans);white-space:pre-wrap;word-break:break-word;">${formatWhatsAppText(msg.body || '')}</div>
+                  ${renderMessageContent(msg)}
                   <div style="display:flex;align-items:center;justify-content:flex-end;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
                     <span>${timeStr}</span>
                   </div>
@@ -2012,11 +2054,15 @@ export async function renderLeadDetail(leadId, onUpdate) {
       <option value="${t.name}" data-lang="${t.language}">${t.name} (${t.language})</option>
     `).join('');
 
-    const contactOptions = linkedContacts.map((c, idx) => `
-      <option value="${c.id}" data-phone="${c.phone || ''}" ${idx === 0 ? 'selected' : ''}>
-        ${c.first_name} ${c.last_name} (${c.phone || 'Sin Teléfono'})
-      </option>
-    `).join('');
+    const contactOptions = sortedContacts.map((c, idx) => {
+      const isPrimary = c.id === primaryContactId || (!primaryContactId && idx === 0);
+      const primaryBadge = c.id === primaryContactId ? ' ⭐ (Principal)' : '';
+      return `
+        <option value="${c.id}" data-phone="${c.phone || ''}" ${isPrimary ? 'selected' : ''}>
+          ${c.first_name} ${c.last_name}${primaryBadge} (${c.phone || 'Sin Teléfono'})
+        </option>
+      `;
+    }).join('');
 
     async function notifyMetaAgentStageChange(newStageId, stagesList) {
       try {

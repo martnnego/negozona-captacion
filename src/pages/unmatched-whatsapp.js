@@ -177,7 +177,20 @@ export function renderUnmatchedWhatsApp(currentUser) {
                           ✕ Descartar
                         </button>
                       </div>
-                      <p class="text-neutral-800 text-xs leading-relaxed whitespace-pre-wrap font-sans">${msg.body || '<span class="italic text-neutral-400">Sin contenido de texto</span>'}</p>
+                      ${msg.media_url ? `
+                        <div class="flex flex-col gap-1.5 py-1">
+                          <div class="flex items-center gap-1.5 text-neutral-700 select-none">
+                            <span class="text-sm">${msg.is_voice ? '🎤' : '🎵'}</span>
+                            <span class="text-[10.5px] font-semibold tracking-wide font-sans">${msg.is_voice ? 'Nota de voz' : 'Audio'}</span>
+                          </div>
+                          <audio controls preload="metadata" class="w-full max-w-[280px] h-8 rounded" style="outline:none;">
+                            <source src="${msg.media_url}" type="${msg.media_type || 'audio/ogg'}">
+                            Tu navegador no soporta reproducción de audio.
+                          </audio>
+                        </div>
+                      ` : `
+                        <p class="text-neutral-800 text-xs leading-relaxed whitespace-pre-wrap font-sans">${msg.body || '<span class="italic text-neutral-400">Sin contenido de texto</span>'}</p>
+                      `}
                     </div>
                   `).join('')}
                 </div>
@@ -332,6 +345,10 @@ export function renderUnmatchedWhatsApp(currentUser) {
                 direction: 'inbound',
                 recipient_phone: contactGroup.phone,
                 body: msg.body,
+                media_url: msg.media_url || null,
+                media_id: msg.media_id || null,
+                media_type: msg.media_type || null,
+                is_voice: msg.is_voice || false,
                 status: 'received',
                 sent_at: msg.received_at || new Date().toISOString()
               }));
@@ -340,8 +357,8 @@ export function renderUnmatchedWhatsApp(currentUser) {
                 lead_id: selectedLeadId,
                 contact_type: 'whatsapp',
                 direction: 'inbound',
-                subject: 'Respuesta WhatsApp (Asociado)',
-                body: msg.body,
+                subject: msg.is_voice ? 'Nota de voz WhatsApp (Asociado)' : (msg.media_type?.startsWith('audio') ? 'Audio WhatsApp (Asociado)' : 'Respuesta WhatsApp (Asociado)'),
+                body: msg.media_url ? `${msg.body || 'Audio'} (Audio: ${msg.media_url})` : msg.body,
                 contacted_at: msg.received_at || new Date().toISOString()
               }));
 
@@ -486,6 +503,10 @@ export function renderUnmatchedWhatsApp(currentUser) {
                 direction: 'inbound',
                 recipient_phone: phone,
                 body: msg.body,
+                media_url: msg.media_url || null,
+                media_id: msg.media_id || null,
+                media_type: msg.media_type || null,
+                is_voice: msg.is_voice || false,
                 status: 'received',
                 sent_at: msg.received_at || new Date().toISOString()
               }));
@@ -494,8 +515,8 @@ export function renderUnmatchedWhatsApp(currentUser) {
                 lead_id: newLead.id,
                 contact_type: 'whatsapp',
                 direction: 'inbound',
-                subject: 'Primer contacto WhatsApp',
-                body: msg.body,
+                subject: msg.is_voice ? 'Primer contacto Nota de voz' : (msg.media_type?.startsWith('audio') ? 'Primer contacto Audio' : 'Primer contacto WhatsApp'),
+                body: msg.media_url ? `${msg.body || 'Audio'} (Audio: ${msg.media_url})` : msg.body,
                 contacted_at: msg.received_at || new Date().toISOString()
               }));
 
