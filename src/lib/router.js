@@ -34,7 +34,10 @@ class Router {
       return;
     }
 
-    const routeKey = this.routes[hash] ? hash : '#dashboard';
+    const [baseHash, queryString] = hash.split('?');
+    const params = new URLSearchParams(queryString || '');
+
+    const routeKey = this.routes[baseHash] ? baseHash : (this.routes[hash] ? hash : '#dashboard');
     const renderFn = this.routes[routeKey];
     
     if (renderFn) {
@@ -64,8 +67,8 @@ class Router {
       // Yield to the browser so it actually paints the skeleton
       await new Promise(resolve => requestAnimationFrame(resolve));
 
-      // Execute the page renderer
-      const view = await renderFn(userSession);
+      // Execute the page renderer with params
+      const view = await renderFn(userSession, params);
       this.currentView = view;
 
       // Swap skeleton → real view

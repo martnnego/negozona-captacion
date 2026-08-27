@@ -3,7 +3,8 @@ export function formatDate(dateString) {
   try {
     const d = new Date(dateString);
     if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('es-ES', {
+    return d.toLocaleDateString('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
@@ -18,7 +19,8 @@ export function formatDateTime(dateTimeString) {
   try {
     const d = new Date(dateTimeString);
     if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('es-ES', {
+    return d.toLocaleDateString('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -51,4 +53,35 @@ export function formatTimeAgo(dateString) {
   } catch (err) {
     return '—';
   }
+}
+
+/**
+ * Convierte un objeto Date o string ISO a formato 'YYYY-MM-DDTHH:mm' local (Argentina) para inputs datetime-local
+ */
+export function toLocalDateTimeInputValue(dateOrIso) {
+  if (!dateOrIso) return '';
+  const d = new Date(dateOrIso);
+  if (isNaN(d.getTime())) return '';
+  // Convert to Argentina local components
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  
+  const parts = formatter.formatToParts(d);
+  const getPart = (type) => parts.find(p => p.type === type)?.value || '00';
+  
+  const yyyy = getPart('year');
+  const mm = getPart('month');
+  const dd = getPart('day');
+  let hh = getPart('hour');
+  if (hh === '24') hh = '00';
+  const min = getPart('minute');
+  
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }

@@ -3,6 +3,7 @@ import { cache } from '../lib/cache';
 import { toast } from '../components/toast';
 import { modal } from '../components/modal';
 import { auth } from '../lib/auth';
+import { renderRecursosTab } from './settings-recursos';
 
 export function renderSettings(currentUser) {
   const container = document.createElement('div');
@@ -19,6 +20,8 @@ export function renderSettings(currentUser) {
     activeTab = 'pipeline';
   } else if (currentHash === '#settings-franquiday' && isAdmin) {
     activeTab = 'franquiday';
+  } else if (currentHash === '#settings-recursos') {
+    activeTab = 'recursos';
   } else if (currentHash === '#settings-integrations') {
     activeTab = 'integrations';
   } else if (currentHash === '#settings-profile') {
@@ -41,13 +44,13 @@ export function renderSettings(currentUser) {
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#d9d9dd] pb-6 shrink-0">
         <div>
           <h2 class="text-2xl font-normal font-display text-primary leading-tight tracking-tight">Configuración</h2>
-          <p class="text-xs text-muted-slate mt-1 font-sans">${isAdmin ? 'Administración de perfiles, permisos y etapas del pipeline' : 'Editá tu perfil y contraseña de acceso'}</p>
+          <p class="text-xs text-muted-slate mt-1 font-sans">${isAdmin ? 'Administración de perfiles, permisos, recursos y etapas del pipeline' : 'Editá tu perfil, gestioná recursos y configuraciones'}</p>
         </div>
       </div>
 
       <!-- Tab Navigation Bar -->
-      <div class="flex items-center gap-6 border-b border-[#d9d9dd] font-sans text-xs select-none">
-        <button data-tab="profile" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
+      <div class="flex items-center gap-6 border-b border-[#d9d9dd] font-sans text-xs select-none overflow-x-auto">
+        <button data-tab="profile" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer shrink-0 ${
           activeTab === 'profile' 
             ? 'text-primary border-b-2 border-primary -mb-[1px]' 
             : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
@@ -55,21 +58,21 @@ export function renderSettings(currentUser) {
           MI PERFIL
         </button>
         ${isAdmin ? `
-          <button data-tab="users" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
+          <button data-tab="users" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer shrink-0 ${
             activeTab === 'users' 
               ? 'text-primary border-b-2 border-primary -mb-[1px]' 
               : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
           }">
             GESTIÓN DE USUARIOS
           </button>
-          <button data-tab="pipeline" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
+          <button data-tab="pipeline" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer shrink-0 ${
             activeTab === 'pipeline' 
               ? 'text-primary border-b-2 border-primary -mb-[1px]' 
               : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
           }">
             ETAPAS DEL PIPELINE
           </button>
-          <button data-tab="franquiday" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
+          <button data-tab="franquiday" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer shrink-0 ${
             activeTab === 'franquiday' 
               ? 'text-primary border-b-2 border-primary -mb-[1px]' 
               : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
@@ -77,7 +80,14 @@ export function renderSettings(currentUser) {
             EVENTOS FRANQUIDAY
           </button>
         ` : ''}
-        <button data-tab="integrations" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer ${
+        <button data-tab="recursos" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer shrink-0 ${
+          activeTab === 'recursos' 
+            ? 'text-primary border-b-2 border-primary -mb-[1px]' 
+            : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
+        }">
+          RECURSOS
+        </button>
+        <button data-tab="integrations" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer shrink-0 ${
           activeTab === 'integrations' 
             ? 'text-primary border-b-2 border-primary -mb-[1px]' 
             : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
@@ -109,6 +119,8 @@ export function renderSettings(currentUser) {
       renderPipelineTab(contentArea);
     } else if (activeTab === 'franquiday') {
       renderFranquidayTab(contentArea);
+    } else if (activeTab === 'recursos') {
+      renderRecursosTab(contentArea, currentUser);
     } else if (activeTab === 'integrations') {
       renderIntegrationsTab(contentArea);
     }

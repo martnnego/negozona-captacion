@@ -17,6 +17,8 @@ import { renderUnmatchedWhatsApp } from './pages/unmatched-whatsapp';
 import { renderCampaigns } from './pages/campaigns';
 import { renderEmailTemplates } from './pages/email-templates';
 import { renderMailingStats } from './pages/mailing-stats';
+import { renderAutomations } from './pages/automations';
+import { renderAutomationDetail } from './pages/automation-detail';
 import { renderInDevelopment } from './pages/in-development';
 
 import { realtime } from './lib/realtime';
@@ -33,11 +35,13 @@ const routes = {
   '#settings-users': renderSettings,
   '#settings-pipeline': renderSettings,
   '#settings-franquiday': renderSettings,
+  '#settings-recursos': renderSettings,
   '#settings-integrations': renderSettings,
   '#campaigns': renderCampaigns,
   '#templates': renderEmailTemplates,
   '#mailing-stats': renderMailingStats,
-  '#automations': () => renderInDevelopment('Automatizaciones'),
+  '#automations': renderAutomations,
+  '#automation-detail': (userSession, params) => renderAutomationDetail(params.get('id')),
 };
 
 let activeNavbar = null;

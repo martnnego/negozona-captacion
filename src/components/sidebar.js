@@ -121,7 +121,7 @@ export function renderSidebar(currentUser) {
   `;
 
   // Category 5: Automatizaciones (Direct link)
-  const isAutomationsActive = currentHash === '#automations';
+  const isAutomationsActive = currentHash.startsWith('#automations') || currentHash.startsWith('#automation-detail');
   const automationsHtml = `
     <a href="#automations" class="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 w-full ${
       isAutomationsActive 
@@ -132,7 +132,6 @@ export function renderSidebar(currentUser) {
         <span class="text-sm">🤖</span>
         <span class="truncate">Automatizaciones</span>
       </div>
-      <span class="text-[8px] font-mono bg-soft-stone text-[#616161] px-1.5 py-0.5 rounded-xs font-bold uppercase tracking-wider shrink-0 ${isAutomationsActive ? 'bg-[#333] text-white' : ''}">Dev</span>
     </a>
   `;
 
@@ -181,6 +180,14 @@ export function renderSidebar(currentUser) {
             <span class="truncate">Franquiday</span>
           </a>
         ` : ''}
+        <a href="#settings-recursos" class="flex items-center gap-2 px-3 py-1.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#settings-recursos'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <span>📁</span>
+          <span class="truncate">Recursos</span>
+        </a>
         <a href="#settings-integrations" class="flex items-center gap-2 px-3 py-1.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
           currentHash === '#settings-integrations'
             ? 'bg-primary text-white font-bold'
