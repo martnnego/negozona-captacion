@@ -121,9 +121,13 @@ export async function renderCampaignDetail(campaignId) {
     wrapper.querySelector('#camp-title').textContent = campaign.name;
     wrapper.querySelector('#camp-desc').textContent = campaign.description || 'Sin descripción adicional';
 
-    wrapper.querySelector('#kpi-total-found').textContent = (campaign.total_found || 0).toLocaleString();
-    wrapper.querySelector('#kpi-total-sent').textContent = (campaign.total_sent || 0).toLocaleString();
-    wrapper.querySelector('#kpi-total-failed').textContent = (campaign.total_failed || 0).toLocaleString();
+    const sentCount = (recipients || []).filter(r => ['sent', 'delivered', 'read'].includes(r.status)).length || campaign.total_sent || 0;
+    const failedCount = (recipients || []).filter(r => r.status === 'failed').length || campaign.total_failed || 0;
+    const totalFoundCount = campaign.total_found || (recipients || []).length || 0;
+
+    wrapper.querySelector('#kpi-total-found').textContent = totalFoundCount.toLocaleString();
+    wrapper.querySelector('#kpi-total-sent').textContent = sentCount.toLocaleString();
+    wrapper.querySelector('#kpi-total-failed').textContent = failedCount.toLocaleString();
 
     const badgeContainer = wrapper.querySelector('#camp-status-badge');
     badgeContainer.className = 'px-3 py-1 rounded-full text-xs font-bold font-mono uppercase tracking-wider shadow-xs';
@@ -472,12 +476,12 @@ export async function renderCampaignDetail(campaignId) {
   // ----------------------------------------------------
   function renderTabResults(tabContent) {
     const isEmail = campaign.channel === 'email';
-    const totalAudience = campaign.total_to_send || 1;
-    const totalSent = campaign.total_sent || 0;
-    const totalDelivered = campaign.total_delivered || totalSent;
-    const totalFailed = campaign.total_failed || 0;
-    const totalDiscarded = campaign.total_discarded || 0;
-    const totalRead = campaign.total_read || 0;
+    const totalAudience = campaign.total_to_send || (recipients || []).length || 1;
+    const totalSent = (recipients || []).filter(r => ['sent', 'delivered', 'read'].includes(r.status)).length || campaign.total_sent || 0;
+    const totalDelivered = (recipients || []).filter(r => ['delivered', 'read'].includes(r.status)).length || campaign.total_delivered || totalSent;
+    const totalFailed = (recipients || []).filter(r => r.status === 'failed').length || campaign.total_failed || 0;
+    const totalDiscarded = (recipients || []).filter(r => r.status === 'discarded').length || campaign.total_discarded || 0;
+    const totalRead = (recipients || []).filter(r => r.status === 'read').length || campaign.total_read || 0;
     const totalClicks = campaign.total_clicks || 0;
 
     // Calculated Rates
@@ -505,6 +509,9 @@ export async function renderCampaignDetail(campaignId) {
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <button id="btn-open-glossary-results" type="button" class="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white font-mono text-xs font-bold rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 shadow-2xs">
+              <span>📖</span> <span>Glosario de Métricas</span>
+            </button>
             <span class="px-2.5 py-1 ${isEmail ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'} font-mono text-[10px] font-bold rounded-full border">
               ${isEmail ? '✉️ Gmail API Activo' : '🟢 Meta WABA Activo'}
             </span>
@@ -618,14 +625,10 @@ export async function renderCampaignDetail(campaignId) {
         <!-- 3. Financial & Benchmark Grid (2 Columns) -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          <!-- Financial Breakdown Card -->
-          <div class="p-5 bg-white border border-neutral-200 rounded-xl shadow-xs flex flex-col gap-4">
-            <div class="border-b border-neutral-100 pb-3 flex items-center justify-between">
-              <h4 class="font-mono text-xs font-bold text-neutral-800 uppercase tracking-wide">${isEmail ? 'Desglose de Costos de Mailing' : 'Desglose Financiero & Tarifas Meta'}</h4>
-              <span class="text-[9px] font-mono px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded">${isEmail ? 'Google Workspace' : 'Tarifa LATAM'}</span>
-            </div>
-
-            <div class="flex flex-col gap-2.5 font-mono text-xs">
+          <!-- Financial Details Card -->
+          <div class="p-5 bg-white border border-neutral-200 rounded-xl shadow-xs flex flex-col gap-3">
+            <h4 class="font-mono text-xs font-bold text-neutral-800 uppercase tracking-wide border-b border-neutral-100 pb-2">Desglose Financiero de Envíos</h4>
+            <div class="flex flex-col gap-2 text-xs">
               <div class="flex justify-between py-1.5 border-b border-neutral-100">
                 <span class="text-neutral-500">Proveedor de Envío:</span>
                 <strong class="text-neutral-900">${isEmail ? 'Gmail API (Cuenta de Servicio)' : 'Meta Cloud API (WABA)'}</strong>
@@ -700,6 +703,11 @@ export async function renderCampaignDetail(campaignId) {
 
       </div>
     `;
+
+    const btnGlossary = tabContent.querySelector('#btn-open-glossary-results');
+    if (btnGlossary) {
+      btnGlossary.addEventListener('click', () => openCampaignGlossaryModal('metrics'));
+    }
   }
 
   // ----------------------------------------------------
@@ -708,17 +716,22 @@ export async function renderCampaignDetail(campaignId) {
   function renderTabActivity(tabContent) {
     tabContent.innerHTML = `
       <div class="flex flex-col gap-4">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between flex-wrap gap-2">
           <h4 class="font-mono text-xs font-bold text-primary uppercase">Historial de Cola de Envíos (${recipients.length} ítems)</h4>
-          <button id="btn-refresh-queue" class="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-mono text-[10px] font-bold uppercase rounded-md cursor-pointer">
-            🔄 Actualizar
-          </button>
+          <div class="flex items-center gap-2">
+            <button id="btn-open-glossary-queue" type="button" class="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-mono text-xs font-bold rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 border border-neutral-200 shadow-2xs">
+              <span>📖</span> <span>Glosario de Estados</span>
+            </button>
+            <button id="btn-refresh-queue" type="button" class="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white font-mono text-xs font-bold uppercase rounded-lg cursor-pointer transition-colors flex items-center gap-1">
+              <span>🔄</span> <span>Actualizar</span>
+            </button>
+          </div>
         </div>
 
         <div class="bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-xs">
           <div class="overflow-x-auto max-h-[500px]">
             <table class="w-full text-left border-collapse text-xs">
-              <thead class="sticky top-0 bg-neutral-900 text-white font-mono text-[10px] uppercase tracking-wider">
+              <thead class="sticky top-0 bg-neutral-900 text-white font-mono text-[10px] uppercase tracking-wider z-10">
                 <tr>
                   <th class="py-2.5 px-4">Destinatario</th>
                   <th class="py-2.5 px-4">Teléfono</th>
@@ -741,17 +754,17 @@ export async function renderCampaignDetail(campaignId) {
                     ? `${contactObj.first_name || ''} ${contactObj.last_name || ''}`.trim()
                     : (r.resolved_variables?.['1'] || r.leads?.company || 'Prospecto sin nombre');
                   return `
-                    <tr class="hover:bg-neutral-50">
+                    <tr class="hover:bg-neutral-50 transition-colors">
                       <td class="py-2.5 px-4 font-sans font-medium text-neutral-800">${leadName}</td>
                       <td class="py-2.5 px-4 text-neutral-600">${r.recipient_phone}</td>
                       <td class="py-2.5 px-4">
                         ${getRecipientStatusBadge(r.status, r.discard_reason)}
                       </td>
-                      <td class="py-2.5 px-4 text-[10px] text-neutral-500 truncate max-w-xs">
+                      <td class="py-2.5 px-4 text-[10px] text-neutral-500 truncate max-w-xs font-mono">
                         ${r.wamid || r.error_message || r.discard_reason || '-'}
                       </td>
-                      <td class="py-2.5 px-4 text-neutral-500 text-[10px]">
-                        ${r.sent_at ? new Date(r.sent_at).toLocaleTimeString('es-AR') : '-'}
+                      <td class="py-2.5 px-4 text-neutral-500 text-[10px] font-mono">
+                        ${r.sent_at ? new Date(r.sent_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
                       </td>
                     </tr>
                   `;
@@ -769,13 +782,246 @@ export async function renderCampaignDetail(campaignId) {
         await loadCampaignData();
       });
     }
+
+    const btnGlossary = tabContent.querySelector('#btn-open-glossary-queue');
+    if (btnGlossary) {
+      btnGlossary.addEventListener('click', () => openCampaignGlossaryModal('statuses'));
+    }
   }
 
   function getRecipientStatusBadge(status, discardReason) {
-    if (status === 'sent') return `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[9px]">ENVIADO</span>`;
-    if (status === 'failed') return `<span class="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full font-bold text-[9px]">FALLIDO</span>`;
-    if (status === 'discarded') return `<span class="px-2 py-0.5 bg-neutral-200 text-neutral-700 rounded-full font-bold text-[9px]">DESCARTADO (${discardReason || 'N/A'})</span>`;
-    return `<span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full font-bold text-[9px]">PENDIENTE</span>`;
+    if (status === 'read') return `<span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-blue-600 font-extrabold">✓✓</span> LEÍDO</span>`;
+    if (status === 'delivered') return `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-emerald-600 font-bold">✓✓</span> ENTREGADO</span>`;
+    if (status === 'sent') return `<span class="px-2 py-0.5 bg-teal-100 text-teal-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-teal-600 font-bold">✓</span> ENVIADO</span>`;
+    if (status === 'failed') return `<span class="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-rose-600 font-bold">✗</span> FALLIDO</span>`;
+    if (status === 'discarded') return `<span class="px-2 py-0.5 bg-neutral-200 text-neutral-700 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span>🚫</span> DESCARTADO (${discardReason || 'Regla 24h'})</span>`;
+    return `<span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-amber-600 font-bold">🕒</span> PENDIENTE</span>`;
+  }
+
+  // ----------------------------------------------------
+  // Interactive Glossary Modal
+  // ----------------------------------------------------
+  function openCampaignGlossaryModal(initialTab = 'statuses') {
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in font-sans';
+    
+    modalOverlay.innerHTML = `
+      <div class="bg-white border border-neutral-200 shadow-2xl rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-scale-in">
+        
+        <!-- Modal Header -->
+        <div class="px-6 py-4 bg-neutral-900 text-white flex items-center justify-between border-b border-neutral-800">
+          <div class="flex items-center gap-2.5">
+            <span class="text-xl">📖</span>
+            <div>
+              <h3 class="font-mono text-sm font-bold uppercase tracking-wide">Glosario de Campañas y Métricas</h3>
+              <p class="text-[11px] text-neutral-400">Guía de referencia para entender estados, embudos y costos</p>
+            </div>
+          </div>
+          <button id="btn-close-glossary" class="text-neutral-400 hover:text-white text-lg font-bold cursor-pointer px-2 py-1 transition-colors">✕</button>
+        </div>
+
+        <!-- Glossary Tabs -->
+        <div class="bg-neutral-100 border-b border-neutral-200 px-6 py-2 flex items-center gap-2 text-xs font-mono font-bold uppercase">
+          <button id="tab-btn-statuses" class="gloss-tab px-3 py-1.5 rounded-lg ${initialTab === 'statuses' ? 'bg-primary text-white' : 'bg-white text-neutral-600 hover:text-neutral-900 border border-neutral-200'} cursor-pointer transition-colors">
+            1. Estados de la Cola
+          </button>
+          <button id="tab-btn-metrics" class="gloss-tab px-3 py-1.5 rounded-lg ${initialTab === 'metrics' ? 'bg-primary text-white' : 'bg-white text-neutral-600 hover:text-neutral-900 border border-neutral-200'} cursor-pointer transition-colors">
+            2. Métricas y Embudo
+          </button>
+        </div>
+
+        <!-- Modal Body Content -->
+        <div id="glossary-tab-content" class="p-6 overflow-y-auto flex-1 bg-neutral-50 flex flex-col gap-4 text-xs">
+          <!-- Content rendered dynamically -->
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="px-6 py-3 bg-white border-t border-neutral-200 flex justify-end">
+          <button id="btn-glossary-done" class="px-5 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-mono text-xs font-bold uppercase rounded-lg cursor-pointer transition-colors">
+            Entendido
+          </button>
+        </div>
+
+      </div>
+    `;
+
+    document.body.appendChild(modalOverlay);
+
+    const glossContent = modalOverlay.querySelector('#glossary-tab-content');
+    const tabBtnStatuses = modalOverlay.querySelector('#tab-btn-statuses');
+    const tabBtnMetrics = modalOverlay.querySelector('#tab-btn-metrics');
+    const btnClose = modalOverlay.querySelector('#btn-close-glossary');
+    const btnDone = modalOverlay.querySelector('#btn-glossary-done');
+
+    const closeModal = () => modalOverlay.remove();
+    btnClose.addEventListener('click', closeModal);
+    btnDone.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+
+    const renderStatusesTab = () => {
+      tabBtnStatuses.className = 'gloss-tab px-3 py-1.5 rounded-lg bg-primary text-white cursor-pointer transition-colors';
+      tabBtnMetrics.className = 'gloss-tab px-3 py-1.5 rounded-lg bg-white text-neutral-600 hover:text-neutral-900 border border-neutral-200 cursor-pointer transition-colors';
+
+      glossContent.innerHTML = `
+        <div class="flex flex-col gap-3">
+          <p class="text-neutral-600 text-[11.5px] leading-relaxed">
+            Cada fila en la solapa <strong>Actividad / Cola</strong> representa el ciclo de vida de un mensaje individual enviado a un contacto:
+          </p>
+
+          <div class="grid grid-cols-1 gap-2.5">
+            
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex items-start gap-3">
+              <span class="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300/80 rounded-full font-mono font-bold text-[9.5px] shrink-0">🕒 PENDIENTE</span>
+              <div class="flex flex-col gap-0.5">
+                <strong class="text-neutral-900 text-xs font-bold">En cola de espera</strong>
+                <p class="text-neutral-600 text-[11px] leading-relaxed">
+                  El contacto fue seleccionado y calificado por los filtros de la audiencia, pero el despachador automático aún no procesó su envío (se despachan en lotes cada minuto).
+                </p>
+              </div>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex items-start gap-3">
+              <span class="px-2.5 py-1 bg-teal-100 text-teal-900 border border-teal-300/80 rounded-full font-mono font-bold text-[9.5px] shrink-0">✓ ENVIADO</span>
+              <div class="flex flex-col gap-0.5">
+                <strong class="text-neutral-900 text-xs font-bold">Transmitido a Meta Cloud API</strong>
+                <p class="text-neutral-600 text-[11px] leading-relaxed">
+                  El mensaje salió del CRM y fue aceptado exitosamente por los servidores de Meta. Meta devuelve un código <code>wamid</code> como comprobante de salida.
+                </p>
+              </div>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex items-start gap-3">
+              <span class="px-2.5 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300/80 rounded-full font-mono font-bold text-[9.5px] shrink-0">✓✓ ENTREGADO</span>
+              <div class="flex flex-col gap-0.5">
+                <strong class="text-neutral-900 text-xs font-bold">Recibido en el celular del contacto</strong>
+                <p class="text-neutral-600 text-[11px] leading-relaxed">
+                  Meta envió el webhook de confirmación indicando que el mensaje ingresó con éxito a la aplicación de WhatsApp del destinatario (equivalente al doble check gris).
+                </p>
+              </div>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex items-start gap-3">
+              <span class="px-2.5 py-1 bg-blue-100 text-blue-900 border border-blue-300/80 rounded-full font-mono font-bold text-[9.5px] shrink-0">✓✓ LEÍDO</span>
+              <div class="flex flex-col gap-0.5">
+                <strong class="text-neutral-900 text-xs font-bold">Apertura detectada</strong>
+                <p class="text-neutral-600 text-[11px] leading-relaxed">
+                  El destinatario abrió la conversación de WhatsApp y visualizó el mensaje de la plantilla (equivalente al doble check azul).
+                </p>
+              </div>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex items-start gap-3">
+              <span class="px-2.5 py-1 bg-rose-100 text-rose-900 border border-rose-300/80 rounded-full font-mono font-bold text-[9.5px] shrink-0">✗ FALLIDO</span>
+              <div class="flex flex-col gap-0.5">
+                <strong class="text-neutral-900 text-xs font-bold">Rechazado por Meta API</strong>
+                <p class="text-neutral-600 text-[11px] leading-relaxed">
+                  Meta no pudo enviar el mensaje. La causa exacta se indica en la columna <em>WAMID / Detalle</em> (por ej. número inválido o no registrado en WhatsApp, error de plantilla o saldo de cuenta).
+                </p>
+              </div>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex items-start gap-3">
+              <span class="px-2.5 py-1 bg-neutral-200 text-neutral-800 border border-neutral-300 rounded-full font-mono font-bold text-[9.5px] shrink-0">🚫 DESCARTADO</span>
+              <div class="flex flex-col gap-0.5">
+                <strong class="text-neutral-900 text-xs font-bold">Protección Antispam (Regla 24h)</strong>
+                <p class="text-neutral-600 text-[11px] leading-relaxed">
+                  El contacto formaba parte del segmento pero se excluyó automáticamente antes del envío porque ya había recibido otro mensaje de campaña en las últimas 24 horas, protegiendo la reputación del número comercial.
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      `;
+    };
+
+    const renderMetricsTab = () => {
+      tabBtnMetrics.className = 'gloss-tab px-3 py-1.5 rounded-lg bg-primary text-white cursor-pointer transition-colors';
+      tabBtnStatuses.className = 'gloss-tab px-3 py-1.5 rounded-lg bg-white text-neutral-600 hover:text-neutral-900 border border-neutral-200 cursor-pointer transition-colors';
+
+      glossContent.innerHTML = `
+        <div class="flex flex-col gap-3">
+          <p class="text-neutral-600 text-[11.5px] leading-relaxed">
+            Métricas de rendimiento comercial calculadas en la solapa <strong>Resultados / Métricas</strong>:
+          </p>
+
+          <div class="grid grid-cols-1 gap-2.5">
+            
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex flex-col gap-1">
+              <div class="flex items-center justify-between">
+                <strong class="text-primary font-mono text-xs font-bold">Tasa de Envío (%)</strong>
+                <span class="text-[10px] font-mono text-neutral-400">Total Enviados / Audiencia Total</span>
+              </div>
+              <p class="text-neutral-600 text-[11px]">
+                Porcentaje de contactos de la audiencia a los que el sistema intentó y despachó el mensaje con éxito a Meta Cloud API.
+              </p>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex flex-col gap-1">
+              <div class="flex items-center justify-between">
+                <strong class="text-emerald-700 font-mono text-xs font-bold">Tasa de Entrega (%)</strong>
+                <span class="text-[10px] font-mono text-neutral-400">Total Entregados / Total Enviados</span>
+              </div>
+              <p class="text-neutral-600 text-[11px]">
+                Porcentaje de mensajes que efectivamente llegaron al celular del usuario (confirmación de entrega en dispositivo).
+              </p>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex flex-col gap-1">
+              <div class="flex items-center justify-between">
+                <strong class="text-blue-700 font-mono text-xs font-bold">Aperturas / Tasa de Lectura (%)</strong>
+                <span class="text-[10px] font-mono text-neutral-400">Total Leídos / Total Entregados</span>
+              </div>
+              <p class="text-neutral-600 text-[11px]">
+                Porcentaje de contactos que abrieron la conversación de WhatsApp y leyeron el mensaje de la plantilla.
+              </p>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex flex-col gap-1">
+              <div class="flex items-center justify-between">
+                <strong class="text-purple-700 font-mono text-xs font-bold">Tasa de Clics / CTR (%)</strong>
+                <span class="text-[10px] font-mono text-neutral-400">Total Clics / Total Entregados</span>
+              </div>
+              <p class="text-neutral-600 text-[11px]">
+                Porcentaje de prospectos que hicieron clic en el botón de acción interactivo (Flow de WhatsApp o enlace CTA).
+              </p>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex flex-col gap-1">
+              <div class="flex items-center justify-between">
+                <strong class="text-neutral-900 font-mono text-xs font-bold">Inversión Mensajes ($ USD)</strong>
+                <span class="text-[10px] font-mono text-neutral-400">Tarifa Meta Marketing (~$0.062 USD/msj)</span>
+              </div>
+              <p class="text-neutral-600 text-[11px]">
+                Costo estimado facturado por Meta por las conversaciones de Marketing iniciadas con éxito en Argentina.
+              </p>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex flex-col gap-1">
+              <div class="flex items-center justify-between">
+                <strong class="text-amber-700 font-mono text-xs font-bold">Costo por Clic ($ USD)</strong>
+                <span class="text-[10px] font-mono text-neutral-400">Inversión Total / Total Clics</span>
+              </div>
+              <p class="text-neutral-600 text-[11px]">
+                Costo unitario por cada interacción o formulario Flow completado por los prospectos.
+              </p>
+            </div>
+
+          </div>
+        </div>
+      `;
+    };
+
+    tabBtnStatuses.addEventListener('click', renderStatusesTab);
+    tabBtnMetrics.addEventListener('click', renderMetricsTab);
+
+    if (initialTab === 'metrics') {
+      renderMetricsTab();
+    } else {
+      renderStatusesTab();
+    }
   }
 
   return wrapper;
