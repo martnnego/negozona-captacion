@@ -2125,13 +2125,56 @@ export async function renderLeadDetail(leadId, onUpdate) {
       return 0;
     });
 
+    // Helper to format scheduled date/time in local friendly format
+    const formatScheduledDate = (isoString) => {
+      if (!isoString) return '';
+      const d = new Date(isoString);
+      const now = new Date();
+      const diffMs = d.getTime() - now.getTime();
+      const diffMinutes = Math.round(diffMs / 60000);
+      const diffHours = Math.round(diffMs / 3600000);
+      const diffDays = Math.round(diffMs / 86400000);
+
+      let relative = '';
+      if (diffMinutes <= 0) {
+        relative = 'inminente';
+      } else if (diffMinutes < 60) {
+        relative = `en ${diffMinutes} min`;
+      } else if (diffHours < 24) {
+        relative = `en ${diffHours} h`;
+      } else {
+        relative = `en ${diffDays} d`;
+      }
+
+      const dateStr = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const timeStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      
+      const isToday = d.toDateString() === now.toDateString();
+      const dayLabel = isToday ? 'Hoy' : dateStr;
+
+      return `${dayLabel} ${timeStr} hs (${relative})`;
+    };
+
     // Build filter dropdown options
     const filterContactOptions = sortedContacts.map((c, idx) => {
       const isPrimary = c.id === primaryContactId || (!primaryContactId && idx === 0);
       const primaryBadge = c.id === primaryContactId ? ' ⭐ (Principal)' : '';
+      
+      const cleanContactPhone = (c.phone || '').replace(/[^0-9]/g, '');
+      const hasScheduled = (whatsappMessages || []).some(m => {
+        if (m.status !== 'scheduled') return false;
+        if (m.contact_id === c.id) return true;
+        const cleanRecipient = (m.recipient_phone || '').replace(/[^0-9]/g, '');
+        return cleanContactPhone && cleanRecipient && (
+          cleanRecipient.endsWith(cleanContactPhone.slice(-8)) ||
+          cleanContactPhone.endsWith(cleanRecipient.slice(-8))
+        );
+      });
+      const schedBadge = hasScheduled ? ' 🕒 (Programado)' : '';
+
       return `
         <option value="${c.id}" data-phone="${c.phone || ''}" ${isPrimary ? 'selected' : ''}>
-          ${c.first_name} ${c.last_name}${primaryBadge} (${c.phone || 'Sin Teléfono'})
+          ${c.first_name} ${c.last_name}${primaryBadge}${schedBadge} (${c.phone || 'Sin Teléfono'})
         </option>
       `;
     }).join('');
@@ -2161,9 +2204,10 @@ export async function renderLeadDetail(leadId, onUpdate) {
         const s = msg.status;
         const deliveredLabel = msg.delivered_at ? new Date(msg.delivered_at).toLocaleString() : '';
         const readLabel = msg.read_at ? new Date(msg.read_at).toLocaleString() : '';
-        const schedLabel = msg.scheduled_for ? new Date(msg.scheduled_for).toLocaleString() : '';
+        const schedLabel = msg.scheduled_for ? formatScheduledDate(msg.scheduled_for) : '';
         
-        if (s === 'scheduled') return `<span title="Programado para: ${schedLabel}" class="cursor-help" style="color:#d97706;font-size:8px;">🕒</span>`;
+        if (s === 'scheduled') return `<span title="Programado para: ${schedLabel}" class="cursor-help font-sans text-[10px]" style="color:#d97706;font-weight:bold;">🕒</span>`;
+        if (s === 'cancelled') return `<span title="Cancelado" class="cursor-help font-sans text-[10px]" style="color:#71717a;">🚫</span>`;
         if (s === 'sent')      return `<span title="Enviado a Meta" class="font-sans text-[10px]" style="color:#71717a;font-weight:bold;">✓</span>`;
         if (s === 'delivered') return `<span title="Recibido en celular: ${deliveredLabel}" class="cursor-help font-sans text-[10px]" style="color:#71717a;font-weight:bold;">✓✓</span>`;
         if (s === 'read')      return `<span title="Leído: ${readLabel}" class="cursor-help font-sans text-[10px]" style="color:#1863dc;font-weight:bold;">✓✓</span>`;
@@ -2269,7 +2313,73 @@ export async function renderLeadDetail(leadId, onUpdate) {
         };
 
         let bubbleHtml = '';
-        if (isOut) {
+        if (msg.status === 'scheduled') {
+          const schedTimeFormatted = formatScheduledDate(msg.scheduled_for);
+          bubbleHtml = `
+            <div class="flex flex-col items-end w-full animate-fade-in">
+              <div class="wa-bubble-out" style="
+                background:#fffdf0;
+                border:1.5px dashed #f59e0b;
+                border-radius:14px 14px 4px 14px;
+                padding:8px 12px 6px 12px;
+                width:fit-content;
+                max-width:85%;
+                min-width:140px;
+                box-shadow:0 1px 3px rgba(245,158,11,0.12);
+                word-break:break-word;
+              ">
+                <div style="display:flex;flex-direction:column;gap:5px;">
+                  <div class="flex items-center justify-between gap-3 pb-1 border-b border-amber-200/70 text-[9.5px] font-mono text-amber-800 select-none">
+                    <span class="flex items-center gap-1 font-bold">
+                      <span>🕒</span>
+                      <span>ENVÍO PROGRAMADO</span>
+                    </span>
+                    <span class="text-[9px] text-amber-700 font-semibold">${schedTimeFormatted}</span>
+                  </div>
+                  ${renderMessageContent(msg)}
+                  <div class="flex items-center justify-between gap-3 pt-1 border-t border-amber-200/40 mt-0.5">
+                    <button type="button" class="btn-cancel-scheduled text-[9px] font-mono font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center gap-1" data-id="${msg.id}">
+                      <span>✕ Cancelar envío</span>
+                    </button>
+                    <div style="display:flex;align-items:center;gap:3px;font-size:8.5px;color:#d97706;font-family:var(--font-mono);line-height:1;user-select:none;">
+                      <span>${timeStr}</span>
+                      ${statusTick(msg)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              ${metaLine}
+            </div>
+          `;
+        } else if (msg.status === 'cancelled') {
+          bubbleHtml = `
+            <div class="flex flex-col items-end w-full animate-fade-in opacity-75">
+              <div class="wa-bubble-out" style="
+                background:#f4f4f5;
+                border:1px dashed #d4d4d8;
+                border-radius:14px 14px 4px 14px;
+                padding:6px 10px 5px 10px;
+                width:fit-content;
+                max-width:78%;
+                min-width:80px;
+                word-break:break-word;
+              ">
+                <div style="display:flex;flex-direction:column;gap:3px;">
+                  <div class="flex items-center gap-1 text-[9px] font-mono text-neutral-500 font-bold select-none">
+                    <span>🚫</span>
+                    <span>Envío programado cancelado</span>
+                  </div>
+                  <div class="text-neutral-500 text-[11px] line-through">${renderMessageContent(msg)}</div>
+                  <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
+                    <span>${timeStr}</span>
+                    ${statusTick(msg)}
+                  </div>
+                </div>
+              </div>
+              ${metaLine}
+            </div>
+          `;
+        } else if (isOut) {
           bubbleHtml = `
             <div class="flex flex-col items-end w-full animate-fade-in">
               <div class="wa-bubble-out" style="
@@ -2427,6 +2537,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
               </div>
             </div>
             
+            <!-- Scheduled Messages Alerts / Banners -->
+            <div id="wa-scheduled-banners-container" class="flex flex-col gap-2 empty:hidden"></div>
+
             <!-- Chat Container with Fixed Bottom Footer Bar -->
             <div id="wa-chat-container" class="flex flex-col border border-neutral-200 rounded-lg overflow-hidden bg-neutral-100 shadow-2xs">
               <!-- Messages Scrollable Area -->
@@ -2621,7 +2734,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       });
     }
 
-    // Function to apply filters and re-render messages list
+    // Function to apply filters and re-render messages list & scheduled banners
     const applyFiltersAndRender = () => {
       const selectedContactId = filterRecipientSelect.value;
       const selectedSenderId = filterSenderSelect.value;
@@ -2629,7 +2742,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       const selectedContact = linkedContacts.find(c => c.id === selectedContactId);
       const cleanContactPhone = selectedContact?.phone ? selectedContact.phone.replace(/[^0-9]/g, '') : '';
 
-      const filtered = whatsappMessages.filter(msg => {
+      const filtered = (whatsappMessages || []).filter(msg => {
         // Filter by recipient (contact)
         if (selectedContactId) {
           const isDirectContactMatch = msg.contact_id === selectedContactId;
@@ -2649,6 +2762,45 @@ export async function renderLeadDetail(leadId, onUpdate) {
         return true;
       });
 
+      // Update Scheduled Banners
+      const scheduledBannersContainer = parent.querySelector('#wa-scheduled-banners-container');
+      if (scheduledBannersContainer) {
+        const pendingScheduled = filtered.filter(m => m.status === 'scheduled');
+        if (pendingScheduled.length > 0) {
+          scheduledBannersContainer.innerHTML = pendingScheduled.map(msg => {
+            const contact = linkedContacts.find(c => c.id === msg.contact_id);
+            const contactName = contact ? `${contact.first_name} ${contact.last_name}` : (msg.recipient_phone || 'Destinatario');
+            const formattedTime = formatScheduledDate(msg.scheduled_for);
+            
+            return `
+              <div class="flex items-center justify-between gap-3 p-3 bg-amber-50/90 border border-amber-300/80 rounded-lg shadow-2xs text-amber-900 animate-fade-in">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <span class="text-base shrink-0">🕒</span>
+                  <div class="flex flex-col min-w-0">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="font-bold text-xs">Plantilla Programada:</span>
+                      <code class="bg-amber-100/80 text-amber-950 font-mono text-[10px] px-1.5 py-0.5 rounded border border-amber-200 font-bold">${msg.template_name || 'Plantilla'}</code>
+                      <span class="text-neutral-400">&middot;</span>
+                      <span class="text-xs text-amber-800">Para: <strong>${contactName}</strong> (${msg.recipient_phone || 'Sin número'})</span>
+                    </div>
+                    <div class="text-[11px] text-amber-700 font-medium mt-0.5">
+                      📅 Envío automático programado para: <span class="font-bold text-amber-900">${formattedTime}</span>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn-cancel-scheduled shrink-0 px-2.5 py-1 text-[9.5px] font-mono font-bold uppercase bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-200 hover:border-rose-300 rounded-md shadow-2xs transition-colors cursor-pointer flex items-center gap-1" data-id="${msg.id}">
+                  <span>✕ Cancelar envío</span>
+                </button>
+              </div>
+            `;
+          }).join('');
+          scheduledBannersContainer.classList.remove('hidden');
+        } else {
+          scheduledBannersContainer.innerHTML = '';
+          scheduledBannersContainer.classList.add('hidden');
+        }
+      }
+
       chatWrapper.innerHTML = generateChatHtml(filtered);
 
       // Auto scroll to bottom
@@ -2657,6 +2809,40 @@ export async function renderLeadDetail(leadId, onUpdate) {
         listElem.scrollTop = listElem.scrollHeight;
       }
     };
+
+    // Cancellation Handler for Scheduled Messages
+    const cancelScheduledMessage = async (messageId) => {
+      if (!confirm('¿Estás seguro de que deseas cancelar este envío programado de WhatsApp?')) return;
+      try {
+        const { error } = await supabase
+          .from('whatsapp_messages')
+          .update({
+            status: 'cancelled',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', messageId);
+
+        if (error) throw error;
+        toast.show('Envío programado cancelado correctamente', 'success');
+        await loadAllData();
+        await renderWhatsAppTab(parent);
+      } catch (err) {
+        toast.show('Error al cancelar mensaje programado: ' + err.message, 'error');
+      }
+    };
+
+    // Delegate click handler for cancel buttons anywhere in WhatsApp tab
+    parent.addEventListener('click', async (e) => {
+      const cancelBtn = e.target.closest('.btn-cancel-scheduled');
+      if (cancelBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const msgId = cancelBtn.dataset.id;
+        if (msgId) {
+          await cancelScheduledMessage(msgId);
+        }
+      }
+    });
 
     // Filter event listeners
     filterRecipientSelect.addEventListener('change', () => {

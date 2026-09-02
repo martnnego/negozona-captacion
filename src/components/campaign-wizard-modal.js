@@ -126,15 +126,19 @@ export function openCampaignWizardModal(onSuccess) {
     renderStep(1);
 
     try {
-      // 1. Fetch phone numbers from local DB fast (instant)
-      const { data: dbNumbers } = await supabase.from('whatsapp_numbers').select('*');
+      // 1. Fetch active phone numbers from local DB fast (instant)
+      const { data: dbNumbers } = await supabase
+        .from('whatsapp_numbers')
+        .select('*')
+        .eq('is_active', true);
+
       if (dbNumbers && dbNumbers.length > 0) {
         phoneNumbers = dbNumbers.map(n => ({
           id: n.phone_number_id,
           verified_name: n.verified_name,
           display_phone_number: n.display_phone_number
         }));
-        if (!campaignData.phone_number_id) {
+        if (!campaignData.phone_number_id || !phoneNumbers.some(n => n.id === campaignData.phone_number_id)) {
           campaignData.phone_number_id = phoneNumbers[0].id;
         }
         updatePhoneSelectUI();
@@ -148,17 +152,23 @@ export function openCampaignWizardModal(onSuccess) {
         pipelineStages = stages || [];
       }
 
-      // 3. Background sync numbers from proxy
+      // 3. Background sync numbers from proxy if active
       getAuthHeaders().then(headers => {
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/numbers`, { headers })
           .then(res => res.json())
           .then(numData => {
             if (numData.data && Array.isArray(numData.data) && numData.data.length > 0) {
-              phoneNumbers = numData.data;
-              if (!campaignData.phone_number_id) {
-                campaignData.phone_number_id = phoneNumbers[0].id;
+              const activeProxyNums = numData.data.filter(pn => {
+                const matchedDb = (dbNumbers || []).find(dbn => dbn.phone_number_id === pn.id);
+                return matchedDb ? matchedDb.is_active : !pn.display_phone_number?.startsWith('+1 555');
+              });
+              if (activeProxyNums.length > 0) {
+                phoneNumbers = activeProxyNums;
+                if (!campaignData.phone_number_id || !phoneNumbers.some(n => n.id === campaignData.phone_number_id)) {
+                  campaignData.phone_number_id = phoneNumbers[0].id;
+                }
+                updatePhoneSelectUI();
               }
-              updatePhoneSelectUI();
             }
           }).catch(() => {});
       }).catch(() => {});
