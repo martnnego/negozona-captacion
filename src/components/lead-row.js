@@ -99,6 +99,79 @@ function showNovedadTooltip(targetEl, data) {
   });
 }
 
+function showAutomationTooltip(targetEl, data) {
+  ensureGlobalTooltip();
+
+  const { autoName, triggerLabel, statusBadge, contactName, stepInfo, updatedDate, errorMsg, scheduledDate } = data;
+
+  globalTooltipContent.innerHTML = `
+    <div class="flex items-center justify-between gap-2 pb-1.5 border-b border-neutral-800">
+      <div class="flex items-center gap-1.5 min-w-0">
+        <span class="text-xs">🤖</span>
+        <span class="font-mono text-[10px] font-bold uppercase tracking-wider text-neutral-300 truncate">${autoName}</span>
+      </div>
+      ${statusBadge}
+    </div>
+
+    <div class="mt-2 flex flex-col gap-1 text-xs">
+      <div class="flex items-center justify-between text-[9px] text-neutral-400 font-mono">
+        <span>Destinatario: <b class="text-neutral-200">${contactName}</b></span>
+        <span class="text-[8px] bg-neutral-800 px-1 py-0.5 rounded text-neutral-300 uppercase">${triggerLabel}</span>
+      </div>
+      <div class="mt-1 bg-neutral-900/80 rounded p-1.5 border border-neutral-800 flex flex-col gap-0.5 font-mono text-[10px]">
+        <div class="flex items-center justify-between text-neutral-300">
+          <span>${stepInfo}</span>
+        </div>
+        ${scheduledDate ? `<div class="text-[9px] text-amber-400">⏳ Próximo: ${formatDateTime(scheduledDate)}</div>` : ''}
+        ${errorMsg ? `<div class="text-[9px] text-rose-400 font-sans border-t border-neutral-800 pt-1 mt-0.5 line-clamp-2">⚠️ ${errorMsg}</div>` : ''}
+      </div>
+      <div class="text-[9px] text-neutral-500 font-mono text-right mt-0.5">
+        Actualizado: ${updatedDate ? formatDateTime(updatedDate) : '—'}
+      </div>
+    </div>
+  `;
+
+  globalTooltip.classList.remove('hidden');
+
+  const rect = targetEl.getBoundingClientRect();
+  const tooltipWidth = 288;
+  const tooltipHeight = globalTooltip.offsetHeight || 130;
+  const targetCenterX = rect.left + rect.width / 2;
+
+  let left = targetCenterX - tooltipWidth / 2;
+  left = Math.max(12, Math.min(window.innerWidth - tooltipWidth - 12, left));
+
+  const spaceAbove = rect.top;
+  const showBelow = spaceAbove < (tooltipHeight + 16);
+
+  let top = 0;
+  if (showBelow) {
+    top = rect.bottom + 8;
+    globalTooltipArrow.className = 'absolute border-4 border-transparent border-b-[#17171c] -mt-2';
+    globalTooltipArrow.style.top = '0';
+    globalTooltipArrow.style.bottom = '';
+  } else {
+    top = rect.top - tooltipHeight - 8;
+    globalTooltipArrow.className = 'absolute border-4 border-transparent border-t-[#17171c] -mb-2';
+    globalTooltipArrow.style.bottom = '0';
+    globalTooltipArrow.style.top = '';
+  }
+
+  const arrowOffset = Math.max(16, Math.min(tooltipWidth - 16, targetCenterX - left));
+  globalTooltipArrow.style.left = `${arrowOffset}px`;
+  globalTooltipArrow.style.transform = 'translateX(-50%)';
+
+  globalTooltip.style.top = `${top}px`;
+  globalTooltip.style.left = `${left}px`;
+
+  requestAnimationFrame(() => {
+    if (globalTooltip) {
+      globalTooltip.classList.remove('opacity-0');
+      globalTooltip.classList.add('opacity-100');
+    }
+  });
+}
+
 function hideNovedadTooltip() {
   if (!globalTooltip) return;
   globalTooltip.classList.remove('opacity-100');
@@ -233,6 +306,74 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
     `;
   }
 
+  // Resolve automation status
+  const latestAuto = cache.getLeadActiveOrLatestAutomation(lead.id);
+  let automationHtml = `<span class="text-neutral-300 font-sans select-none">—</span>`;
+  let autoTooltipData = null;
+
+  if (latestAuto) {
+    const autoObj = latestAuto.automations || {};
+    const autoContact = latestAuto.contacts || {};
+    const autoName = autoObj.name || 'Automatización';
+    const contactName = `${autoContact.first_name || ''} ${autoContact.last_name || ''}`.trim() || 'Contacto Ppal';
+    const status = latestAuto.status || 'unknown';
+    const stepOrder = latestAuto.current_step_order || 1;
+    const triggerType = autoObj.trigger_type || 'flujo';
+
+    let triggerLabel = 'Manual';
+    if (triggerType === 'lead_created') triggerLabel = 'Nuevo Lead';
+    else if (triggerType === 'stage_changed') triggerLabel = 'Cambio Etapa';
+    else if (triggerType === 'scheduled_once') triggerLabel = 'Puntual';
+    else if (triggerType === 'scheduled_recurring') triggerLabel = 'Recurrente';
+
+    let chipClass = 'bg-neutral-50 border-[#d9d9dd] text-neutral-600 hover:bg-neutral-100';
+    let chipIcon = '🤖';
+    let chipText = autoName;
+    let statusBadge = `<span class="text-[8px] font-mono font-bold text-neutral-400 bg-neutral-800 px-1.5 py-0.5 rounded-xs uppercase tracking-wider">${status}</span>`;
+
+    if (status === 'running') {
+      chipClass = 'bg-blue-50/80 border-blue-200 text-blue-800 hover:bg-blue-100';
+      chipIcon = '⚡';
+      chipText = `${autoName} (P${stepOrder})`;
+      statusBadge = `<span class="text-[8px] font-mono font-bold text-blue-400 bg-blue-950/80 px-1.5 py-0.5 rounded-xs uppercase tracking-wider flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>En Curso</span>`;
+    } else if (status === 'waiting') {
+      chipClass = 'bg-amber-50/80 border-amber-200 text-amber-800 hover:bg-amber-100';
+      chipIcon = '⏳';
+      chipText = `Espera (P${stepOrder})`;
+      statusBadge = `<span class="text-[8px] font-mono font-bold text-amber-400 bg-amber-950/80 px-1.5 py-0.5 rounded-xs uppercase tracking-wider">En Espera</span>`;
+    } else if (status === 'failed') {
+      chipClass = 'bg-rose-50/80 border-rose-200 text-rose-800 hover:bg-rose-100';
+      chipIcon = '⚠️';
+      chipText = `Error (P${stepOrder})`;
+      statusBadge = `<span class="text-[8px] font-mono font-bold text-rose-400 bg-rose-950/80 px-1.5 py-0.5 rounded-xs uppercase tracking-wider">Error</span>`;
+    } else if (status === 'completed') {
+      chipClass = 'bg-emerald-50/60 border-emerald-200 text-emerald-800 hover:bg-emerald-100';
+      chipIcon = '✓';
+      chipText = `${autoName}`;
+      statusBadge = `<span class="text-[8px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded-xs uppercase tracking-wider">Completado</span>`;
+    }
+
+    autoTooltipData = {
+      autoName,
+      triggerLabel,
+      statusBadge,
+      contactName,
+      stepInfo: `Paso actual: #${stepOrder}`,
+      updatedDate: latestAuto.updated_at || latestAuto.created_at,
+      errorMsg: latestAuto.error_message,
+      scheduledDate: latestAuto.scheduled_for
+    };
+
+    automationHtml = `
+      <div class="automation-chip inline-flex items-center gap-1.5 py-0.5 px-2 border rounded-full transition-all cursor-pointer select-none max-w-[160px] truncate ${chipClass}" onclick="event.stopPropagation();">
+        <span class="text-[11px] shrink-0">${chipIcon}</span>
+        <span class="font-mono text-[9px] font-bold uppercase tracking-wider truncate">
+          ${chipText}
+        </span>
+      </div>
+    `;
+  }
+
   row.innerHTML = `
     <!-- Checkbox selection -->
     <td class="px-4 py-3 shrink-0 text-center" onclick="event.stopPropagation();">
@@ -283,6 +424,9 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
     <td class="px-6 py-3.5 whitespace-nowrap">
       ${novedadHtml}
     </td>
+    <td class="px-6 py-3.5 whitespace-nowrap">
+      ${automationHtml}
+    </td>
     <td class="px-6 py-3.5 max-w-[160px] truncate">
       ${lead.ultimo_comentario 
         ? `<div class="flex items-center gap-1.5" title="${lead.ultimo_comentario.replace(/"/g, '&quot;')}">
@@ -309,6 +453,16 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
       showNovedadTooltip(novedadChip, tooltipData);
     });
     novedadChip.addEventListener('mouseleave', () => {
+      hideNovedadTooltip();
+    });
+  }
+
+  const autoChip = row.querySelector('.automation-chip');
+  if (autoChip && autoTooltipData) {
+    autoChip.addEventListener('mouseenter', () => {
+      showAutomationTooltip(autoChip, autoTooltipData);
+    });
+    autoChip.addEventListener('mouseleave', () => {
       hideNovedadTooltip();
     });
   }

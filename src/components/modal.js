@@ -41,9 +41,9 @@ export const modal = {
           btn.className = 'px-4 py-2 text-neutral-600 text-xs font-medium rounded-full border border-neutral-200 bg-white hover:bg-neutral-50 transition-colors';
         }
         
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
           if (action.onClick) {
-            action.onClick(closeModal);
+            action.onClick(closeModal, btn, e);
           } else {
             closeModal();
           }

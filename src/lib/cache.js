@@ -10,6 +10,7 @@ class CacheManager {
     this.events = [];
     this.participations = [];
     this.latestInteractions = new Map(); // lead_id -> latest lead_interaction object
+    this.leadAutomations = new Map(); // lead_id -> Array<automation_executions>
     this.isLoaded = false;
     this.listeners = new Set();
     // Default: 0 = all time (fetch all leads from Supabase).
@@ -19,7 +20,7 @@ class CacheManager {
   async loadAll() {
     try {
       const from_date = getFromDate(this.dateWindowDays);
-      const [stagesRes, profilesRes, leadsData, contactsData, linksData, eventsData, participationsData, interactionsData] = await Promise.all([
+      const [stagesRes, profilesRes, leadsData, contactsData, linksData, eventsData, participationsData, interactionsData, executionsData] = await Promise.all([
         supabase
           .from('pipeline_stages')
           .select('*')
@@ -33,7 +34,8 @@ class CacheManager {
         fetchAllRows('lead_contacts_link', '*', { orderCol: 'lead_id' }),
         fetchAllRows('eventos_franquiday', '*', { orderCol: 'fecha' }),
         fetchAllRows('participaciones_franquiday', '*', { orderCol: 'lead_id' }),
-        fetchAllRows('lead_interactions', '*', { orderCol: 'contacted_at', ascending: false })
+        fetchAllRows('lead_interactions', '*', { orderCol: 'contacted_at', ascending: false }),
+        fetchAllRows('automation_executions', 'id, lead_id, contact_id, automation_id, status, current_step_order, error_message, scheduled_for, updated_at, created_at, automations(id, name, trigger_type), contacts(id, first_name, last_name, phone, email)', { orderCol: 'updated_at', ascending: false })
       ]);
 
       if (stagesRes.error) throw stagesRes.error;
@@ -71,8 +73,20 @@ class CacheManager {
         });
       }
 
+      this.leadAutomations.clear();
+      if (executionsData) {
+        executionsData.forEach(item => {
+          if (item.lead_id) {
+            if (!this.leadAutomations.has(item.lead_id)) {
+              this.leadAutomations.set(item.lead_id, []);
+            }
+            this.leadAutomations.get(item.lead_id).push(item);
+          }
+        });
+      }
+
       this.isLoaded = true;
-      console.log(`Cache initialized: ${this.leads.length} leads, ${this.contacts.size} contacts, ${this.links.length} links, ${this.events.length} events, ${this.participations.length} participations, ${this.latestInteractions.size} latest interactions (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'})`);
+      console.log(`Cache initialized: ${this.leads.length} leads, ${this.contacts.size} contacts, ${this.links.length} links, ${this.events.length} events, ${this.participations.length} participations, ${this.latestInteractions.size} latest interactions, ${this.leadAutomations.size} leads con automatizaciones (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'})`);
       this.triggerChange();
     } catch (err) {
       console.error('Error loading metadata cache:', err);
@@ -410,6 +424,24 @@ class CacheManager {
     });
   }
 
+  getLeadAutomations(leadId) {
+    if (!leadId) return [];
+    return this.leadAutomations.get(leadId) || [];
+  }
+
+  getLeadActiveOrLatestAutomation(leadId) {
+    const list = this.getLeadAutomations(leadId);
+    if (list.length === 0) return null;
+    // Prioridad 1: Activa en proceso o en espera
+    const active = list.find(ex => ex.status === 'running' || ex.status === 'waiting');
+    if (active) return active;
+    // Prioridad 2: Fallida con error
+    const failed = list.find(ex => ex.status === 'failed');
+    if (failed) return failed;
+    // Prioridad 3: Más reciente (ej. completada)
+    return list[0];
+  }
+
   clear() {
     this.stages.clear();
     this.profiles.clear();
@@ -418,6 +450,8 @@ class CacheManager {
     this.events = [];
     this.participations = [];
     this.leads = [];
+    this.latestInteractions.clear();
+    this.leadAutomations.clear();
     this.isLoaded = false;
     this.listeners.clear();
   }

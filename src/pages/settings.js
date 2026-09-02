@@ -1271,15 +1271,23 @@ export function renderSettings(currentUser) {
 
           <!-- Numbers Management Section -->
           <div class="bg-white border border-[#d9d9dd] rounded-sm p-6 flex flex-col gap-4">
-            <div class="flex items-center justify-between border-b border-neutral-100 pb-2">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 pb-3">
               <div>
-                <h4 class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase">Números Activos en la WABA</h4>
-                <p class="text-neutral-500 text-[10px] mt-0.5">Gestión de números de teléfono verificados y activos para Cloud API.</p>
+                <h4 class="font-mono text-[10px] font-bold text-primary tracking-wider uppercase">Números de Teléfono en WhatsApp Cloud API</h4>
+                <p class="text-neutral-500 text-[10px] mt-0.5">Gestión y estado de las líneas telefónicas vinculadas a tu cuenta de Meta para mensajería en el CRM.</p>
               </div>
               ${(wabaId && accessToken) ? `
-                <button id="btn-vincular-numero" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer">
-                  + Vincular Nuevo Número
-                </button>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <button id="btn-open-wa-guide" class="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-primary text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs">
+                    <span>💡 Guía Paso a Paso</span>
+                  </button>
+                  <button id="btn-register-by-id" class="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-900 text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs">
+                    <span>+ Registrar por ID</span>
+                  </button>
+                  <button id="btn-vincular-numero" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs">
+                    <span>+ Vincular con OTP</span>
+                  </button>
+                </div>
               ` : ''}
             </div>
 
@@ -1297,8 +1305,8 @@ export function renderSettings(currentUser) {
             ` : numbers.length === 0 ? `
               <div class="py-8 flex flex-col items-center text-center gap-2 border border-dashed border-neutral-200 bg-neutral-50 rounded-xs">
                 <span class="text-xl text-neutral-400">💬</span>
-                <p class="text-neutral-500 text-[11px] font-bold">No se encontraron números asociados.</p>
-                <p class="text-neutral-400 text-[10px] max-w-xs leading-normal">Asegúrate de agregar al menos un número en tu panel de WhatsApp Manager en Meta.</p>
+                <p class="text-neutral-500 text-[11px] font-bold">No se encontraron números asociados en esta WABA.</p>
+                <p class="text-neutral-400 text-[10px] max-w-xs leading-normal">Asegúrate de agregar al menos un número en tu panel de WhatsApp Manager en Meta o utiliza la opción "Registrar por ID".</p>
               </div>
             ` : `
               <!-- Desplegable Informativo de Estados de Agente -->
@@ -1333,11 +1341,11 @@ export function renderSettings(currentUser) {
                 <table class="w-full text-left border-collapse font-sans text-xs">
                   <thead>
                     <tr class="bg-neutral-50 border-b border-[#d9d9dd] font-mono text-[9px] text-muted-slate uppercase tracking-wider select-none">
-                      <th class="py-3 px-4 font-bold">Número</th>
-                      <th class="py-3 px-4 font-bold">ID Teléfono</th>
-                      <th class="py-3 px-4 font-bold">Nombre de Mostrar</th>
+                      <th class="py-3 px-4 font-bold">Número / ID</th>
+                      <th class="py-3 px-4 font-bold">Nombre Visible</th>
+                      <th class="py-3 px-4 font-bold text-center">Titularidad Meta</th>
                       <th class="py-3 px-4 font-bold text-center">Calidad</th>
-                      <th class="py-3 px-4 font-bold text-center">Estado WABA</th>
+                      <th class="py-3 px-4 font-bold text-center">Estado Cloud API</th>
                       <th class="py-3 px-4 font-bold text-center select-none">
                         <button type="button" id="btn-toggle-agent-help" class="inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer focus:outline-none uppercase font-bold">
                           <span>Estado Agente</span>
@@ -1345,36 +1353,63 @@ export function renderSettings(currentUser) {
                         </button>
                       </th>
                       <th class="py-3 px-4 font-bold text-center">Acción Agente</th>
-                      <th class="py-3 px-4 font-bold text-right">Acciones WABA</th>
+                      <th class="py-3 px-4 font-bold text-right">Acciones Cloud API</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-neutral-100">
                     ${numbers.map(num => {
                       const isConnected = num.status === 'CONNECTED';
+                      const isVerifiedMeta = num.code_verification_status === 'VERIFIED';
+
                       let qualityClass = 'bg-neutral-100 text-neutral-600 border border-neutral-200';
                       if (num.quality_rating === 'GREEN') qualityClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
                       if (num.quality_rating === 'YELLOW') qualityClass = 'bg-amber-50 text-amber-700 border border-amber-200';
                       if (num.quality_rating === 'RED') qualityClass = 'bg-rose-50 text-rose-700 border border-rose-200';
 
+                      let nameStatusBadge = '';
+                      if (num.name_status === 'APPROVED') {
+                        nameStatusBadge = '<span class="font-mono text-[8px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded-xs ml-1">Aprobado</span>';
+                      } else if (num.name_status === 'PENDING_REVIEW') {
+                        nameStatusBadge = '<span class="font-mono text-[8px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1 py-0.2 rounded-xs ml-1">En revisión</span>';
+                      } else if (num.name_status === 'DECLINED') {
+                        nameStatusBadge = '<span class="font-mono text-[8px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1 py-0.2 rounded-xs ml-1">Rechazado</span>';
+                      }
+
                       const agentStatus = num.agent_status || (num.is_eligible_agent ? 'ACTIVE' : 'NO_ELIGIBLE');
 
                       return `
                         <tr class="hover:bg-neutral-50/50 transition-colors">
-                          <td class="py-3 px-4 font-bold text-primary">${num.display_phone_number}</td>
-                          <td class="py-3 px-4 font-mono text-[10px] select-all">${num.id}</td>
-                          <td class="py-3 px-4 font-semibold text-neutral-600">${num.verified_name || '<Sin nombre>'}</td>
+                          <td class="py-3 px-4">
+                            <div class="font-bold text-primary">${num.display_phone_number}</div>
+                            <div class="font-mono text-[9px] text-muted-slate select-all">ID: ${num.id}</div>
+                          </td>
+                          <td class="py-3 px-4">
+                            <div class="font-semibold text-neutral-700 flex items-center flex-wrap gap-1">
+                              <span>${num.verified_name || '<Sin nombre>'}</span>
+                              ${nameStatusBadge}
+                            </div>
+                          </td>
+                          <td class="py-3 px-4 text-center">
+                            <span class="font-mono text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded-sm uppercase ${
+                              isVerifiedMeta 
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                : 'bg-neutral-100 text-neutral-500 border border-neutral-200'
+                            }" title="${isVerifiedMeta ? 'Propiedad verificada por SMS/Voz en Meta' : 'Falta validar titularidad OTP en WhatsApp Manager'}">
+                              ${isVerifiedMeta ? 'VERIFICADO' : (num.code_verification_status || 'NO VERIFICADO')}
+                            </span>
+                          </td>
                           <td class="py-3 px-4 text-center">
                             <span class="font-mono text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded-sm uppercase ${qualityClass}">
-                              ${num.quality_rating}
+                              ${num.quality_rating || 'NA'}
                             </span>
                           </td>
                           <td class="py-3 px-4 text-center">
                             <span class="font-mono text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded-sm uppercase ${
                               isConnected 
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                                : 'bg-neutral-100 text-neutral-500 border border-neutral-200'
+                                : (isVerifiedMeta ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-neutral-100 text-neutral-500 border border-neutral-200')
                             }">
-                              ${num.status || 'VERIFICADO'}
+                              ${isConnected ? 'CONECTADO' : (isVerifiedMeta ? 'PENDIENTE REGISTRO' : (num.status || 'NO REGISTRADO'))}
                             </span>
                           </td>
                           <td class="py-3 px-4 text-center">
@@ -1394,25 +1429,31 @@ export function renderSettings(currentUser) {
                                 Configuración
                               </button>
                             ` : agentStatus === 'ELIGIBLE' ? `
-                              <button data-onboard-id="${num.id}" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-sm text-[10px] font-semibold transition-colors cursor-pointer focus:outline-none">
-                                Incorporar
-                              </button>
+                              ${isConnected ? `
+                                <button data-onboard-id="${num.id}" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-sm text-[10px] font-semibold transition-colors cursor-pointer focus:outline-none shadow-2xs">
+                                  Incorporar
+                                </button>
+                              ` : `
+                                <button disabled class="px-2.5 py-1 bg-neutral-100 text-neutral-400 border border-neutral-200 rounded-sm text-[10px] font-semibold cursor-not-allowed opacity-60 flex items-center gap-1 mx-auto" title="Debes registrar el número en Cloud API (Paso 3) antes de incorporarlo al Agente">
+                                  <span>🔒 Incorporar</span>
+                                </button>
+                              `}
                             ` : `
                               <span class="text-neutral-400 text-[10px] font-mono">-</span>
                             `}
                           </td>
                           <td class="py-3 px-4 text-right">
-                            <div class="flex items-center justify-end gap-2">
+                            <div class="flex items-center justify-end gap-1.5">
                               ${isConnected ? `
-                                <button data-deregister-id="${num.id}" class="px-2.5 py-1 text-rose-600 hover:bg-rose-50 border border-rose-200 hover:border-rose-300 rounded-sm text-[10px] font-semibold transition-colors cursor-pointer focus:outline-none">
+                                <button data-deregister-id="${num.id}" class="px-2.5 py-1 text-rose-600 hover:bg-rose-50 border border-rose-200 hover:border-rose-300 rounded-sm text-[10px] font-semibold transition-colors cursor-pointer focus:outline-none" title="Desconectar línea de Cloud API">
                                   Desactivar
                                 </button>
-                                <button data-pin-id="${num.id}" class="px-2.5 py-1 text-primary hover:bg-neutral-100 border border-neutral-200 rounded-sm text-[10px] font-semibold transition-colors cursor-pointer focus:outline-none">
+                                <button data-pin-id="${num.id}" class="px-2.5 py-1 text-primary hover:bg-neutral-100 border border-neutral-200 rounded-sm text-[10px] font-semibold transition-colors cursor-pointer focus:outline-none" title="Cambiar PIN de 2 pasos">
                                   PIN
                                 </button>
                               ` : `
-                                <button data-register-id="${num.id}" class="px-2.5 py-1 bg-primary hover:bg-cohere-black text-white rounded-sm text-[10px] font-semibold transition-colors cursor-pointer focus:outline-none">
-                                  Activar
+                                <button data-register-id="${num.id}" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-[10px] font-semibold transition-colors cursor-pointer focus:outline-none shadow-xs flex items-center gap-1">
+                                  <span>🔑 Registrar en Cloud API</span>
                                 </button>
                               `}
                             </div>
@@ -1512,6 +1553,30 @@ export function renderSettings(currentUser) {
         });
       }
 
+      // Helper to display spinner preloader and lock sibling buttons in modal actions
+      const setButtonLoading = (btn, loadingText = 'Procesando...', modalInstance = null) => {
+        if (!btn) return () => {};
+        const originalHtml = btn.innerHTML;
+        const footer = modalInstance?.bodyEl?.parentElement?.querySelector('.bg-neutral-50') || btn.closest('div');
+        const siblingButtons = footer ? footer.querySelectorAll('button') : [];
+        siblingButtons.forEach(b => { b.disabled = true; });
+        btn.classList.add('opacity-75', 'cursor-not-allowed');
+        btn.innerHTML = `
+          <span class="flex items-center justify-center gap-2">
+            <svg class="animate-spin h-3.5 w-3.5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>${loadingText}</span>
+          </span>
+        `;
+        return () => {
+          siblingButtons.forEach(b => { b.disabled = false; });
+          btn.classList.remove('opacity-75', 'cursor-not-allowed');
+          btn.innerHTML = originalHtml;
+        };
+      };
+
       // Action Handlers: DEREGISTER, REGISTER, PIN UPDATE, AGENT ONBOARD & CONFIG
       if (numbers.length > 0) {
         // AGENT ONBOARDING
@@ -1519,6 +1584,11 @@ export function renderSettings(currentUser) {
           btn.addEventListener('click', () => {
             const phoneId = btn.dataset.onboardId;
             const num = numbers.find(n => n.id === phoneId);
+
+            if (num && num.status !== 'CONNECTED') {
+              toast.show('El número debe estar registrado y conectado en Cloud API antes de incorporarlo al Agente de IA', 'warning');
+              return;
+            }
 
             const onboardModal = modal.create({
               title: 'Incorporar Agente de WhatsApp',
@@ -1543,7 +1613,8 @@ export function renderSettings(currentUser) {
                 {
                   text: 'Confirmar Incorporación',
                   primary: true,
-                  onClick: async (close) => {
+                  onClick: async (close, actionBtn) => {
+                    const resetBtn = setButtonLoading(actionBtn, 'Incorporando agente...', onboardModal);
                     try {
                       const session = await auth.getSession();
                       const jwt = session?.access_token;
@@ -1564,6 +1635,7 @@ export function renderSettings(currentUser) {
                       await renderWhatsAppConfig(parent);
                     } catch (err) {
                       toast.show(err.message, 'error');
+                      resetBtn();
                     }
                   }
                 }
@@ -1627,24 +1699,37 @@ export function renderSettings(currentUser) {
             const num = numbers.find(n => n.id === phoneId);
             
             const registerModal = modal.create({
-              title: 'Activar Número de WhatsApp',
+              title: 'Registrar Número en WhatsApp Cloud API',
               content: `
                 <div class="flex flex-col gap-4 font-sans text-xs">
-                  <p class="text-neutral-500 leading-relaxed">
-                    El número <strong>${num ? num.display_phone_number : phoneId}</strong> ya está verificado en tu cuenta. Para poder usarlo en Cloud API debes registrarlo estableciendo o ingresando su PIN de 6 dígitos de verificación en dos pasos.
+                  <div class="p-3 bg-neutral-50 border border-neutral-200 rounded-sm flex flex-col gap-1">
+                    <span class="text-neutral-500 text-[10px]">Número a registrar:</span>
+                    <div class="font-bold text-primary text-sm">${num ? num.display_phone_number : phoneId}</div>
+                    <div class="font-mono text-[9px] text-muted-slate">Phone Number ID: ${phoneId}</div>
+                  </div>
+
+                  <p class="text-neutral-600 leading-relaxed">
+                    Tu número ya se encuentra verificado en tu cuenta de Meta. Para completar el registro y pasar la línea a estado <strong class="text-emerald-700">CONECTADO</strong> para el CRM, debes establecer o ingresar su PIN de 6 dígitos de verificación en dos pasos.
                   </p>
+
                   <div class="flex flex-col gap-1">
-                    <label for="reg-pin" class="font-mono text-[9px] font-bold text-primary uppercase">PIN de Verificación (6 dígitos)</label>
-                    <input type="text" id="reg-pin" required maxlength="6" minlength="6" class="cohere-input text-xs font-mono tracking-widest text-center" placeholder="******" pattern="\\d{6}" />
+                    <label for="reg-pin" class="font-mono text-[9px] font-bold text-primary uppercase">PIN de Verificación en 2 Pasos (6 dígitos)</label>
+                    <input type="text" id="reg-pin" required maxlength="6" minlength="6" class="cohere-input text-xs font-mono tracking-widest text-center text-sm font-bold" placeholder="******" pattern="\\d{6}" autofocus />
+                    <span class="text-[9px] text-muted-slate">Si ya tenías un PIN configurado en WhatsApp, ingresa ese mismo; de lo contrario, el que ingreses aquí será tu nuevo PIN.</span>
+                  </div>
+
+                  <div class="p-2.5 bg-amber-50 border border-amber-200 rounded-sm text-amber-900 text-[10px] leading-normal flex items-start gap-1.5">
+                    <span class="text-xs">⚠️</span>
+                    <span><strong>Límite de seguridad:</strong> Meta permite hasta 10 intentos cada 72 horas. Verifica bien los 6 dígitos antes de presionar Registrar.</span>
                   </div>
                 </div>
               `,
               actions: [
                 { text: 'Cancelar', onClick: (close) => close() },
                 {
-                  text: 'Registrar y Activar',
+                  text: 'Registrar y Conectar',
                   primary: true,
-                  onClick: async (close) => {
+                  onClick: async (close, actionBtn) => {
                     const pinInput = registerModal.bodyEl.querySelector('#reg-pin');
                     const pin = pinInput.value.trim();
                     if (!/^\d{6}$/.test(pin)) {
@@ -1653,6 +1738,7 @@ export function renderSettings(currentUser) {
                     }
 
                     pinInput.disabled = true;
+                    const resetBtn = setButtonLoading(actionBtn, 'Registrando en Cloud API...', registerModal);
                     
                     try {
                       const session = await auth.getSession();
@@ -1671,12 +1757,13 @@ export function renderSettings(currentUser) {
                         throw new Error(result.error?.message || result.error || 'Error al registrar el número en Meta');
                       }
 
-                      toast.show('¡Número registrado y activado correctamente!', 'success');
+                      toast.show('¡Número registrado y conectado con éxito en Cloud API!', 'success');
                       close();
                       await renderWhatsAppConfig(parent);
                     } catch (err) {
                       toast.show(err.message, 'error');
                       pinInput.disabled = false;
+                      resetBtn();
                     }
                   }
                 }
@@ -1709,7 +1796,7 @@ export function renderSettings(currentUser) {
                 {
                   text: 'Actualizar PIN',
                   primary: true,
-                  onClick: async (close) => {
+                  onClick: async (close, actionBtn) => {
                     const pinInput = pinModal.bodyEl.querySelector('#update-pin-val');
                     const pin = pinInput.value.trim();
                     if (!/^\d{6}$/.test(pin)) {
@@ -1718,6 +1805,7 @@ export function renderSettings(currentUser) {
                     }
 
                     pinInput.disabled = true;
+                    const resetBtn = setButtonLoading(actionBtn, 'Actualizando PIN...', pinModal);
                     
                     try {
                       const session = await auth.getSession();
@@ -1741,11 +1829,203 @@ export function renderSettings(currentUser) {
                     } catch (err) {
                       toast.show(err.message, 'error');
                       pinInput.disabled = false;
+                      resetBtn();
                     }
                   }
                 }
               ]
             });
+          });
+        });
+      }
+
+      // GUÍA PASO A PASO (Step-by-step Help Modal)
+      const btnOpenGuide = parent.querySelector('#btn-open-wa-guide');
+      if (btnOpenGuide) {
+        btnOpenGuide.addEventListener('click', () => {
+          modal.create({
+            title: 'Guía de Integración: WhatsApp Cloud API & Agente IA',
+            sizeClass: 'max-w-4xl',
+            content: `
+              <div class="flex flex-col gap-5 font-sans text-xs">
+                <div class="p-3.5 bg-neutral-900 text-white rounded-sm border border-neutral-800 flex items-start gap-3">
+                  <span class="text-xl">🚀</span>
+                  <div class="flex flex-col gap-1">
+                    <span class="font-bold text-[11px] text-coral font-mono uppercase tracking-wider">Ciclo de Vida de un Número en WhatsApp</span>
+                    <p class="text-neutral-300 text-[10px] leading-relaxed">
+                      Para utilizar un número corporativo en el CRM para envíos masivos, chats directos y automatizaciones, debes completar los primeros <strong>3 pasos</strong>. El <strong>Paso 4</strong> es opcional y solo aplica si deseas delegar la atención en el bot con IA de Meta.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-[10px]">
+                  <!-- Paso 1 -->
+                  <div class="border border-neutral-200 bg-white p-4 rounded-sm flex flex-col gap-2 relative shadow-2xs">
+                    <div class="flex items-center justify-between border-b border-neutral-100 pb-2">
+                      <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-primary text-white font-mono font-bold flex items-center justify-center text-[10px]">1</span>
+                        <h5 class="font-bold text-primary font-mono text-[10px] uppercase">Añadir Número a WABA</h5>
+                      </div>
+                      <span class="font-mono text-[8px] font-bold text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded-xs">Meta Suite</span>
+                    </div>
+                    <p class="text-neutral-600 leading-relaxed">
+                      Ingresa al <strong>Administrador de WhatsApp (WhatsApp Manager)</strong> en Meta Business Suite y añade tu número de teléfono de empresa con su nombre visible (Display Name).
+                    </p>
+                    <div class="mt-auto pt-2 border-t border-dashed border-neutral-100 text-[9px] text-muted-slate flex items-center gap-1">
+                      <span>📍 WhatsApp Manager &gt; Herramientas de la cuenta &gt; Números de teléfono</span>
+                    </div>
+                  </div>
+
+                  <!-- Paso 2 -->
+                  <div class="border border-neutral-200 bg-white p-4 rounded-sm flex flex-col gap-2 relative shadow-2xs">
+                    <div class="flex items-center justify-between border-b border-neutral-100 pb-2">
+                      <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-primary text-white font-mono font-bold flex items-center justify-center text-[10px]">2</span>
+                        <h5 class="font-bold text-primary font-mono text-[10px] uppercase">Verificar Titularidad (OTP)</h5>
+                      </div>
+                      <span class="font-mono text-[8px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-xs">SMS / Voz</span>
+                    </div>
+                    <p class="text-neutral-600 leading-relaxed">
+                      Recibe un código de 6 dígitos vía SMS o llamada de voz para confirmar que eres el propietario de la línea. Al validarlo, su estado en Meta pasa a <span class="font-bold text-emerald-700">VERIFICADO</span>.
+                    </p>
+                    <div class="mt-auto pt-2 border-t border-dashed border-neutral-100 text-[9px] text-muted-slate flex items-center gap-1">
+                      <span>💡 Puedes hacerlo en WhatsApp Manager o con el botón <em>+ Vincular con OTP</em>.</span>
+                    </div>
+                  </div>
+
+                  <!-- Paso 3 -->
+                  <div class="border-2 border-emerald-500/40 bg-emerald-50/30 p-4 rounded-sm flex flex-col gap-2 relative shadow-2xs">
+                    <div class="flex items-center justify-between border-b border-emerald-100 pb-2">
+                      <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-emerald-600 text-white font-mono font-bold flex items-center justify-center text-[10px]">3</span>
+                        <h5 class="font-bold text-emerald-900 font-mono text-[10px] uppercase">Registrar en Cloud API</h5>
+                      </div>
+                      <span class="font-mono text-[8px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-xs uppercase">Obligatorio CRM</span>
+                    </div>
+                    <p class="text-neutral-700 leading-relaxed">
+                      Establece o ingresa tu <strong>PIN de 6 dígitos</strong> de verificación en dos pasos presionando el botón <strong class="text-emerald-700">Registrar en Cloud API</strong>. Esto activa la línea en Meta y su estado cambia a <span class="font-bold text-emerald-700">CONECTADO</span>.
+                    </p>
+                    <div class="mt-auto pt-2 border-t border-dashed border-emerald-200 text-[9px] text-emerald-800 flex items-center gap-1">
+                      <span>✅ <strong>Resultado:</strong> El CRM ya puede enviar plantillas, campañas y recibir mensajes.</span>
+                    </div>
+                  </div>
+
+                  <!-- Paso 4 -->
+                  <div class="border border-neutral-200 bg-white p-4 rounded-sm flex flex-col gap-2 relative shadow-2xs">
+                    <div class="flex items-center justify-between border-b border-neutral-100 pb-2">
+                      <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-neutral-800 text-white font-mono font-bold flex items-center justify-center text-[10px]">4</span>
+                        <h5 class="font-bold text-primary font-mono text-[10px] uppercase">Incorporar Agente IA</h5>
+                      </div>
+                      <span class="font-mono text-[8px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-xs uppercase">Opcional</span>
+                    </div>
+                    <p class="text-neutral-600 leading-relaxed">
+                      Si la línea cuenta con elegibilidad para Meta Business Agent, presiona <strong>Incorporar</strong> para habilitar las respuestas automáticas con inteligencia artificial entrenada en tus documentos y FAQs.
+                    </p>
+                    <div class="mt-auto pt-2 border-t border-dashed border-neutral-100 text-[9px] text-muted-slate flex items-center gap-1">
+                      <span>🤖 Pasa a estado <strong>ACTIVO</strong> y permite configurar base de conocimiento.</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-sm text-amber-900 text-[10px] leading-relaxed flex items-start gap-2">
+                  <span class="text-base">⚠️</span>
+                  <div>
+                    <strong>Límites de registro de Meta:</strong> Meta permite un máximo de <strong>10 intentos de registro cada 72 horas</strong> por número telefónico. Asegúrate de ingresar el PIN de 6 dígitos correcto para evitar bloqueos temporales.
+                  </div>
+                </div>
+              </div>
+            `,
+            actions: [
+              { text: 'Entendido', primary: true, onClick: (close) => close() }
+            ]
+          });
+        });
+      }
+
+      // REGISTRAR POR ID DIRECTO (Direct Registration Modal)
+      const btnRegisterById = parent.querySelector('#btn-register-by-id');
+      if (btnRegisterById) {
+        btnRegisterById.addEventListener('click', () => {
+          const directRegModal = modal.create({
+            title: 'Registrar Número por Phone Number ID',
+            content: `
+              <div class="flex flex-col gap-4 font-sans text-xs">
+                <p class="text-neutral-600 leading-relaxed">
+                  Utiliza esta opción si ya diste de alta y verificaste la titularidad de tu número en <strong>WhatsApp Manager</strong> de Meta y deseas activarlo directamente en Cloud API para el CRM.
+                </p>
+
+                <div class="flex flex-col gap-1">
+                  <label for="direct-reg-phone-id" class="font-mono text-[9px] font-bold text-primary uppercase">Phone Number ID (ID del Teléfono en Meta)</label>
+                  <input type="text" id="direct-reg-phone-id" required class="cohere-input text-xs font-mono" placeholder="Ej. 106540352242922" />
+                  <span class="text-[9px] text-muted-slate">Lo encuentras en WhatsApp Manager > Herramientas de la cuenta > Números de teléfono.</span>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label for="direct-reg-pin" class="font-mono text-[9px] font-bold text-primary uppercase">PIN de Verificación en 2 Pasos (6 dígitos)</label>
+                  <input type="text" id="direct-reg-pin" required maxlength="6" minlength="6" class="cohere-input text-xs font-mono tracking-widest text-center" placeholder="******" pattern="\\d{6}" />
+                  <span class="text-[9px] text-muted-slate">Si ya tenías un PIN configurado, ingresa ese mismo; de lo contrario, este será el PIN asignado a la línea.</span>
+                </div>
+
+                <div class="p-2.5 bg-amber-50 border border-amber-200 rounded-sm text-amber-800 text-[10px] leading-normal flex items-start gap-1.5">
+                  <span>⚠️</span>
+                  <span>Meta limita a 10 intentos cada 72 horas. Verifica bien el PIN antes de presionar Registrar.</span>
+                </div>
+              </div>
+            `,
+            actions: [
+              { text: 'Cancelar', onClick: (close) => close() },
+              {
+                text: 'Registrar y Conectar',
+                primary: true,
+                onClick: async (close, actionBtn) => {
+                  const phoneInput = directRegModal.bodyEl.querySelector('#direct-reg-phone-id');
+                  const pinInput = directRegModal.bodyEl.querySelector('#direct-reg-pin');
+                  const targetPhoneId = phoneInput.value.trim();
+                  const pin = pinInput.value.trim();
+
+                  if (!targetPhoneId) {
+                    toast.show('El Phone Number ID es requerido', 'warning');
+                    return;
+                  }
+                  if (!/^\d{6}$/.test(pin)) {
+                    toast.show('El PIN debe tener exactamente 6 dígitos numéricos', 'warning');
+                    return;
+                  }
+
+                  phoneInput.disabled = true;
+                  pinInput.disabled = true;
+                  const resetBtn = setButtonLoading(actionBtn, 'Registrando en Cloud API...', directRegModal);
+
+                  try {
+                    const session = await auth.getSession();
+                    const jwt = session?.access_token;
+                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/register`, {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${jwt}`,
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({ phone_number_id: targetPhoneId, pin })
+                    });
+
+                    const result = await res.json();
+                    if (!res.ok) {
+                      throw new Error(result.error?.message || result.error || 'Error al registrar el número en Meta');
+                    }
+
+                    toast.show('¡Número registrado y conectado con éxito en Cloud API!', 'success');
+                    close();
+                    await renderWhatsAppConfig(parent);
+                  } catch (err) {
+                    toast.show(err.message, 'error');
+                    phoneInput.disabled = false;
+                    pinInput.disabled = false;
+                    resetBtn();
+                  }
+                }
+              }
+            ]
           });
         });
       }
@@ -1878,8 +2158,14 @@ export function renderSettings(currentUser) {
               method = selectMethod;
               lang = selectLang;
 
-              nextBtn.disabled = true;
-              nextBtn.textContent = 'Solicitando...';
+              const phoneInput = wizardContainer.querySelector('#wiz-phone-id');
+              const methodSelect = wizardContainer.querySelector('#wiz-method');
+              const langSelect = wizardContainer.querySelector('#wiz-lang');
+              if (phoneInput) phoneInput.disabled = true;
+              if (methodSelect) methodSelect.disabled = true;
+              if (langSelect) langSelect.disabled = true;
+
+              const resetBtn = setButtonLoading(nextBtn, 'Solicitando código...', wizardModal);
 
               try {
                 const session = await auth.getSession();
@@ -1903,9 +2189,10 @@ export function renderSettings(currentUser) {
                 drawStep();
               } catch (err) {
                 toast.show(err.message, 'error');
-              } finally {
-                nextBtn.disabled = false;
-                nextBtn.textContent = 'Enviar Código';
+                if (phoneInput) phoneInput.disabled = false;
+                if (methodSelect) methodSelect.disabled = false;
+                if (langSelect) langSelect.disabled = false;
+                resetBtn();
               }
 
             } else if (step === 2) {
@@ -1915,8 +2202,10 @@ export function renderSettings(currentUser) {
                 return;
               }
 
-              nextBtn.disabled = true;
-              nextBtn.textContent = 'Verificando...';
+              const codeInput = wizardContainer.querySelector('#wiz-code');
+              if (codeInput) codeInput.disabled = true;
+
+              const resetBtn = setButtonLoading(nextBtn, 'Verificando código...', wizardModal);
 
               try {
                 const session = await auth.getSession();
@@ -1940,9 +2229,8 @@ export function renderSettings(currentUser) {
                 drawStep();
               } catch (err) {
                 toast.show(err.message, 'error');
-              } finally {
-                nextBtn.disabled = false;
-                nextBtn.textContent = 'Verificar Código';
+                if (codeInput) codeInput.disabled = false;
+                resetBtn();
               }
 
             } else if (step === 3) {
@@ -1952,8 +2240,10 @@ export function renderSettings(currentUser) {
                 return;
               }
 
-              nextBtn.disabled = true;
-              nextBtn.textContent = 'Registrando...';
+              const pinInput = wizardContainer.querySelector('#wiz-pin');
+              if (pinInput) pinInput.disabled = true;
+
+              const resetBtn = setButtonLoading(nextBtn, 'Registrando en Cloud API...', wizardModal);
 
               try {
                 const session = await auth.getSession();
@@ -1977,9 +2267,8 @@ export function renderSettings(currentUser) {
                 await renderWhatsAppConfig(parent);
               } catch (err) {
                 toast.show(err.message, 'error');
-              } finally {
-                nextBtn.disabled = false;
-                nextBtn.textContent = 'Finalizar y Registrar';
+                if (pinInput) pinInput.disabled = false;
+                resetBtn();
               }
             }
           }

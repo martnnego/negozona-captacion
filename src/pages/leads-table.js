@@ -105,6 +105,7 @@ export function renderLeadsTable(currentUser) {
               <th data-col="assigned_to" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Comercial</th>
               <th data-col="fecha_ultimo_contacto" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Última Gestión</th>
               <th data-col="novedad" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Novedad</th>
+              <th data-col="automation" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">🤖 Automatización</th>
               <th class="px-6 py-3 text-muted-slate select-none">Último Comentario</th>
               <th data-col="valoracion" class="sort-header px-6 py-3 cursor-pointer hover:text-primary transition-colors">Val.</th>
             </tr>
@@ -112,7 +113,7 @@ export function renderLeadsTable(currentUser) {
           <tbody id="leads-tbody" class="divide-y divide-[#e5e7eb]">
             <!-- Row items go here -->
             <tr>
-              <td colspan="12" class="py-12 text-center text-xs text-neutral-400 font-sans">
+              <td colspan="13" class="py-12 text-center text-xs text-neutral-400 font-sans">
                 Cargando leads...
               </td>
             </tr>
@@ -307,6 +308,28 @@ export function renderLeadsTable(currentUser) {
           const dateA = intA ? new Date(intA.contacted_at || intA.created_at).getTime() : 0;
           const dateB = intB ? new Date(intB.contacted_at || intB.created_at).getTime() : 0;
           return sortAscending ? dateA - dateB : dateB - dateA;
+        }
+
+        // Handle automation sorting
+        if (actualSortCol === 'automation') {
+          const autoA = cache.getLeadActiveOrLatestAutomation(a.id);
+          const autoB = cache.getLeadActiveOrLatestAutomation(b.id);
+          const getScore = (ex) => {
+            if (!ex) return -1;
+            if (ex.status === 'running') return 4;
+            if (ex.status === 'waiting') return 3;
+            if (ex.status === 'failed') return 2;
+            if (ex.status === 'completed') return 1;
+            return 0;
+          };
+          const scoreA = getScore(autoA);
+          const scoreB = getScore(autoB);
+          if (scoreA !== scoreB) {
+            return sortAscending ? scoreA - scoreB : scoreB - scoreA;
+          }
+          const timeA = autoA ? new Date(autoA.updated_at || autoA.created_at).getTime() : 0;
+          const timeB = autoB ? new Date(autoB.updated_at || autoB.created_at).getTime() : 0;
+          return sortAscending ? timeA - timeB : timeB - timeA;
         }
 
         // Default sorting

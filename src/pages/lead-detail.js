@@ -6,11 +6,12 @@ import { modal } from '../components/modal';
 import { toast } from '../components/toast';
 import { openContactEditModal } from '../components/contact-edit-modal';
 import { notifyNewInteraction } from '../utils/interaction-notifications';
+import { openAutomationExecutionDrawer } from '../components/automation-execution-drawer';
 
 export async function renderLeadDetail(leadId, onUpdate) {
   const currentUser = await auth.getCurrentUser();
   const isAdmin = currentUser?.profile?.role === 'super_admin';
-  let activeTab = localStorage.getItem('lead_detail_active_tab') || 'detail'; // 'detail', 'linked_contacts', 'interactions', 'comments', 'history'
+  let activeTab = localStorage.getItem('lead_detail_active_tab') || 'detail'; // 'detail', 'linked_contacts', 'interactions', 'comments', 'history', 'automations'
 
   let lead = null;
   let linkedContacts = []; // Contacts linked to the company
@@ -19,6 +20,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
   let statusHistory = [];
   let auditLogs = [];
   let whatsappMessages = [];
+  let automationExecutions = [];
 
   // Create loading wrapper inside modal
   const contentWrapper = document.createElement('div');
@@ -58,12 +60,13 @@ export async function renderLeadDetail(leadId, onUpdate) {
       linkedContacts = cache.getLeadContacts(leadId) || [];
 
       // 2. Only fetch dynamically changing transactional logs from Supabase
-      const [interactionsRes, commentsRes, historyRes, auditRes, whatsappRes] = await Promise.all([
+      const [interactionsRes, commentsRes, historyRes, auditRes, whatsappRes, autoExecRes] = await Promise.all([
         supabase.from('lead_interactions').select('*').eq('lead_id', leadId).order('contacted_at', { ascending: false }),
         supabase.from('lead_comments').select('*').eq('lead_id', leadId).order('created_at', { ascending: false }),
         supabase.from('lead_status_history').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
         supabase.from('lead_audit_log').select('*').eq('lead_id', leadId).order('changed_at', { ascending: false }),
-        supabase.from('whatsapp_messages').select('*').eq('lead_id', leadId).order('created_at', { ascending: true })
+        supabase.from('whatsapp_messages').select('*').eq('lead_id', leadId).order('created_at', { ascending: true }),
+        supabase.from('automation_executions').select('*, automations(id, name, trigger_type), contacts(id, first_name, last_name, phone, email), automation_execution_logs(*)').eq('lead_id', leadId).order('created_at', { ascending: false })
       ]);
 
       interactions = interactionsRes.data || [];
@@ -71,6 +74,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       statusHistory = historyRes.data || [];
       auditLogs = auditRes.data || [];
       whatsappMessages = whatsappRes.data || [];
+      automationExecutions = autoExecRes.data || [];
 
       renderContent();
     } catch (err) {
@@ -135,7 +139,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
     // Tab Navigation Bar
     const tabsBar = document.createElement('div');
-    tabsBar.className = 'flex items-center gap-2 md:gap-6 border-b border-[#d9d9dd] font-sans text-xs select-none overflow-x-auto no-scrollbar flex-nowrap shrink-0 w-full';
+    tabsBar.className = 'flex items-center gap-2 md:gap-6 border-b border-[#d9d9dd] font-sans text-xs select-none overflow-x-auto tabs-scrollbar flex-nowrap shrink-0 w-full pb-0.5';
     
     const tabs = [
       { id: 'detail', label: 'INFORMACIÓN GENERAL' },
@@ -144,6 +148,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       { id: 'whatsapp', label: '🟢 WHATSAPP' },
       { id: 'email', label: '✉️ ENVIAR EMAIL' },
       { id: 'comments', label: `COMENTARIOS (${comments.length})` },
+      { id: 'automations', label: `🤖 AUTOMATIZACIONES (${automationExecutions.length})` },
       { id: 'franquiday', label: '🎪 FRANQUIDAY' },
       { id: 'history', label: 'HISTORIAL' }
     ];
@@ -169,6 +174,22 @@ export async function renderLeadDetail(leadId, onUpdate) {
     bodyEl.appendChild(summaryHeader);
     bodyEl.appendChild(tabsBar);
     bodyEl.appendChild(tabContent);
+
+    // Wheel event listener for smooth horizontal scrolling with mouse wheel on desktop
+    tabsBar.addEventListener('wheel', (e) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        tabsBar.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+
+    // Auto-scroll active tab button into view
+    const activeBtn = tabsBar.querySelector(`[data-tab="${activeTab}"]`);
+    if (activeBtn) {
+      setTimeout(() => {
+        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }, 50);
+    }
 
     // Event listener for Comercial stage change dropdown
     const comercialSelect = summaryHeader.querySelector('#header-comercial-stage-select');
@@ -262,6 +283,8 @@ export async function renderLeadDetail(leadId, onUpdate) {
       renderEmailTab(tabContent);
     } else if (activeTab === 'comments') {
       renderCommentsTab(tabContent, profiles);
+    } else if (activeTab === 'automations') {
+      renderAutomationsTab(tabContent);
     } else if (activeTab === 'franquiday') {
       renderFranquidayTab(tabContent, stages);
     } else if (activeTab === 'history') {
@@ -284,6 +307,21 @@ export async function renderLeadDetail(leadId, onUpdate) {
         </div>
       </div>
     `;
+  }
+
+  async function refreshAutomations() {
+    if (activeTab === 'automations') showTabLoader();
+    try {
+      const res = await supabase
+        .from('automation_executions')
+        .select('*, automations(id, name, trigger_type), contacts(id, first_name, last_name, phone, email), automation_execution_logs(*)')
+        .eq('lead_id', lead.id)
+        .order('created_at', { ascending: false });
+      automationExecutions = res.data || [];
+      renderContent();
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async function refreshHistory() {
@@ -1577,6 +1615,253 @@ export async function renderLeadDetail(leadId, onUpdate) {
         ${timelineItems.map(item => item.html).join('')}
       </div>
     `;
+  }
+
+  // --- TAB 6: AUTOMATIZACIONES (HISTORIAL Y ESTADO) ---
+  function renderAutomationsTab(parent) {
+    parent.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'flex flex-col gap-4 animate-fade-in font-sans';
+
+    // Summary metrics
+    const activeCount = automationExecutions.filter(ex => ex.status === 'running' || ex.status === 'waiting').length;
+    const completedCount = automationExecutions.filter(ex => ex.status === 'completed').length;
+    const failedCount = automationExecutions.filter(ex => ex.status === 'failed').length;
+
+    const header = document.createElement('div');
+    header.className = 'flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-neutral-50 p-3.5 rounded-lg border border-neutral-200';
+    header.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-neutral-900 text-white flex items-center justify-center font-bold text-sm shrink-0">
+          🤖
+        </div>
+        <div>
+          <h4 class="text-xs font-bold font-display text-neutral-900 uppercase tracking-wider">Historial de Automatizaciones</h4>
+          <p class="text-[10px] text-neutral-500 font-mono">
+            ${automationExecutions.length} ejecuciones registradas (${activeCount} en curso · ${completedCount} finalizadas${failedCount > 0 ? ` · <span class="text-rose-600 font-bold">${failedCount} con error</span>` : ''})
+          </p>
+        </div>
+      </div>
+      <button id="btn-refresh-automations" class="px-3 py-1.5 bg-white hover:bg-neutral-100 border border-neutral-300 rounded-md font-mono text-[10px] font-bold text-neutral-700 uppercase tracking-wider transition-colors shadow-xs flex items-center gap-1.5 self-start sm:self-auto cursor-pointer">
+        <span>🔄</span> Actualizar
+      </button>
+    `;
+
+    header.querySelector('#btn-refresh-automations').addEventListener('click', () => {
+      refreshAutomations();
+    });
+
+    wrapper.appendChild(header);
+
+    if (automationExecutions.length === 0) {
+      const emptyState = document.createElement('div');
+      emptyState.className = 'py-12 px-4 border border-dashed border-neutral-300 rounded-xl flex flex-col items-center justify-center text-center text-neutral-400 gap-2 bg-neutral-50/50';
+      emptyState.innerHTML = `
+        <span class="text-3xl">🤖</span>
+        <h5 class="text-xs font-bold text-neutral-700 uppercase tracking-wider font-mono">Sin Automatizaciones</h5>
+        <p class="text-[11px] text-neutral-500 max-w-sm">
+          Este lead y sus contactos vinculados aún no han ingresado en ningún flujo automatizado.
+        </p>
+      `;
+      wrapper.appendChild(emptyState);
+      parent.appendChild(wrapper);
+      return;
+    }
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'flex flex-col gap-3';
+
+    automationExecutions.forEach(exec => {
+      const auto = exec.automations || {};
+      const contact = exec.contacts || {};
+      const logs = (exec.automation_execution_logs || []).sort((a, b) => (a.step_order || 0) - (b.step_order || 0));
+
+      const contactName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Contacto Principal';
+      const contactDetail = contact.phone || contact.email || 'Sin datos de contacto';
+
+      const autoName = auto.name || 'Automatización';
+      const triggerType = auto.trigger_type || 'flujo';
+
+      let triggerBadge = 'Manual / Segmento';
+      if (triggerType === 'lead_created') triggerBadge = 'Nuevo Lead';
+      else if (triggerType === 'stage_changed') triggerBadge = 'Cambio de Etapa';
+      else if (triggerType === 'scheduled_once') triggerBadge = 'Puntual';
+      else if (triggerType === 'scheduled_recurring') triggerBadge = 'Recurrente';
+
+      // Status visual configuration
+      let statusBadge = `<span class="px-2 py-0.5 rounded-full font-mono text-[9px] font-bold uppercase tracking-wider bg-neutral-200 text-neutral-700">${exec.status}</span>`;
+      let cardBorder = 'border-neutral-200 hover:border-neutral-300';
+      let iconBg = 'bg-neutral-100 text-neutral-600';
+      let iconSymbol = '🤖';
+
+      if (exec.status === 'running') {
+        statusBadge = `<span class="px-2 py-0.5 rounded-full font-mono text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping"></span>En Curso</span>`;
+        cardBorder = 'border-blue-200 bg-blue-50/20 hover:border-blue-300';
+        iconBg = 'bg-blue-100 text-blue-700';
+        iconSymbol = '⚡';
+      } else if (exec.status === 'waiting') {
+        statusBadge = `<span class="px-2 py-0.5 rounded-full font-mono text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">⏳ En Espera (Delay)</span>`;
+        cardBorder = 'border-amber-200 bg-amber-50/20 hover:border-amber-300';
+        iconBg = 'bg-amber-100 text-amber-700';
+        iconSymbol = '⏳';
+      } else if (exec.status === 'completed') {
+        statusBadge = `<span class="px-2 py-0.5 rounded-full font-mono text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">✓ Completada</span>`;
+        cardBorder = 'border-neutral-200 hover:border-neutral-300';
+        iconBg = 'bg-emerald-100 text-emerald-700';
+        iconSymbol = '✓';
+      } else if (exec.status === 'failed') {
+        statusBadge = `<span class="px-2 py-0.5 rounded-full font-mono text-[9px] font-bold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">❌ Error</span>`;
+        cardBorder = 'border-rose-200 bg-rose-50/20 hover:border-rose-300';
+        iconBg = 'bg-rose-100 text-rose-700';
+        iconSymbol = '⚠️';
+      } else if (exec.status === 'cancelled') {
+        statusBadge = `<span class="px-2 py-0.5 rounded-full font-mono text-[9px] font-bold uppercase tracking-wider bg-neutral-200 text-neutral-700">🛑 Cancelada</span>`;
+        iconSymbol = '🛑';
+      }
+
+      // Step logs chips summary
+      const logsSummaryHtml = logs.length > 0 ? `
+        <div class="flex items-center gap-1.5 flex-wrap pt-2 mt-2 border-t border-neutral-100">
+          <span class="text-[10px] font-mono text-neutral-400 mr-1">Pasos ejecutados:</span>
+          ${logs.map(l => {
+            let stepIcon = '⚙️';
+            let stepLabel = `Paso ${l.step_order}`;
+            if (l.step_type === 'send_whatsapp') { stepIcon = '🟢'; stepLabel = 'WhatsApp'; }
+            else if (l.step_type === 'send_email') { stepIcon = '✉️'; stepLabel = 'Email'; }
+            else if (l.step_type === 'delay') { stepIcon = '⏳'; stepLabel = 'Espera'; }
+            else if (l.step_type === 'change_stage') { stepIcon = '🔄'; stepLabel = 'Cambio Etapa'; }
+            else if (l.step_type === 'add_comment') { stepIcon = '💬'; stepLabel = 'Comentario'; }
+
+            const isSuccess = l.status === 'completed';
+            const isWait = l.status === 'waiting';
+
+            const chipColor = isSuccess 
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : (isWait ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-rose-50 text-rose-800 border-rose-200');
+
+            return `
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-mono border ${chipColor}" title="Ejecutado: ${l.executed_at ? formatDateTime(l.executed_at) : '—'}">
+                <span>${stepIcon}</span>
+                <span>#${l.step_order} ${stepLabel}</span>
+              </span>
+            `;
+          }).join('')}
+        </div>
+      ` : '';
+
+      const card = document.createElement('div');
+      card.className = `p-4 rounded-xl border ${cardBorder} bg-white shadow-xs transition-all flex flex-col gap-2.5`;
+      card.innerHTML = `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center font-bold text-sm shrink-0">
+              ${iconSymbol}
+            </div>
+            <div>
+              <h5 class="text-xs font-bold text-neutral-900 leading-snug">${autoName}</h5>
+              <div class="flex items-center gap-2 text-[10px] text-neutral-500 font-mono mt-0.5">
+                <span class="bg-neutral-100 px-1.5 py-0.2 rounded text-neutral-600 uppercase">${triggerBadge}</span>
+                <span>•</span>
+                <span>Destinatario: <b class="text-neutral-700">${contactName}</b> (${contactDetail})</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            ${statusBadge}
+            ${['running', 'waiting'].includes(exec.status) ? `
+              <button class="btn-cancel-exec px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md font-mono text-[10px] font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer flex items-center gap-1">
+                🛑 Detener Flujo
+              </button>
+            ` : ''}
+            <button class="btn-open-exec-drawer px-3 py-1 bg-neutral-900 hover:bg-neutral-800 text-white rounded-md font-mono text-[10px] font-bold uppercase tracking-wider transition-colors shadow-xs cursor-pointer flex items-center gap-1">
+              Ver Detalle →
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-neutral-50/70 p-2.5 rounded-lg border border-neutral-100 text-[10px] font-mono">
+          <div>
+            <span class="text-neutral-400 block text-[9px]">INICIADO</span>
+            <span class="text-neutral-700 font-bold">${exec.created_at ? formatDateTime(exec.created_at) : '—'}</span>
+          </div>
+          <div>
+            <span class="text-neutral-400 block text-[9px]">ÚLTIMA ACTIVIDAD</span>
+            <span class="text-neutral-700 font-bold">${exec.updated_at ? formatDateTime(exec.updated_at) : '—'}</span>
+          </div>
+          <div>
+            <span class="text-neutral-400 block text-[9px]">ESTADO ACTUAL</span>
+            <span class="text-neutral-700 font-bold">Paso #${exec.current_step_order || 1} ${exec.scheduled_for && (exec.status === 'waiting' || exec.status === 'running') ? `(Próximo: ${formatDateTime(exec.scheduled_for)})` : ''}</span>
+          </div>
+        </div>
+
+        ${exec.error_message ? `
+          <div class="bg-rose-50 border border-rose-200 text-rose-800 text-[10px] p-2.5 rounded-lg flex items-start gap-2">
+            <span class="text-xs">⚠️</span>
+            <div class="flex-1 font-mono">
+              <b>Error en la ejecución:</b>
+              <p class="mt-0.5 font-sans">${exec.error_message}</p>
+            </div>
+          </div>
+        ` : ''}
+
+        ${logsSummaryHtml}
+      `;
+
+      const cancelBtn = card.querySelector('.btn-cancel-exec');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', async () => {
+          if (!confirm(`¿Estás seguro de detener la automatización "${autoName}" para ${contactName}? Ya no se ejecutarán los pasos pendientes.`)) {
+            return;
+          }
+
+          try {
+            cancelBtn.disabled = true;
+            cancelBtn.innerHTML = `<span>⏳ Deteniendo...</span>`;
+
+            const nowIso = new Date().toISOString();
+            const { error: updErr } = await supabase
+              .from('automation_executions')
+              .update({
+                status: 'cancelled',
+                updated_at: nowIso
+              })
+              .eq('id', exec.id);
+
+            if (updErr) throw updErr;
+
+            await supabase.from('automation_execution_logs').insert({
+              execution_id: exec.id,
+              step_order: exec.current_step_order || 1,
+              step_type: 'cancelled',
+              status: 'completed',
+              output_data: { message: `Flujo detenido manualmente por ${currentUser?.profile?.full_name || 'el usuario'} desde la ficha del lead` },
+              executed_at: nowIso
+            });
+
+            toast.show('Automatización detenida correctamente', 'success');
+
+            await cache.loadAll();
+            await refreshAutomations();
+          } catch (err) {
+            console.error('Error stopping automation execution:', err);
+            toast.show('Error al detener la automatización: ' + err.message, 'error');
+            cancelBtn.disabled = false;
+            cancelBtn.innerHTML = `<span>🛑 Detener Flujo</span>`;
+          }
+        });
+      }
+
+      card.querySelector('.btn-open-exec-drawer').addEventListener('click', () => {
+        openAutomationExecutionDrawer(exec.id, () => {
+          refreshAutomations();
+        });
+      });
+
+      listContainer.appendChild(card);
+    });
+
+    wrapper.appendChild(listContainer);
+    parent.appendChild(wrapper);
   }
 
   function translateFieldName(field) {

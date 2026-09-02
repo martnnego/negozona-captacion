@@ -342,14 +342,25 @@ export async function openAutomationExecutionDrawer(executionId, onUpdated) {
       cancelBtn.className = 'px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-mono font-bold uppercase rounded-lg transition-colors cursor-pointer flex items-center gap-1.5';
       cancelBtn.innerHTML = `<span>🛑 Cancelar Ejecución</span>`;
       cancelBtn.addEventListener('click', async () => {
-        if (!confirm('¿Estás seguro de cancelar esta ejecución activa?')) return;
+        if (!confirm('¿Estás seguro de cancelar esta ejecución activa? Ya no se ejecutarán los pasos pendientes.')) return;
         try {
+          const nowIso = new Date().toISOString();
           await supabase
             .from('automation_executions')
-            .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+            .update({ status: 'cancelled', updated_at: nowIso })
             .eq('id', exec.id);
 
+          await supabase.from('automation_execution_logs').insert({
+            execution_id: exec.id,
+            step_order: exec.current_step_order || 1,
+            step_type: 'cancelled',
+            status: 'completed',
+            output_data: { message: 'Flujo cancelado manualmente por el usuario desde el visor de pasos' },
+            executed_at: nowIso
+          });
+
           toast.show('Ejecución cancelada', 'info');
+          await cache.loadAll();
           if (onUpdated) onUpdated();
           await loadExecutionDetail();
         } catch (e) {
