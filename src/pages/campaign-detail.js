@@ -734,6 +734,7 @@ export async function renderCampaignDetail(campaignId) {
               <thead class="sticky top-0 bg-neutral-900 text-white font-mono text-[10px] uppercase tracking-wider z-10">
                 <tr>
                   <th class="py-2.5 px-4">Destinatario</th>
+                  <th class="py-2.5 px-4">Empresa / Marca</th>
                   <th class="py-2.5 px-4">Teléfono</th>
                   <th class="py-2.5 px-4">Estado</th>
                   <th class="py-2.5 px-4">WAMID / Detalle</th>
@@ -743,7 +744,7 @@ export async function renderCampaignDetail(campaignId) {
               <tbody class="divide-y divide-neutral-200 font-mono">
                 ${recipients.length === 0 ? `
                   <tr>
-                    <td colspan="5" class="py-8 text-center text-neutral-400">Sin registros en la cola de envíos.</td>
+                    <td colspan="6" class="py-8 text-center text-neutral-400">Sin registros en la cola de envíos.</td>
                   </tr>
                 ` : recipients.map(r => {
                   const contactsList = cache.contacts instanceof Map ? Array.from(cache.contacts.values()) : (Array.isArray(cache.contacts) ? cache.contacts : []);
@@ -753,9 +754,11 @@ export async function renderCampaignDetail(campaignId) {
                   const leadName = contactObj 
                     ? `${contactObj.first_name || ''} ${contactObj.last_name || ''}`.trim()
                     : (r.resolved_variables?.['1'] || r.leads?.company || 'Prospecto sin nombre');
+                  const companyName = r.leads?.company || '-';
                   return `
                     <tr class="hover:bg-neutral-50 transition-colors">
                       <td class="py-2.5 px-4 font-sans font-medium text-neutral-800">${leadName}</td>
+                      <td class="py-2.5 px-4 font-sans font-semibold text-neutral-900">${companyName}</td>
                       <td class="py-2.5 px-4 text-neutral-600">${r.recipient_phone}</td>
                       <td class="py-2.5 px-4">
                         ${getRecipientStatusBadge(r.status, r.discard_reason)}
@@ -793,6 +796,7 @@ export async function renderCampaignDetail(campaignId) {
     if (status === 'read') return `<span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-blue-600 font-extrabold">✓✓</span> LEÍDO</span>`;
     if (status === 'delivered') return `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-emerald-600 font-bold">✓✓</span> ENTREGADO</span>`;
     if (status === 'sent') return `<span class="px-2 py-0.5 bg-teal-100 text-teal-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-teal-600 font-bold">✓</span> ENVIADO</span>`;
+    if (status === 'processing') return `<span class="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-indigo-600 font-bold animate-pulse">⚡</span> PROCESANDO</span>`;
     if (status === 'failed') return `<span class="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-rose-600 font-bold">✗</span> FALLIDO</span>`;
     if (status === 'discarded') return `<span class="px-2 py-0.5 bg-neutral-200 text-neutral-700 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span>🚫</span> DESCARTADO (${discardReason || 'Regla 24h'})</span>`;
     return `<span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[9px] flex items-center gap-1 w-fit"><span class="text-amber-600 font-bold">🕒</span> PENDIENTE</span>`;
@@ -878,6 +882,16 @@ export async function renderCampaignDetail(campaignId) {
                 <strong class="text-neutral-900 text-xs font-bold">En cola de espera</strong>
                 <p class="text-neutral-600 text-[11px] leading-relaxed">
                   El contacto fue seleccionado y calificado por los filtros de la audiencia, pero el despachador automático aún no procesó su envío (se despachan en lotes cada minuto).
+                </p>
+              </div>
+            </div>
+
+            <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex items-start gap-3">
+              <span class="px-2.5 py-1 bg-indigo-100 text-indigo-900 border border-indigo-300/80 rounded-full font-mono font-bold text-[9.5px] shrink-0">⚡ PROCESANDO</span>
+              <div class="flex flex-col gap-0.5">
+                <strong class="text-neutral-900 text-xs font-bold">En despacho activo</strong>
+                <p class="text-neutral-600 text-[11px] leading-relaxed">
+                  El destinatario fue reclamado de manera atómica por el motor de envíos y se está conectando con la API de Meta para transmitir la plantilla de forma segura.
                 </p>
               </div>
             </div>
