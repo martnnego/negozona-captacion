@@ -140,7 +140,13 @@ export async function renderDashboard(currentUser) {
 
       <!-- Activity Feed -->
       <div class="bg-white border border-[#d9d9dd] rounded-sm p-6 flex flex-col h-[400px]">
-        <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase mb-4">Actividad Reciente</span>
+        <div class="flex items-center justify-between mb-4">
+          <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase">Actividad Reciente</span>
+          <a href="#notifications" class="text-[10px] font-mono font-bold text-action-blue hover:underline flex items-center gap-1 uppercase tracking-wider">
+            <span>Ver historial completo</span>
+            <span>➔</span>
+          </a>
+        </div>
         <div id="activity-feed-container" class="flex-1 overflow-y-auto divide-y divide-neutral-100 pr-1">
           <!-- Feed items -->
         </div>

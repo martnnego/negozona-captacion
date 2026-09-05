@@ -82,6 +82,12 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
       <div id="notifications-list" class="flex-1 overflow-y-auto divide-y divide-[#d9d9dd] max-h-72">
         <div class="p-4 text-center text-xs text-neutral-400 font-sans">Cargando...</div>
       </div>
+      <div class="px-4 py-2.5 bg-neutral-50 border-t border-[#d9d9dd] text-center shrink-0">
+        <a href="#notifications" id="bell-view-all-link" class="font-sans text-xs font-semibold text-action-blue hover:underline flex items-center justify-center gap-1 cursor-pointer">
+          <span>Ver historial completo</span>
+          <span class="font-mono text-[10px]">➔</span>
+        </a>
+      </div>
     </div>
   `;
 
@@ -92,6 +98,13 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
   const list = container.querySelector('#notifications-list');
   const markAllBtn = container.querySelector('#mark-all-read-btn');
   const soundToggleBtn = container.querySelector('#sound-toggle-btn');
+  const viewAllLink = container.querySelector('#bell-view-all-link');
+
+  if (viewAllLink) {
+    viewAllLink.addEventListener('click', () => {
+      dropdown.classList.add('hidden');
+    });
+  }
 
   // Sound Toggle Handler
   soundToggleBtn.addEventListener('click', (e) => {
@@ -154,6 +167,16 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
       badge.classList.add('hidden');
     }
 
+    const sidebarBadge = document.getElementById('sidebar-notifications-badge');
+    if (sidebarBadge) {
+      if (unreadCount > 0) {
+        sidebarBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+        sidebarBadge.classList.remove('hidden');
+      } else {
+        sidebarBadge.classList.add('hidden');
+      }
+    }
+
     if (notifications.length === 0) {
       list.innerHTML = `<div class="p-6 text-center text-xs text-neutral-400 font-sans">No tienes notificaciones</div>`;
       return;
@@ -197,6 +220,8 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
 
         if ((type === 'campaign_created' || type === 'campaign_status') && window.location.hash !== '#campaigns') {
           window.location.hash = '#campaigns';
+        } else if (type === 'user_feedback') {
+          window.location.hash = '#settings-feedback';
         } else if (leadId && onNotificationClick) {
           if (type === 'lead_interaction') {
             localStorage.setItem('lead_detail_active_tab', 'interactions');

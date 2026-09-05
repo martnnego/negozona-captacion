@@ -4,6 +4,8 @@ import { toast } from '../components/toast';
 import { modal } from '../components/modal';
 import { auth } from '../lib/auth';
 import { renderRecursosTab } from './settings-recursos';
+import { renderFeedbackTab } from './settings-feedback';
+import { renderSidebar } from '../components/sidebar';
 
 export function renderSettings(currentUser) {
   const container = document.createElement('div');
@@ -20,6 +22,8 @@ export function renderSettings(currentUser) {
     activeTab = 'pipeline';
   } else if (currentHash === '#settings-franquiday' && isAdmin) {
     activeTab = 'franquiday';
+  } else if (currentHash === '#settings-feedback' && isAdmin) {
+    activeTab = 'feedback';
   } else if (currentHash === '#settings-recursos') {
     activeTab = 'recursos';
   } else if (currentHash === '#settings-integrations') {
@@ -31,6 +35,7 @@ export function renderSettings(currentUser) {
     if (activeTab === 'users' && !isAdmin) activeTab = 'profile';
     if (activeTab === 'pipeline' && !isAdmin) activeTab = 'profile';
     if (activeTab === 'franquiday' && !isAdmin) activeTab = 'profile';
+    if (activeTab === 'feedback' && !isAdmin) activeTab = 'profile';
   }
 
   localStorage.setItem('settings_active_tab', activeTab);
@@ -79,6 +84,13 @@ export function renderSettings(currentUser) {
           }">
             EVENTOS FRANQUIDAY
           </button>
+          <button data-tab="feedback" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer shrink-0 ${
+            activeTab === 'feedback' 
+              ? 'text-primary border-b-2 border-primary -mb-[1px]' 
+              : 'text-[#616161] hover:text-primary border-b-2 border-transparent'
+          }">
+            FEEDBACK
+          </button>
         ` : ''}
         <button data-tab="recursos" class="py-2.5 font-bold tracking-wider relative focus:outline-none transition-colors duration-150 cursor-pointer shrink-0 ${
           activeTab === 'recursos' 
@@ -119,6 +131,9 @@ export function renderSettings(currentUser) {
       renderPipelineTab(contentArea);
     } else if (activeTab === 'franquiday') {
       renderFranquidayTab(contentArea);
+    } else if (activeTab === 'feedback' && isAdmin) {
+      contentArea.innerHTML = '';
+      contentArea.appendChild(renderFeedbackTab(currentUser));
     } else if (activeTab === 'recursos') {
       renderRecursosTab(contentArea, currentUser);
     } else if (activeTab === 'integrations') {
@@ -927,6 +942,9 @@ export function renderSettings(currentUser) {
     let mailingConnected = false;
     let zapierSecret = '';
     let mailingSettings = {};
+    let salesqlConnected = false;
+    let salesqlApiKey = '';
+    let salesqlIntegrationEnabled = false;
     
     try {
       const { data: settingsData } = await supabase
@@ -940,6 +958,9 @@ export function renderSettings(currentUser) {
         try { mailingSettings = JSON.parse(settings.google_service_account_config); } catch (e) {}
       }
       zapierSecret = settings.zapier_webhook_secret || 'No configurado';
+      salesqlConnected = !!settings.salesql_api_key;
+      salesqlApiKey = settings.salesql_api_key || '';
+      salesqlIntegrationEnabled = settings.salesql_integration_enabled === 'true';
     } catch (e) {
       console.error('Error fetching integration settings status:', e);
     }
@@ -1031,6 +1052,50 @@ export function renderSettings(currentUser) {
             <button id="btn-view-zapier-secret" class="w-full py-2 border border-neutral-200 bg-white hover:bg-neutral-50 text-[#616161] hover:text-primary text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer text-center">
               Ver Clave API
             </button>
+          </div>
+
+          <!-- Card 4: SalesQL B2B API -->
+          <div class="bg-white border border-[#d9d9dd] rounded-sm p-6 flex flex-col justify-between gap-6 transition-shadow duration-150 hover:shadow-xs">
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center justify-between">
+                <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
+                  🔎
+                </div>
+                <span class="font-mono text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                  salesqlIntegrationEnabled 
+                    ? (salesqlConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200')
+                    : 'bg-neutral-100 text-neutral-500 border border-neutral-200'
+                }">
+                  ${!salesqlIntegrationEnabled ? 'Desactivado' : (salesqlConnected ? 'Activo' : 'Sin Clave')}
+                </span>
+              </div>
+              <div class="flex flex-col gap-1">
+                <h4 class="font-bold text-primary font-display text-sm">SalesQL B2B API</h4>
+                <p class="text-neutral-500 text-[11px] leading-relaxed">
+                  Búsqueda de prospectos y enriquecimiento de empresas y contactos B2B vía API oficial de SalesQL.
+                </p>
+              </div>
+
+              <!-- Switch Habilitar / Deshabilitar Integración -->
+              <div class="mt-2 pt-3 border-t border-neutral-100 flex items-center justify-between">
+                <div class="flex flex-col">
+                  <span class="font-mono text-[9px] font-bold text-primary uppercase">Habilitar en CRM</span>
+                  <span class="text-[10px] text-neutral-400">Menú lateral y enriquecimiento</span>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="toggle-salesql-enabled" class="sr-only peer" ${salesqlIntegrationEnabled ? 'checked' : ''} />
+                  <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btn-configure-salesql" class="flex-1 py-2 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer text-center">
+                Configurar
+              </button>
+              <button id="btn-test-salesql" class="py-2 px-3 border border-neutral-200 bg-white hover:bg-neutral-50 text-[#616161] hover:text-primary text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 focus:outline-none cursor-pointer text-center">
+                Testear
+              </button>
+            </div>
           </div>
 
         </div>
@@ -1146,6 +1211,217 @@ export function renderSettings(currentUser) {
         actions: [{ text: 'Cerrar', primary: true }]
       });
     });
+
+    // Toggle SalesQL Integration enabled/disabled handler
+    const toggleSalesql = parent.querySelector('#toggle-salesql-enabled');
+    if (toggleSalesql) {
+      toggleSalesql.addEventListener('change', async (e) => {
+        const isEnabled = e.target.checked;
+        try {
+          const { error } = await supabase
+            .from('crm_settings')
+            .upsert({
+              key: 'salesql_integration_enabled',
+              value: isEnabled ? 'true' : 'false',
+              description: 'Indica si la integración con SalesQL API está activa en la interfaz',
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'key' });
+
+          if (error) throw error;
+
+          cache.setSetting('salesql_integration_enabled', isEnabled ? 'true' : 'false');
+
+          // Update sidebar immediately in DOM
+          const existingSidebar = document.querySelector('aside.sidebar-responsive');
+          if (existingSidebar) {
+            const currentUser = await auth.getCurrentUser();
+            const newSidebar = renderSidebar(currentUser);
+            existingSidebar.replaceWith(newSidebar);
+          }
+
+          toast.show(
+            isEnabled ? 'Integración con SalesQL activada' : 'Integración con SalesQL desactivada',
+            'success'
+          );
+
+          await renderIntegrationsTab(parent);
+        } catch (err) {
+          console.error('Error toggling SalesQL integration:', err);
+          toast.show('Error al cambiar estado de integración: ' + err.message, 'error');
+          e.target.checked = !isEnabled;
+        }
+      });
+    }
+
+    // Configure SalesQL click handler
+    const btnConfigSalesql = parent.querySelector('#btn-configure-salesql');
+    if (btnConfigSalesql) {
+      btnConfigSalesql.addEventListener('click', () => {
+        modal.create({
+          title: 'Configurar SalesQL API',
+          content: `
+            <form id="salesql-config-form" class="flex flex-col gap-4 font-sans text-xs">
+              <p class="text-neutral-600 leading-relaxed">
+                Ingresa la API Key de tu cuenta SalesQL (Plan Professional u Organization). Esta clave se utiliza en el backend seguro para el Buscador de Prospectos y el Enriquecimiento de Leads.
+              </p>
+
+              <div class="flex flex-col gap-1">
+                <label for="salesql-api-key-input" class="font-mono text-[9px] font-bold text-primary uppercase">API Key de SalesQL *</label>
+                <input type="password" id="salesql-api-key-input" required value="${salesqlApiKey}" placeholder="Ingresa tu API Key" class="cohere-input text-xs font-mono" />
+                <div class="flex items-center gap-2 mt-1">
+                  <input type="checkbox" id="show-salesql-key" class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                  <label for="show-salesql-key" class="text-[10px] text-neutral-500 cursor-pointer select-none">Mostrar clave</label>
+                </div>
+              </div>
+
+              <div class="bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-sm p-3 flex flex-col gap-1 text-[11px]">
+                <span class="font-bold">🔒 Seguridad garantizada:</span>
+                <span class="text-indigo-700">La clave se almacena en el backend protegido y nunca se expone a los comerciales.</span>
+              </div>
+            </form>
+          `,
+          actions: [
+            { text: 'Cancelar', primary: false },
+            {
+              text: 'Guardar Clave',
+              primary: true,
+              onClick: async (closeModal) => {
+                const modalEl = document.querySelector('.modal-overlay') || document;
+                const newKey = modalEl.querySelector('#salesql-api-key-input').value.trim();
+
+                if (!newKey) {
+                  toast.show('Por favor ingresa una API Key válida', 'error');
+                  return;
+                }
+
+                try {
+                  const { error } = await supabase
+                    .from('crm_settings')
+                    .upsert({
+                      key: 'salesql_api_key',
+                      value: newKey,
+                      description: 'Clave de API pública de SalesQL para búsqueda y enriquecimiento B2B',
+                      updated_at: new Date().toISOString()
+                    }, { onConflict: 'key' });
+
+                  if (error) throw error;
+                  toast.show('API Key de SalesQL guardada exitosamente', 'success');
+                  if (typeof closeModal === 'function') closeModal();
+                  await renderIntegrationsTab(parent);
+                } catch (err) {
+                  console.error('Error guardando clave de SalesQL:', err);
+                  toast.show('Error al guardar: ' + err.message, 'error');
+                }
+              }
+            }
+          ]
+        });
+
+        const modalEl = document.querySelector('.modal-overlay') || document;
+        const keyInput = modalEl.querySelector('#salesql-api-key-input');
+        const showCheckbox = modalEl.querySelector('#show-salesql-key');
+        if (showCheckbox && keyInput) {
+          showCheckbox.addEventListener('change', (e) => {
+            keyInput.type = e.target.checked ? 'text' : 'password';
+          });
+        }
+      });
+    }
+
+    // Test SalesQL Connection click handler
+    const btnTestSalesql = parent.querySelector('#btn-test-salesql');
+    if (btnTestSalesql) {
+      btnTestSalesql.addEventListener('click', async () => {
+        btnTestSalesql.disabled = true;
+        const originalText = btnTestSalesql.innerHTML;
+        btnTestSalesql.innerHTML = '<span class="animate-spin inline-block">🔄</span> Testeando...';
+
+        try {
+          const session = await auth.getSession();
+          const jwt = session?.access_token;
+          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/salesql-proxy`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${jwt}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action: 'test-connection' })
+          });
+
+          const data = await res.json();
+          if (res.ok && data.success) {
+            const credits = data.allowance?.credits || {};
+            const emailsAndPhones = credits.emails_and_phones ?? 0;
+            const verifications = credits.verifications ?? 0;
+            const resetDate = data.allowance?.reset_date ? new Date(data.allowance.reset_date).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'No disponible';
+
+            modal.create({
+              title: 'Estado de Conexión SalesQL API',
+              content: `
+                <div class="flex flex-col gap-4 font-sans text-xs">
+                  <div class="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-sm flex items-center gap-2">
+                    <span class="text-base">✅</span>
+                    <div class="flex flex-col">
+                      <span class="font-bold">Conexión y autenticación exitosas con SalesQL API</span>
+                      <span class="text-[11px] text-emerald-800">La API Key configurada es válida y el servicio responde correctamente.</span>
+                    </div>
+                  </div>
+
+                  <div class="border border-neutral-200 rounded-sm p-3.5 bg-neutral-50 flex flex-col gap-2.5">
+                    <div class="flex items-center justify-between border-b border-neutral-200 pb-2">
+                      <span class="font-mono text-[10px] uppercase font-bold text-neutral-600">Saldo de Créditos en Vivo (SalesQL)</span>
+                      <span class="text-[10px] text-neutral-400">Endpoint: /v1/allowance</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div class="p-3 bg-white border ${emailsAndPhones === 0 ? 'border-amber-300 bg-amber-50/40' : 'border-neutral-200'} rounded-sm flex flex-col gap-1">
+                        <span class="text-[10px] text-neutral-500 font-mono uppercase font-bold">Emails y Teléfonos (Búsqueda / Enriquecer):</span>
+                        <div class="flex items-baseline gap-1.5">
+                          <span class="text-lg font-bold font-mono ${emailsAndPhones === 0 ? 'text-amber-700' : 'text-primary'}">${emailsAndPhones}</span>
+                          <span class="text-[11px] text-neutral-500">créditos</span>
+                        </div>
+                        ${emailsAndPhones === 0 ? `
+                          <div class="text-[10px] text-amber-800 font-semibold bg-amber-100/70 p-1.5 rounded-xs mt-1">
+                            ⚠️ Saldo agotado. Esta bolsa es la requerida para buscar personas, teléfonos y enriquecer contactos.
+                          </div>
+                        ` : ''}
+                      </div>
+
+                      <div class="p-3 bg-white border border-neutral-200 rounded-sm flex flex-col gap-1">
+                        <span class="text-[10px] text-neutral-500 font-mono uppercase font-bold">Verificaciones de Email:</span>
+                        <div class="flex items-baseline gap-1.5">
+                          <span class="text-lg font-bold font-mono text-emerald-700">${verifications.toLocaleString()}</span>
+                          <span class="text-[11px] text-neutral-500">créditos</span>
+                        </div>
+                        <span class="text-[10px] text-neutral-400 mt-1">
+                          Se utilizan únicamente para comprobar la entregabilidad de emails existentes.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-1 text-[11px] text-neutral-500">
+                      <span>Próxima fecha de renovación: <b>${resetDate}</b></span>
+                      <a href="https://salesql.com" target="_blank" class="text-indigo-600 hover:text-indigo-800 font-bold underline">
+                        Abrir panel de SalesQL ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              `,
+              actions: [{ text: 'Cerrar', primary: true }]
+            });
+          } else {
+            toast.show('❌ Error al conectar con SalesQL: ' + (data.error || 'Credenciales no autorizadas'), 'error');
+          }
+        } catch (err) {
+          console.error('Error testeando conexión con SalesQL:', err);
+          toast.show('Error al conectar con la Edge Function: ' + err.message, 'error');
+        } finally {
+          btnTestSalesql.disabled = false;
+          btnTestSalesql.innerHTML = originalText;
+        }
+      });
+    }
   }
 
   async function renderWhatsAppConfig(parent) {

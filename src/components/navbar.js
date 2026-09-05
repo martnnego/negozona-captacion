@@ -1,4 +1,5 @@
 import { renderNotificationBell } from './notification-bell';
+import { openFeedbackModal } from './feedback-modal';
 
 export function renderNavbar(currentUser, onNotificationClick) {
   const navbar = document.createElement('nav');
@@ -19,6 +20,7 @@ export function renderNavbar(currentUser, onNotificationClick) {
   else if (hash === '#settings-pipeline') viewTitle = 'Etapas del Pipeline';
   else if (hash === '#settings-franquiday') viewTitle = 'Eventos Franquiday';
   else if (hash === '#settings-integrations') viewTitle = 'Integraciones';
+  else if (hash === '#settings-feedback') viewTitle = 'Feedback de Usuarios';
   else if (hash.startsWith('#settings')) viewTitle = 'Configuración';
 
   navbar.innerHTML = `
@@ -35,7 +37,15 @@ export function renderNavbar(currentUser, onNotificationClick) {
     </div>
 
     <!-- Actions -->
-    <div id="navbar-actions" class="flex items-center gap-4">
+    <div id="navbar-actions" class="flex items-center gap-3">
+      <button 
+        id="navbar-feedback-btn" 
+        class="flex items-center gap-1.5 px-3 py-1.5 border border-neutral-300 hover:border-primary bg-white hover:bg-neutral-50 text-neutral-700 hover:text-primary rounded-full font-sans text-xs font-semibold tracking-wide transition-all duration-150 cursor-pointer shadow-2xs" 
+        title="Enviar feedback, reportar un problema o compartir una idea"
+      >
+        <span class="text-sm">💬</span>
+        <span class="hidden sm:inline">Feedback</span>
+      </button>
       <!-- Bell goes here -->
     </div>
   `;
@@ -59,6 +69,13 @@ export function renderNavbar(currentUser, onNotificationClick) {
   });
 
   const actionsContainer = navbar.querySelector('#navbar-actions');
+  const feedbackBtn = navbar.querySelector('#navbar-feedback-btn');
+  if (feedbackBtn) {
+    feedbackBtn.addEventListener('click', () => {
+      openFeedbackModal();
+    });
+  }
+
   const bellElement = renderNotificationBell(currentUser, onNotificationClick);
   actionsContainer.appendChild(bellElement);
 

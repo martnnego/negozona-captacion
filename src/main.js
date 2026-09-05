@@ -19,6 +19,8 @@ import { renderEmailTemplates } from './pages/email-templates';
 import { renderMailingStats } from './pages/mailing-stats';
 import { renderAutomations } from './pages/automations';
 import { renderAutomationDetail } from './pages/automation-detail';
+import { renderSalesqlSearch } from './pages/salesql-search';
+import { renderNotifications } from './pages/notifications';
 import { renderInDevelopment } from './pages/in-development';
 
 import { realtime } from './lib/realtime';
@@ -26,8 +28,10 @@ import { realtime } from './lib/realtime';
 const routes = {
   '#login': renderLogin,
   '#dashboard': renderDashboard,
+  '#notifications': renderNotifications,
   '#leads-table': renderLeadsTable,
   '#leads-kanban': renderLeadsKanban,
+  '#salesql-search': renderSalesqlSearch,
   '#unmatched-whatsapp': renderUnmatchedWhatsApp,
   '#leads-by-company': renderLeadsByCompany,
   '#settings': renderSettings,
@@ -37,6 +41,7 @@ const routes = {
   '#settings-franquiday': renderSettings,
   '#settings-recursos': renderSettings,
   '#settings-integrations': renderSettings,
+  '#settings-feedback': renderSettings,
   '#campaigns': renderCampaigns,
   '#templates': renderEmailTemplates,
   '#mailing-stats': renderMailingStats,

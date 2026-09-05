@@ -1,5 +1,7 @@
 import { auth } from '../lib/auth';
 import { router } from '../lib/router';
+import { cache } from '../lib/cache';
+import { supabase } from '../lib/supabase';
 
 export function renderSidebar(currentUser) {
   const sidebar = document.createElement('aside');
@@ -7,9 +9,10 @@ export function renderSidebar(currentUser) {
 
   const currentHash = window.location.hash || '#dashboard';
   const isAdmin = currentUser?.profile?.role === 'super_admin';
+  const isSalesqlEnabled = cache.isSalesqlEnabled();
 
   // Determine active section for auto-expanding accordions
-  const isLeadsActive = ['#leads-table', '#leads-kanban', '#unmatched-whatsapp'].includes(currentHash);
+  const isLeadsActive = ['#leads-table', '#leads-kanban', '#unmatched-whatsapp', ...(isSalesqlEnabled ? ['#salesql-search'] : [])].includes(currentHash);
   const isMarketingActive = ['#campaigns', '#templates', '#mailing-stats'].includes(currentHash);
   const isConfigActive = currentHash.startsWith('#settings');
 
@@ -23,6 +26,22 @@ export function renderSidebar(currentUser) {
     }">
       <span class="text-sm">📊</span>
       <span>Dashboard</span>
+    </a>
+  `;
+
+  // Category 1.5: Notificaciones (Direct link)
+  const isNotificationsActive = currentHash === '#notifications';
+  const notificationsHtml = `
+    <a href="#notifications" class="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 w-full ${
+      isNotificationsActive 
+        ? 'bg-primary text-white font-bold' 
+        : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+    }">
+      <div class="flex items-center gap-3">
+        <span class="text-sm">🔔</span>
+        <span>Notificaciones</span>
+      </div>
+      <span id="sidebar-notifications-badge" class="hidden text-[9px] font-mono font-bold bg-coral text-white px-1.5 py-0.5 rounded-full shrink-0">0</span>
     </a>
   `;
 
@@ -53,6 +72,16 @@ export function renderSidebar(currentUser) {
           <span>🗂️</span>
           <span class="truncate">Kanban</span>
         </a>
+        ${isSalesqlEnabled ? `
+        <a href="#salesql-search" class="flex items-center gap-2 px-3 py-1.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+          currentHash === '#salesql-search'
+            ? 'bg-primary text-white font-bold'
+            : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+        }">
+          <span>🔎</span>
+          <span class="truncate">Buscador SalesQL</span>
+        </a>
+        ` : ''}
         <a href="#unmatched-whatsapp" class="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
           currentHash === '#unmatched-whatsapp'
             ? 'bg-primary text-white font-bold'
@@ -179,6 +208,17 @@ export function renderSidebar(currentUser) {
             <span>🎪</span>
             <span class="truncate">Franquiday</span>
           </a>
+          <a href="#settings-feedback" class="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
+            currentHash === '#settings-feedback'
+              ? 'bg-primary text-white font-bold'
+              : 'text-[#616161] hover:bg-soft-stone hover:text-primary'
+          }">
+            <div class="flex items-center gap-2 truncate">
+              <span>💬</span>
+              <span class="truncate">Feedback</span>
+            </div>
+            <span id="feedback-new-badge" class="hidden text-[8px] font-mono font-bold bg-rose-500 text-white px-1.5 py-0.2 rounded-full shrink-0">0</span>
+          </a>
         ` : ''}
         <a href="#settings-recursos" class="flex items-center gap-2 px-3 py-1.5 rounded-xs font-sans text-xs font-semibold tracking-wider transition-all duration-150 ${
           currentHash === '#settings-recursos'
@@ -220,6 +260,7 @@ export function renderSidebar(currentUser) {
     <!-- Navigation links -->
     <div class="flex-1 px-3 py-4 flex flex-col gap-1 overflow-y-auto overflow-x-hidden no-scrollbar">
       ${dashboardHtml}
+      ${notificationsHtml}
       ${leadsHtml}
       ${contactosHtml}
       ${marketingHtml}
@@ -290,6 +331,43 @@ export function renderSidebar(currentUser) {
       const backdrop = document.getElementById('sidebar-backdrop');
       if (backdrop) backdrop.classList.add('hidden');
     });
+  }
+
+  // Fetch unread notifications count for sidebar badge
+  if (currentUser?.id) {
+    supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', currentUser.id)
+      .eq('is_read', false)
+      .then(({ count, error }) => {
+        if (!error && count > 0) {
+          const badge = sidebar.querySelector('#sidebar-notifications-badge');
+          if (badge) {
+            badge.textContent = count > 99 ? '99+' : count;
+            badge.classList.remove('hidden');
+          }
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Fetch unreviewed feedback count for super_admin badge
+  if (isAdmin) {
+    supabase
+      .from('user_feedbacks')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'nuevo')
+      .then(({ count, error }) => {
+        if (!error && count > 0) {
+          const badge = sidebar.querySelector('#feedback-new-badge');
+          if (badge) {
+            badge.textContent = count > 99 ? '99+' : count;
+            badge.classList.remove('hidden');
+          }
+        }
+      })
+      .catch(() => {});
   }
 
   return sidebar;

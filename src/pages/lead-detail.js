@@ -35,6 +35,8 @@ export async function renderLeadDetail(leadId, onUpdate) {
     </div>
   `;
 
+  contentWrapper.dataset.leadId = leadId;
+
   const detailModal = modal.create({
     title: 'Ficha de Empresa / Marca',
     content: contentWrapper,
@@ -55,6 +57,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
         const leadRes = await supabase.from('leads').select('*').eq('id', leadId).single();
         if (leadRes.error) throw leadRes.error;
         lead = leadRes.data;
+      }
+      if (lead?.company) {
+        contentWrapper.dataset.companyName = lead.company;
       }
 
       linkedContacts = cache.getLeadContacts(leadId) || [];
@@ -371,13 +376,21 @@ export async function renderLeadDetail(leadId, onUpdate) {
         <div class="sm:col-span-2 bg-neutral-50 border border-neutral-200 rounded-sm p-4 flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <span class="font-mono text-[9px] font-bold text-primary uppercase">Validación de Empresa / Marca</span>
-            <span id="validation-status" class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-              isNameValidated 
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                : 'bg-amber-50 text-amber-700 border border-amber-200'
-            }">
-              ${isNameValidated ? 'Validado ✓' : 'Pendiente ⚠'}
-            </span>
+            <div class="flex items-center gap-2">
+              ${cache.isSalesqlEnabled() ? `
+              <button type="button" id="btn-enrich-company-salesql" class="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-mono font-bold uppercase rounded-sm tracking-wider transition-colors cursor-pointer flex items-center gap-1">
+                <span>✨</span>
+                <span>Enriquecer con SalesQL</span>
+              </button>
+              ` : ''}
+              <span id="validation-status" class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                isNameValidated 
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+              }">
+                ${isNameValidated ? 'Validado ✓' : 'Pendiente ⚠'}
+              </span>
+            </div>
           </div>
 
           <div class="flex flex-col gap-1 relative">
@@ -530,6 +543,313 @@ export async function renderLeadDetail(leadId, onUpdate) {
           toast.show('Error al invalidar marca: ' + err.message, 'error');
         }
       });
+    }
+
+    // Enrich Company with SalesQL handler
+    const enrichOrgBtn = parent.querySelector('#btn-enrich-company-salesql');
+    if (enrichOrgBtn) {
+      enrichOrgBtn.addEventListener('click', () => {
+        let extractedDomain = '';
+        let extractedLinkedin = '';
+        if (lead.notes) {
+          const webMatch = lead.notes.match(/Website:\s*([^\s\n]+)/i) || lead.notes.match(/Dominio:\s*([^\s\n]+)/i) || lead.notes.match(/(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)/i);
+          if (webMatch) extractedDomain = webMatch[1] || webMatch[0];
+
+          const liMatch = lead.notes.match(/https?:\/\/(?:www\.)?linkedin\.com\/company\/[a-zA-Z0-9_-]+/i);
+          if (liMatch) extractedLinkedin = liMatch[0];
+        }
+
+        modal.create({
+          title: `Enriquecer Empresa con SalesQL: ${lead.company || ''}`,
+          content: `
+            <div class="flex flex-col gap-4 font-sans text-xs">
+              <div class="bg-indigo-50/70 border border-indigo-200 text-indigo-900 rounded-sm p-3 text-[11px] leading-relaxed">
+                💡 <b>Nota:</b> Si SalesQL encuentra datos coincidentes para esta empresa, se descontará 1 crédito de tu bolsa. Las consultas sin resultados no consumen créditos.
+              </div>
+
+              <form id="salesql-org-enrich-form" class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-neutral-50 p-3.5 rounded-sm border border-neutral-200">
+                <div class="flex flex-col gap-1">
+                  <label class="font-mono text-[9px] font-bold text-primary uppercase">Dominio Web (Recomendado)</label>
+                  <input type="text" id="sq-org-domain" value="${extractedDomain}" placeholder="ej: siemens.com" class="cohere-input text-xs" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="font-mono text-[9px] font-bold text-primary uppercase">Nombre Empresa</label>
+                  <input type="text" id="sq-org-name" value="${lead.company || ''}" placeholder="ej: Siemens" class="cohere-input text-xs" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="font-mono text-[9px] font-bold text-primary uppercase">LinkedIn de Empresa</label>
+                  <input type="text" id="sq-org-linkedin" value="${extractedLinkedin}" placeholder="https://linkedin.com/company/..." class="cohere-input text-xs" />
+                </div>
+                <div class="sm:col-span-3 flex justify-end pt-1">
+                  <button type="submit" id="btn-run-org-enrich" class="px-5 py-2 bg-primary hover:bg-cohere-black text-white font-mono text-[10px] font-bold uppercase rounded-full tracking-wider transition-colors cursor-pointer flex items-center gap-1.5">
+                    🔍 Consultar SalesQL
+                  </button>
+                </div>
+              </form>
+
+              <div id="sq-org-result-container" class="min-h-[60px] flex items-center justify-center text-neutral-400 text-[11px]">
+                Revisa los criterios de búsqueda arriba y presiona "Consultar SalesQL".
+              </div>
+            </div>
+          `,
+          actions: [{ text: 'Cerrar', primary: false }]
+        });
+
+        const modalEl = document.querySelector('.modal-overlay') || document;
+        const orgForm = modalEl.querySelector('#salesql-org-enrich-form');
+        const resContainer = modalEl.querySelector('#sq-org-result-container');
+
+        orgForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const domain = modalEl.querySelector('#sq-org-domain').value.trim();
+          const name = modalEl.querySelector('#sq-org-name').value.trim();
+          const linkedin = modalEl.querySelector('#sq-org-linkedin').value.trim();
+
+          if (!domain && !name && !linkedin) {
+            toast.show('Ingresa al menos un dominio, nombre o URL de LinkedIn de la empresa', 'error');
+            return;
+          }
+
+          const btnRun = modalEl.querySelector('#btn-run-org-enrich');
+          btnRun.disabled = true;
+          btnRun.innerHTML = '<span class="animate-spin inline-block">🔄</span> Consultando...';
+          resContainer.innerHTML = `
+            <div class="flex flex-col items-center gap-2 py-6 text-neutral-500">
+              <svg class="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span class="font-mono text-[10px] uppercase font-bold">Consultando API de SalesQL...</span>
+            </div>
+          `;
+
+          try {
+            const session = await auth.getSession();
+            const jwt = session?.access_token;
+            const payload = {
+              action: 'enrich-organization',
+              organization_domain: domain || undefined,
+              organization_name: name || undefined,
+              linkedin_url: linkedin || undefined
+            };
+
+            const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/salesql-proxy`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${jwt}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
+            });
+
+            const resData = await res.json();
+            if (res.ok && resData.success && resData.data) {
+              renderCompanyDiffTable(resContainer, lead, resData.data, modalEl, extractedDomain, extractedLinkedin);
+            } else if (resData.not_found || res.status === 404) {
+              resContainer.innerHTML = `
+                <div class="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-sm text-center w-full">
+                  ⚠️ No se encontraron datos para esta empresa en SalesQL. No se descontaron créditos.
+                </div>
+              `;
+            } else if (resData.is_rate_limit || resData.status === 429 || res.status === 429) {
+              resContainer.innerHTML = `
+                <div class="p-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-sm flex flex-col gap-2 w-full text-left">
+                  <div class="font-bold flex items-center gap-1.5 text-xs">
+                    <span>⚠️</span>
+                    <span>Límite de API / Créditos de SalesQL (Error 429)</span>
+                  </div>
+                  <p class="text-[11px] text-amber-800 leading-relaxed">
+                    ${resData.error || 'Se alcanzó el límite de solicitudes o créditos de tu cuenta en SalesQL.'}
+                  </p>
+                  <p class="text-[11px] text-amber-800 leading-relaxed">
+                    SalesQL devuelve <b>"Rate limit exceeded"</b> cuando se supera el límite de llamadas por minuto o la cuota diaria de tu plan, o si tu cuenta no dispone de créditos.
+                  </p>
+                  <div class="pt-1">
+                    <a href="https://salesql.com" target="_blank" class="inline-flex items-center gap-1 px-3 py-1 bg-amber-200/70 hover:bg-amber-200 text-amber-950 rounded-full font-mono text-[10px] font-bold transition-colors">
+                      Revisar cuenta en salesql.com ↗
+                    </a>
+                  </div>
+                </div>
+              `;
+            } else {
+              resContainer.innerHTML = `
+                <div class="p-4 bg-rose-50 border border-rose-200 text-rose-900 rounded-sm text-center w-full">
+                  ❌ Error: ${resData.error || 'No se pudo completar la consulta'}
+                </div>
+              `;
+            }
+          } catch (err) {
+            console.error(err);
+            resContainer.innerHTML = `<div class="p-3 text-rose-600">Error de conexión: ${err.message}</div>`;
+          } finally {
+            btnRun.disabled = false;
+            btnRun.innerHTML = '🔍 Consultar SalesQL';
+          }
+        });
+      });
+    }
+
+    function renderCompanyDiffTable(containerEl, currentLead, sqData, subModalEl, extractedDomain, extractedLinkedin) {
+      const suggestedName = sqData.name || '';
+      const suggestedIndustry = sqData.industry || '';
+      const suggestedBranches = sqData.number_of_employees ? `${sqData.number_of_employees} empleados` : '';
+      const suggestedLocation = sqData.location || '';
+      const suggestedWebsite = sqData.website || (sqData.website_domain ? `https://${sqData.website_domain}` : '');
+      const suggestedLinkedin = sqData.linkedin_url || '';
+
+      const checkName = !currentLead.company && !!suggestedName;
+      const checkIndustry = !currentLead.industry && !!suggestedIndustry;
+      const checkBranches = !currentLead.branches && !!suggestedBranches;
+      const checkLocation = !currentLead.country && !!suggestedLocation;
+      const checkWebsite = !(currentLead.notes && currentLead.notes.includes(suggestedWebsite)) && !!suggestedWebsite;
+      const checkLinkedin = !(currentLead.notes && currentLead.notes.includes(suggestedLinkedin)) && !!suggestedLinkedin;
+
+      containerEl.innerHTML = `
+        <div class="flex flex-col gap-4 border-t border-neutral-200 pt-4 animate-fade-in w-full">
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-[10px] font-bold text-primary uppercase tracking-wider">
+              Comparativa de Datos (Dato Actual vs SalesQL)
+            </span>
+            <span class="text-[10px] text-muted-slate italic">
+              Elige qué datos actualizar. Los campos existentes no se pisarán a menos que los selecciones.
+            </span>
+          </div>
+
+          <div class="border border-neutral-200 rounded-sm overflow-hidden">
+            <table class="w-full text-left font-sans text-xs">
+              <thead class="bg-neutral-50 text-[9px] font-mono font-bold text-muted-slate uppercase border-b border-neutral-200">
+                <tr>
+                  <th class="p-2.5">Campo</th>
+                  <th class="p-2.5">Dato Actual</th>
+                  <th class="p-2.5">Dato SalesQL</th>
+                  <th class="p-2.5 text-center">Actualizar</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-neutral-100">
+                <tr class="hover:bg-neutral-50/50">
+                  <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">Nombre Empresa</td>
+                  <td class="p-2.5 text-neutral-500">${currentLead.company || '<span class="text-neutral-300 italic">Vacío</span>'}</td>
+                  <td class="p-2.5 text-primary font-semibold">${suggestedName || '<span class="text-neutral-300 italic">No encontrado</span>'}</td>
+                  <td class="p-2.5 text-center">
+                    <input type="checkbox" id="diff-org-name" ${checkName ? 'checked' : ''} ${!suggestedName ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                  </td>
+                </tr>
+                <tr class="hover:bg-neutral-50/50">
+                  <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">Industria / Rubro</td>
+                  <td class="p-2.5 text-neutral-500">${currentLead.industry || '<span class="text-neutral-300 italic">Vacío</span>'}</td>
+                  <td class="p-2.5 text-primary font-semibold">${suggestedIndustry || '<span class="text-neutral-300 italic">No encontrado</span>'}</td>
+                  <td class="p-2.5 text-center">
+                    <input type="checkbox" id="diff-org-industry" ${checkIndustry ? 'checked' : ''} ${!suggestedIndustry ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                  </td>
+                </tr>
+                <tr class="hover:bg-neutral-50/50">
+                  <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">Tamaño / Empleados</td>
+                  <td class="p-2.5 text-neutral-500">${currentLead.branches || '<span class="text-neutral-300 italic">Vacío</span>'}</td>
+                  <td class="p-2.5 text-primary font-semibold">${suggestedBranches || '<span class="text-neutral-300 italic">No encontrado</span>'}</td>
+                  <td class="p-2.5 text-center">
+                    <input type="checkbox" id="diff-org-branches" ${checkBranches ? 'checked' : ''} ${!suggestedBranches ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                  </td>
+                </tr>
+                <tr class="hover:bg-neutral-50/50">
+                  <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">Ubicación / País</td>
+                  <td class="p-2.5 text-neutral-500">${currentLead.country || '<span class="text-neutral-300 italic">Vacío</span>'}</td>
+                  <td class="p-2.5 text-primary font-semibold">${suggestedLocation || '<span class="text-neutral-300 italic">No encontrado</span>'}</td>
+                  <td class="p-2.5 text-center">
+                    <input type="checkbox" id="diff-org-location" ${checkLocation ? 'checked' : ''} ${!suggestedLocation ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                  </td>
+                </tr>
+                <tr class="hover:bg-neutral-50/50">
+                  <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">Website (en Notas)</td>
+                  <td class="p-2.5 text-neutral-500 truncate max-w-[120px]">${extractedDomain || '<span class="text-neutral-300 italic">No especificado</span>'}</td>
+                  <td class="p-2.5 text-primary font-semibold truncate max-w-[140px]">${suggestedWebsite || '<span class="text-neutral-300 italic">No encontrado</span>'}</td>
+                  <td class="p-2.5 text-center">
+                    <input type="checkbox" id="diff-org-website" ${checkWebsite ? 'checked' : ''} ${!suggestedWebsite ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                  </td>
+                </tr>
+                <tr class="hover:bg-neutral-50/50">
+                  <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">LinkedIn (en Notas)</td>
+                  <td class="p-2.5 text-neutral-500 truncate max-w-[120px]">${extractedLinkedin || '<span class="text-neutral-300 italic">No especificado</span>'}</td>
+                  <td class="p-2.5 text-primary font-semibold truncate max-w-[140px]">${suggestedLinkedin || '<span class="text-neutral-300 italic">No encontrado</span>'}</td>
+                  <td class="p-2.5 text-center">
+                    <input type="checkbox" id="diff-org-linkedin" ${checkLinkedin ? 'checked' : ''} ${!suggestedLinkedin ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex items-center justify-end gap-3 pt-2">
+            <button type="button" id="btn-apply-org-diff" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-[10px] font-bold uppercase rounded-full tracking-wider transition-colors cursor-pointer flex items-center gap-1.5">
+              ✓ Aplicar Cambios a la Empresa
+            </button>
+          </div>
+        </div>
+      `;
+
+      const btnApply = containerEl.querySelector('#btn-apply-org-diff');
+      if (btnApply) {
+        btnApply.addEventListener('click', async () => {
+          btnApply.disabled = true;
+          btnApply.innerHTML = '<span class="animate-spin inline-block">🔄</span> Guardando...';
+
+          const applyName = containerEl.querySelector('#diff-org-name')?.checked;
+          const applyIndustry = containerEl.querySelector('#diff-org-industry')?.checked;
+          const applyBranches = containerEl.querySelector('#diff-org-branches')?.checked;
+          const applyLocation = containerEl.querySelector('#diff-org-location')?.checked;
+          const applyWebsite = containerEl.querySelector('#diff-org-website')?.checked;
+          const applyLinkedin = containerEl.querySelector('#diff-org-linkedin')?.checked;
+
+          const updates = {};
+          if (applyName && suggestedName) updates.company = suggestedName;
+          if (applyIndustry && suggestedIndustry) updates.industry = suggestedIndustry;
+          if (applyBranches && suggestedBranches) updates.branches = suggestedBranches;
+          if (applyLocation && suggestedLocation) updates.country = suggestedLocation;
+
+          let newNotes = currentLead.notes || '';
+          if (applyWebsite && suggestedWebsite && !newNotes.includes(suggestedWebsite)) {
+            newNotes = (newNotes ? newNotes + '\n' : '') + `Website: ${suggestedWebsite}`;
+          }
+          if (applyLinkedin && suggestedLinkedin && !newNotes.includes(suggestedLinkedin)) {
+            newNotes = (newNotes ? newNotes + '\n' : '') + `LinkedIn Empresa: ${suggestedLinkedin}`;
+          }
+          if (newNotes !== (currentLead.notes || '')) {
+            updates.notes = newNotes;
+          }
+
+          if (Object.keys(updates).length === 0) {
+            toast.show('No seleccionaste ningún campo para actualizar', 'info');
+            btnApply.disabled = false;
+            btnApply.innerHTML = '✓ Aplicar Cambios a la Empresa';
+            return;
+          }
+
+          updates.updated_at = new Date().toISOString();
+
+          try {
+            const { error: updErr } = await supabase
+              .from('leads')
+              .update(updates)
+              .eq('id', currentLead.id);
+
+            if (updErr) throw updErr;
+
+            lead = { ...lead, ...updates };
+            cache.updateLead(lead);
+            toast.show('Empresa enriquecida exitosamente con SalesQL', 'success');
+
+            const closeBtn = subModalEl.querySelector('.modal-close') || subModalEl.querySelector('#btn-close-modal');
+            if (closeBtn) closeBtn.click();
+
+            refreshHistory();
+            renderContent();
+          } catch (err) {
+            console.error('Error aplicando enriquecimiento de empresa:', err);
+            toast.show('Error al guardar: ' + err.message, 'error');
+            btnApply.disabled = false;
+            btnApply.innerHTML = '✓ Aplicar Cambios a la Empresa';
+          }
+        });
+      }
     }
 
     form.addEventListener('submit', async (e) => {

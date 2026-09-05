@@ -11,6 +11,7 @@ class CacheManager {
     this.participations = [];
     this.latestInteractions = new Map(); // lead_id -> latest lead_interaction object
     this.leadAutomations = new Map(); // lead_id -> Array<automation_executions>
+    this.settings = new Map(); // key -> value from crm_settings
     this.isLoaded = false;
     this.listeners = new Set();
     // Default: 0 = all time (fetch all leads from Supabase).
@@ -20,7 +21,7 @@ class CacheManager {
   async loadAll() {
     try {
       const from_date = getFromDate(this.dateWindowDays);
-      const [stagesRes, profilesRes, leadsData, contactsData, linksData, eventsData, participationsData, interactionsData, executionsData] = await Promise.all([
+      const [stagesRes, profilesRes, leadsData, contactsData, linksData, eventsData, participationsData, interactionsData, executionsData, settingsRes] = await Promise.all([
         supabase
           .from('pipeline_stages')
           .select('*')
@@ -35,7 +36,8 @@ class CacheManager {
         fetchAllRows('eventos_franquiday', '*', { orderCol: 'fecha' }),
         fetchAllRows('participaciones_franquiday', '*', { orderCol: 'lead_id' }),
         fetchAllRows('lead_interactions', '*', { orderCol: 'contacted_at', ascending: false }),
-        fetchAllRows('automation_executions', 'id, lead_id, contact_id, automation_id, status, current_step_order, error_message, scheduled_for, updated_at, created_at, automations(id, name, trigger_type), contacts(id, first_name, last_name, phone, email)', { orderCol: 'updated_at', ascending: false })
+        fetchAllRows('automation_executions', 'id, lead_id, contact_id, automation_id, status, current_step_order, error_message, scheduled_for, updated_at, created_at, automations(id, name, trigger_type), contacts(id, first_name, last_name, phone, email)', { orderCol: 'updated_at', ascending: false }),
+        supabase.from('crm_settings').select('key, value')
       ]);
 
       if (stagesRes.error) throw stagesRes.error;
@@ -85,12 +87,32 @@ class CacheManager {
         });
       }
 
+      this.settings.clear();
+      if (settingsRes?.data) {
+        settingsRes.data.forEach(item => {
+          if (item.key) this.settings.set(item.key, item.value);
+        });
+      }
+
       this.isLoaded = true;
-      console.log(`Cache initialized: ${this.leads.length} leads, ${this.contacts.size} contacts, ${this.links.length} links, ${this.events.length} events, ${this.participations.length} participations, ${this.latestInteractions.size} latest interactions, ${this.leadAutomations.size} leads con automatizaciones (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'})`);
+      console.log(`Cache initialized: ${this.leads.length} leads, ${this.contacts.size} contacts, ${this.links.length} links, ${this.events.length} events, ${this.participations.length} participations, ${this.latestInteractions.size} latest interactions, ${this.leadAutomations.size} leads con automatizaciones (ventana: ${this.dateWindowDays === 0 ? 'todo' : this.dateWindowDays + 'd'}), ${this.settings.size} settings`);
       this.triggerChange();
     } catch (err) {
       console.error('Error loading metadata cache:', err);
     }
+  }
+
+  getSetting(key, defaultValue = null) {
+    return this.settings.has(key) ? this.settings.get(key) : defaultValue;
+  }
+
+  setSetting(key, value) {
+    this.settings.set(key, value);
+    this.triggerChange();
+  }
+
+  isSalesqlEnabled() {
+    return this.settings.get('salesql_integration_enabled') === 'true';
   }
 
   /** Change the date window and reload the leads from Supabase. */
@@ -446,6 +468,7 @@ class CacheManager {
     this.stages.clear();
     this.profiles.clear();
     this.contacts.clear();
+    this.settings.clear();
     this.links = [];
     this.events = [];
     this.participations = [];

@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { cache } from '../lib/cache';
+import { auth } from '../lib/auth';
 import { modal } from './modal';
 import { toast } from './toast';
 
@@ -13,6 +14,22 @@ export function openContactEditModal(contactId, onSave) {
   const formWrapper = document.createElement('div');
   formWrapper.className = 'font-sans text-xs select-none';
   formWrapper.innerHTML = `
+    <!-- SalesQL Enrichment Banner -->
+    ${cache.isSalesqlEnabled() ? `
+    <div class="mb-4 bg-indigo-50/60 border border-indigo-200/80 rounded-sm p-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <span class="text-sm">✨</span>
+        <div class="flex flex-col">
+          <span class="font-mono text-[9px] font-bold text-indigo-950 uppercase tracking-wider">Enriquecer Contacto con SalesQL</span>
+          <span class="text-[10px] text-indigo-800">Busca teléfonos validados, emails directos y cargo actualizados.</span>
+        </div>
+      </div>
+      <button type="button" id="btn-enrich-contact-salesql" class="px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors cursor-pointer shrink-0">
+        Enriquecer
+      </button>
+    </div>
+    ` : ''}
+
     <form id="contact-edit-form" class="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-4">
       <div class="flex flex-col gap-1">
         <label for="edit-c-first-name" class="font-mono text-[9px] font-bold text-primary uppercase">Nombre *</label>
@@ -101,6 +118,295 @@ export function openContactEditModal(contactId, onSave) {
   const phoneValidToggle = form.querySelector('#edit-c-phone-valid');
   const phoneValidLabel = form.querySelector('#edit-c-phone-valid-label');
   const allowlistContainer = form.querySelector('#allowlist-agents-container');
+
+  // SalesQL Contact Enrichment handler
+  const btnEnrichContact = formWrapper.querySelector('#btn-enrich-contact-salesql');
+  if (btnEnrichContact) {
+    btnEnrichContact.addEventListener('click', () => {
+      const allLinks = cache.links || [];
+      const link = allLinks.find(l => l.contact_id === contact.id);
+      const lead = link ? (cache.getLeads() || []).find(ld => ld.id === link.lead_id) : null;
+      const defaultCompany = lead?.company || '';
+
+      modal.create({
+        title: `Enriquecer Contacto con SalesQL`,
+        content: `
+          <div class="flex flex-col gap-4 font-sans text-xs">
+            <div class="bg-indigo-50/70 border border-indigo-200 text-indigo-900 rounded-sm p-3 text-[11px] leading-relaxed">
+              💡 <b>Nota:</b> Si SalesQL encuentra datos coincidentes, se descontará 1 crédito de tu bolsa. Las consultas sin resultados no consumen créditos.
+            </div>
+
+            <form id="salesql-contact-enrich-form" class="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-neutral-50 p-3.5 rounded-sm border border-neutral-200">
+              <div class="sm:col-span-2 flex flex-col gap-1">
+                <label class="font-mono text-[9px] font-bold text-primary uppercase">URL de LinkedIn (Recomendado)</label>
+                <input type="text" id="sq-c-linkedin" value="${contact.linkedin_url || ''}" placeholder="https://www.linkedin.com/in/..." class="cohere-input text-xs" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="font-mono text-[9px] font-bold text-primary uppercase">Email</label>
+                <input type="email" id="sq-c-email" value="${contact.email || ''}" placeholder="contacto@empresa.com" class="cohere-input text-xs" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="font-mono text-[9px] font-bold text-primary uppercase">Empresa o Dominio</label>
+                <input type="text" id="sq-c-company" value="${defaultCompany}" placeholder="Empresa o dominio.com" class="cohere-input text-xs" />
+              </div>
+              <div class="sm:col-span-2 flex justify-end pt-1">
+                <button type="submit" id="btn-run-c-enrich" class="px-5 py-2 bg-primary hover:bg-cohere-black text-white font-mono text-[10px] font-bold uppercase rounded-full tracking-wider transition-colors cursor-pointer flex items-center gap-1.5">
+                  🔍 Consultar SalesQL
+                </button>
+              </div>
+            </form>
+
+            <div id="sq-c-result-container" class="min-h-[60px] flex items-center justify-center text-neutral-400 text-[11px]">
+              Ingresa los datos arriba y presiona "Consultar SalesQL" para buscar.
+            </div>
+          </div>
+        `,
+        actions: [{ text: 'Cerrar', primary: false }]
+      });
+
+      const modalEl = document.querySelector('.modal-overlay') || document;
+      const cForm = modalEl.querySelector('#salesql-contact-enrich-form');
+      const resContainer = modalEl.querySelector('#sq-c-result-container');
+
+      cForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const linkedin = modalEl.querySelector('#sq-c-linkedin').value.trim();
+        const email = modalEl.querySelector('#sq-c-email').value.trim();
+        const company = modalEl.querySelector('#sq-c-company').value.trim();
+        const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+        if (!linkedin && !email && (!fullName || !company)) {
+          toast.show('Por favor proporciona al menos LinkedIn, email o nombre y empresa', 'error');
+          return;
+        }
+
+        const btnRun = modalEl.querySelector('#btn-run-c-enrich');
+        btnRun.disabled = true;
+        btnRun.innerHTML = '<span class="animate-spin inline-block">🔄</span> Consultando...';
+        resContainer.innerHTML = `
+          <div class="flex flex-col items-center gap-2 py-6 text-neutral-500">
+            <svg class="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="font-mono text-[10px] uppercase font-bold">Consultando API de SalesQL...</span>
+          </div>
+        `;
+
+        try {
+          const session = await auth.getSession();
+          const jwt = session?.access_token;
+          let payload = {};
+
+          if (linkedin) {
+            payload = { action: 'enrich-person', linkedin_url: linkedin };
+          } else if (email) {
+            payload = { action: 'email-lookup', email: email };
+          } else {
+            const isDomain = company.includes('.');
+            payload = {
+              action: 'enrich-person',
+              full_name: fullName,
+              organization_domain: isDomain ? company : undefined,
+              organization_name: !isDomain ? company : undefined
+            };
+          }
+
+          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/salesql-proxy`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${jwt}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          const resData = await res.json();
+          if (res.ok && resData.success && resData.data) {
+            renderContactDiffTable(resContainer, contact, resData.data, form, modalEl);
+          } else if (resData.not_found || res.status === 404) {
+            resContainer.innerHTML = `
+              <div class="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-sm text-center w-full">
+                ⚠️ No se encontraron datos para este contacto en SalesQL. No se descontaron créditos.
+              </div>
+            `;
+          } else if (resData.is_rate_limit || resData.status === 429 || res.status === 429) {
+            resContainer.innerHTML = `
+              <div class="p-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-sm flex flex-col gap-2 w-full text-left">
+                <div class="font-bold flex items-center gap-1.5 text-xs">
+                  <span>⚠️</span>
+                  <span>Límite de API / Créditos de SalesQL (Error 429)</span>
+                </div>
+                <p class="text-[11px] text-amber-800 leading-relaxed">
+                  ${resData.error || 'Se alcanzó el límite de solicitudes o créditos de tu cuenta en SalesQL.'}
+                </p>
+                <p class="text-[11px] text-amber-800 leading-relaxed">
+                  SalesQL devuelve <b>"Rate limit exceeded"</b> cuando se supera el límite de llamadas por minuto o la cuota diaria de tu plan, o si tu cuenta no dispone de créditos de persona.
+                </p>
+                <div class="pt-1">
+                  <a href="https://salesql.com" target="_blank" class="inline-flex items-center gap-1 px-3 py-1 bg-amber-200/70 hover:bg-amber-200 text-amber-950 rounded-full font-mono text-[10px] font-bold transition-colors">
+                    Revisar cuenta en salesql.com ↗
+                  </a>
+                </div>
+              </div>
+            `;
+          } else {
+            resContainer.innerHTML = `
+              <div class="p-4 bg-rose-50 border border-rose-200 text-rose-900 rounded-sm text-center w-full">
+                ❌ Error: ${resData.error || 'No se pudo completar la consulta'}
+              </div>
+            `;
+          }
+        } catch (err) {
+          console.error(err);
+          resContainer.innerHTML = `<div class="p-3 text-rose-600">Error de conexión: ${err.message}</div>`;
+        } finally {
+          btnRun.disabled = false;
+          btnRun.innerHTML = '🔍 Consultar SalesQL';
+        }
+      });
+    });
+  }
+
+  function renderContactDiffTable(containerEl, currentContact, sqData, mainForm, subModalEl) {
+    const suggestedPosition = sqData.title || sqData.headline || '';
+    const suggestedEmails = Array.isArray(sqData.emails) ? sqData.emails : [];
+    const validEmailObj = suggestedEmails.find(e => (e.status || '').toLowerCase() === 'valid') || suggestedEmails[0];
+    const suggestedEmail = validEmailObj?.email || '';
+
+    const suggestedPhones = Array.isArray(sqData.phones) ? sqData.phones : [];
+    const validPhoneObj = suggestedPhones.find(p => p.is_valid !== false) || suggestedPhones[0];
+    const suggestedPhone = validPhoneObj?.phone || '';
+    const isPhoneValid = validPhoneObj ? validPhoneObj.is_valid !== false : false;
+
+    const suggestedLinkedin = sqData.linkedin_url || '';
+
+    const checkPosition = !currentContact.position && !!suggestedPosition;
+    const checkEmail = !currentContact.email && !!suggestedEmail;
+    const checkPhone = !currentContact.phone && !!suggestedPhone;
+    const checkLinkedin = !currentContact.linkedin_url && !!suggestedLinkedin;
+
+    containerEl.innerHTML = `
+      <div class="flex flex-col gap-4 border-t border-neutral-200 pt-4 animate-fade-in w-full">
+        <div class="flex items-center justify-between">
+          <span class="font-mono text-[10px] font-bold text-primary uppercase tracking-wider">
+            Comparativa de Datos (Dato Actual vs SalesQL)
+          </span>
+          <span class="text-[10px] text-muted-slate italic">
+            Selecciona qué campos deseas aplicar al formulario
+          </span>
+        </div>
+
+        <div class="border border-neutral-200 rounded-sm overflow-hidden">
+          <table class="w-full text-left font-sans text-xs">
+            <thead class="bg-neutral-50 text-[9px] font-mono font-bold text-muted-slate uppercase border-b border-neutral-200">
+              <tr>
+                <th class="p-2.5">Campo</th>
+                <th class="p-2.5">Dato Actual</th>
+                <th class="p-2.5">Dato SalesQL</th>
+                <th class="p-2.5 text-center">Actualizar</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+              <tr class="hover:bg-neutral-50/50">
+                <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">Cargo</td>
+                <td class="p-2.5 text-neutral-500">${currentContact.position || '<span class="text-neutral-300 italic">Vacío</span>'}</td>
+                <td class="p-2.5 text-primary font-semibold">${suggestedPosition || '<span class="text-neutral-300 italic">No encontrado</span>'}</td>
+                <td class="p-2.5 text-center">
+                  <input type="checkbox" id="diff-chk-position" ${checkPosition ? 'checked' : ''} ${!suggestedPosition ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                </td>
+              </tr>
+              <tr class="hover:bg-neutral-50/50">
+                <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">Email</td>
+                <td class="p-2.5 text-neutral-500 select-all">${currentContact.email || '<span class="text-neutral-300 italic">Vacío</span>'}</td>
+                <td class="p-2.5 text-primary font-semibold select-all">
+                  ${suggestedEmail ? `
+                    <span>${suggestedEmail}</span>
+                    <span class="ml-1 text-[8px] font-mono px-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">${validEmailObj?.status || 'Email'}</span>
+                  ` : '<span class="text-neutral-300 italic">No encontrado</span>'}
+                </td>
+                <td class="p-2.5 text-center">
+                  <input type="checkbox" id="diff-chk-email" ${checkEmail ? 'checked' : ''} ${!suggestedEmail ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                </td>
+              </tr>
+              <tr class="hover:bg-neutral-50/50">
+                <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">Teléfono</td>
+                <td class="p-2.5 text-neutral-500 select-all">${currentContact.phone || '<span class="text-neutral-300 italic">Vacío</span>'}</td>
+                <td class="p-2.5 text-primary font-semibold select-all">
+                  ${suggestedPhone ? `
+                    <span>${suggestedPhone}</span>
+                    <span class="ml-1 text-[8px] font-mono px-1 rounded-full ${isPhoneValid ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-neutral-100 text-neutral-600'}">
+                      ${isPhoneValid ? 'Validado' : 'Directo'}
+                    </span>
+                  ` : '<span class="text-neutral-300 italic">No encontrado</span>'}
+                </td>
+                <td class="p-2.5 text-center">
+                  <input type="checkbox" id="diff-chk-phone" ${checkPhone ? 'checked' : ''} ${!suggestedPhone ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                </td>
+              </tr>
+              <tr class="hover:bg-neutral-50/50">
+                <td class="p-2.5 font-bold text-neutral-600 font-mono text-[10px]">LinkedIn URL</td>
+                <td class="p-2.5 text-neutral-500 truncate max-w-[120px]">${currentContact.linkedin_url || '<span class="text-neutral-300 italic">Vacío</span>'}</td>
+                <td class="p-2.5 text-primary font-semibold truncate max-w-[140px]">${suggestedLinkedin || '<span class="text-neutral-300 italic">No encontrado</span>'}</td>
+                <td class="p-2.5 text-center">
+                  <input type="checkbox" id="diff-chk-linkedin" ${checkLinkedin ? 'checked' : ''} ${!suggestedLinkedin ? 'disabled' : ''} class="rounded border-neutral-300 text-primary focus:ring-0 cursor-pointer" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-2">
+          <button type="button" id="btn-apply-c-diff" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-[10px] font-bold uppercase rounded-full tracking-wider transition-colors cursor-pointer flex items-center gap-1.5">
+            ✓ Aplicar Cambios al Formulario
+          </button>
+        </div>
+      </div>
+    `;
+
+    const btnApply = containerEl.querySelector('#btn-apply-c-diff');
+    if (btnApply) {
+      btnApply.addEventListener('click', () => {
+        const applyPos = containerEl.querySelector('#diff-chk-position')?.checked;
+        const applyEmail = containerEl.querySelector('#diff-chk-email')?.checked;
+        const applyPhone = containerEl.querySelector('#diff-chk-phone')?.checked;
+        const applyLinkedin = containerEl.querySelector('#diff-chk-linkedin')?.checked;
+
+        if (applyPos && suggestedPosition) {
+          const inpPos = mainForm.querySelector('#edit-c-position');
+          if (inpPos) inpPos.value = suggestedPosition;
+        }
+        if (applyEmail && suggestedEmail) {
+          const inpEmail = mainForm.querySelector('#edit-c-email');
+          if (inpEmail) inpEmail.value = suggestedEmail;
+        }
+        if (applyPhone && suggestedPhone) {
+          const inpPhone = mainForm.querySelector('#edit-c-phone');
+          if (inpPhone) inpPhone.value = suggestedPhone;
+
+          const chkValid = mainForm.querySelector('#edit-c-phone-valid');
+          const lblValid = mainForm.querySelector('#edit-c-phone-valid-label');
+          if (chkValid) {
+            chkValid.checked = isPhoneValid;
+            if (lblValid) lblValid.textContent = isPhoneValid ? 'Validado' : 'No Validado';
+          }
+        }
+        if (applyLinkedin && suggestedLinkedin) {
+          const inpLinkedin = mainForm.querySelector('#edit-c-linkedin');
+          if (inpLinkedin) inpLinkedin.value = suggestedLinkedin;
+        }
+
+        toast.show('Datos aplicados al formulario. Haz clic en "Guardar cambios" para confirmarlos.', 'success');
+        const modalInstance = modal.getActiveModals ? modal.getActiveModals().slice(-1)[0] : null;
+        if (modalInstance && typeof modalInstance.close === 'function') {
+          modalInstance.close();
+        } else {
+          const closeBtn = subModalEl.querySelector('.modal-close') || subModalEl.querySelector('#btn-close-modal');
+          if (closeBtn) closeBtn.click();
+        }
+      });
+    }
+  }
 
   const initialAllowlistStates = new Map();
 
