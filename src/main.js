@@ -57,17 +57,19 @@ async function initApp() {
   
   let unsubscribeRealtime = null;
   let lastUserId = null;
+  let isInitialAuth = true;
 
   // Set up auth state change listener to handle routing and caching dynamically
   auth.onAuthStateChange(async (event, userSession) => {
-    const currentUserId = userSession?.user?.id || null;
+    const currentUserId = userSession?.user?.id || userSession?.id || null;
     const sessionUserChanged = currentUserId !== lastUserId;
+    const wasInitial = isInitialAuth;
+    isInitialAuth = false;
     lastUserId = currentUserId;
     
     if (userSession) {
       if (!cache.isLoaded) {
         await cache.loadAll();
-        router.handleRouting();
       }
       
       // Global Realtime Sync
@@ -146,8 +148,8 @@ async function initApp() {
         };
       }
 
-      if (sessionUserChanged) {
-        // Re-trigger routing to apply updated layout
+      if (sessionUserChanged && !wasInitial) {
+        // Re-trigger routing to apply updated layout when user actually changes (e.g. on login)
         router.handleRouting();
       }
     } else {
@@ -160,7 +162,9 @@ async function initApp() {
         activeNavbar.cleanup();
       }
       activeNavbar = null;
-      window.location.hash = '#login';
+      if (window.location.hash !== '#login') {
+        window.history.replaceState(null, '', '#login');
+      }
     }
   });
 
@@ -176,6 +180,7 @@ async function initApp() {
         }
         activeNavbar = null;
         appElement.className = 'h-full flex flex-col bg-white';
+        appElement.innerHTML = '';
         router.appContainer = appElement;
         // Router will render login inside appElement directly
       } else {
@@ -231,4 +236,8 @@ async function initApp() {
   );
 }
 
-document.addEventListener('DOMContentLoaded', initApp);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}

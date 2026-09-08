@@ -7,6 +7,7 @@ class Router {
     this.currentRoute = null;
     this.appContainer = null;
     this.onRouteChanged = null;
+    this.routingId = 0;
 
     window.addEventListener('hashchange', () => this.handleRouting());
   }
@@ -19,19 +20,25 @@ class Router {
   }
 
   async handleRouting() {
+    const currentRoutingId = ++this.routingId;
     let hash = window.location.hash || '#dashboard';
+    
+    try {
     
     // Auth Guard
     const userSession = await auth.getCurrentUser();
+    if (this.routingId !== currentRoutingId) return;
     
     if (!userSession && hash !== '#login') {
-      window.location.hash = '#login';
-      return;
-    }
-
-    if (userSession && hash === '#login') {
-      window.location.hash = '#dashboard';
-      return;
+      if (window.location.hash !== '#login') {
+        window.history.replaceState(null, '', '#login');
+      }
+      hash = '#login';
+    } else if (userSession && hash === '#login') {
+      if (window.location.hash !== '#dashboard') {
+        window.history.replaceState(null, '', '#dashboard');
+      }
+      hash = '#dashboard';
     }
 
     const [baseHash, queryString] = hash.split('?');
@@ -55,31 +62,43 @@ class Router {
         this.onRouteChanged(routeKey, userSession);
       }
 
-      // Show skeleton preloader immediately
-      this.appContainer.innerHTML = '';
-      this.appContainer.appendChild(buildPageSkeleton());
+      // Show skeleton preloader immediately for non-login views
+      if (routeKey !== '#login' && this.appContainer) {
+        this.appContainer.innerHTML = '';
+        this.appContainer.appendChild(buildPageSkeleton());
+        // Yield to the browser so it paints the skeleton before heavy loading
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+
+      if (this.routingId !== currentRoutingId) return;
 
       // Guarantee cache is fully loaded before invoking page renderer
       if (userSession && !cache.isLoaded) {
         await cache.loadAll();
       }
 
-      // Yield to the browser so it actually paints the skeleton
-      await new Promise(resolve => requestAnimationFrame(resolve));
+      if (this.routingId !== currentRoutingId) return;
 
       // Execute the page renderer with params
       const view = await renderFn(userSession, params);
+      if (this.routingId !== currentRoutingId) return;
+
       this.currentView = view;
 
       // Swap skeleton → real view
-      this.appContainer.innerHTML = '';
-      if (view instanceof HTMLElement) {
-        this.appContainer.appendChild(view);
-      } else if (typeof view === 'string') {
-        this.appContainer.innerHTML = view;
+      if (this.appContainer) {
+        this.appContainer.innerHTML = '';
+        if (view instanceof HTMLElement) {
+          this.appContainer.appendChild(view);
+        } else if (typeof view === 'string') {
+          this.appContainer.innerHTML = view;
+        }
       }
     }
+  } catch (err) {
+    console.error('Error during handleRouting:', err);
   }
+}
 
   navigate(hash) {
     window.location.hash = hash;

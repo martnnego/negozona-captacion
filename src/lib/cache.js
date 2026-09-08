@@ -13,13 +13,19 @@ class CacheManager {
     this.leadAutomations = new Map(); // lead_id -> Array<automation_executions>
     this.settings = new Map(); // key -> value from crm_settings
     this.isLoaded = false;
+    this.loadingPromise = null;
     this.listeners = new Set();
     // Default: 0 = all time (fetch all leads from Supabase).
     this.dateWindowDays = parseInt(localStorage.getItem('cache_date_window') || '0');
   }
 
   async loadAll() {
-    try {
+    if (this.loadingPromise) {
+      return this.loadingPromise;
+    }
+
+    this.loadingPromise = (async () => {
+      try {
       const from_date = getFromDate(this.dateWindowDays);
       const [stagesRes, profilesRes, leadsData, contactsData, linksData, eventsData, participationsData, interactionsData, executionsData, settingsRes] = await Promise.all([
         supabase
@@ -99,8 +105,13 @@ class CacheManager {
       this.triggerChange();
     } catch (err) {
       console.error('Error loading metadata cache:', err);
+    } finally {
+      this.loadingPromise = null;
     }
-  }
+  })();
+
+  return this.loadingPromise;
+}
 
   getSetting(key, defaultValue = null) {
     return this.settings.has(key) ? this.settings.get(key) : defaultValue;
@@ -476,6 +487,7 @@ class CacheManager {
     this.latestInteractions.clear();
     this.leadAutomations.clear();
     this.isLoaded = false;
+    this.loadingPromise = null;
     this.listeners.clear();
   }
 }

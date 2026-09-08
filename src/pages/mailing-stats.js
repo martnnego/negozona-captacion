@@ -1,5 +1,6 @@
-import { supabase } from '../lib/supabase';
+import { supabase, fetchAllRows } from '../lib/supabase';
 import { cache } from '../lib/cache';
+import { toast } from '../components/toast';
 
 // In-memory cache for email stats data to prevent unnecessary Supabase reads
 let statsCache = {
@@ -10,6 +11,7 @@ let statsCache = {
 };
 
 const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes in-memory cache
+let isRefreshing = false;
 
 export function renderMailingStats() {
   const container = document.createElement('div');
@@ -32,6 +34,9 @@ export function renderMailingStats() {
         </div>
 
         <div class="flex items-center gap-3">
+          <!-- Last updated info -->
+          <span id="stats-last-updated" class="text-[11px] text-muted font-mono hidden sm:inline"></span>
+
           <!-- Filter Period -->
           <select id="stats-period-select" class="px-3 py-1.5 bg-soft-stone border border-[#d9d9dd] rounded-xs text-xs font-semibold text-slate focus:outline-none focus:border-primary cursor-pointer">
             <option value="7d">Últimos 7 días</option>
@@ -41,7 +46,7 @@ export function renderMailingStats() {
           </select>
 
           <button id="refresh-stats-btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[#d9d9dd] hover:bg-soft-stone text-slate font-semibold text-xs rounded-xs transition-colors cursor-pointer" title="Actualizar datos desde la base de datos">
-            <span>🔄</span> Actualizar
+            <span id="refresh-stats-icon">🔄</span> <span id="refresh-stats-text">Actualizar</span>
           </button>
         </div>
       </div>
@@ -174,11 +179,11 @@ export function renderMailingStats() {
 
   periodSelect.addEventListener('change', (e) => {
     selectedPeriod = e.target.value;
-    loadAndRenderStats(container, selectedPeriod, leadSearchQuery, false);
+    loadAndRenderStats(container, selectedPeriod, leadSearchQuery, false, false);
   });
 
   refreshBtn.addEventListener('click', () => {
-    loadAndRenderStats(container, selectedPeriod, leadSearchQuery, true);
+    loadAndRenderStats(container, selectedPeriod, leadSearchQuery, true, true);
   });
 
   leadSearchInput.addEventListener('input', (e) => {
@@ -187,7 +192,7 @@ export function renderMailingStats() {
   });
 
   // Initial load
-  loadAndRenderStats(container, selectedPeriod, leadSearchQuery, false);
+  loadAndRenderStats(container, selectedPeriod, leadSearchQuery, false, false);
 
   return container;
 }
@@ -195,31 +200,85 @@ export function renderMailingStats() {
 // Global cached dataset for lead breakdown rendering
 let currentLeadBreakdownData = [];
 
-async function loadAndRenderStats(container, period, searchQuery, forceRefresh = false) {
+async function loadAndRenderStats(container, period, searchQuery, forceRefresh = false, isUserAction = false) {
+  if (isRefreshing) return;
+
   const now = new Date();
   const isCacheValid = !forceRefresh && statsCache.messages && (now.getTime() - statsCache.timestamp < CACHE_TTL_MS);
 
+  const refreshBtn = container.querySelector('#refresh-stats-btn');
+  const refreshIcon = container.querySelector('#refresh-stats-icon');
+  const refreshText = container.querySelector('#refresh-stats-text');
+  const kpiContainer = container.querySelector('#stats-kpi-container');
+
+  const setButtonLoading = (loading) => {
+    if (!refreshBtn) return;
+    refreshBtn.disabled = loading;
+    if (loading) {
+      refreshBtn.classList.add('opacity-70', 'cursor-not-allowed');
+      if (refreshIcon) refreshIcon.classList.add('animate-spin', 'inline-block');
+      if (refreshText) refreshText.textContent = 'Actualizando...';
+      if (kpiContainer) kpiContainer.classList.add('opacity-60', 'transition-opacity', 'duration-200');
+    } else {
+      refreshBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+      if (refreshIcon) refreshIcon.classList.remove('animate-spin', 'inline-block');
+      if (refreshText) refreshText.textContent = 'Actualizar';
+      if (kpiContainer) kpiContainer.classList.remove('opacity-60');
+    }
+  };
+
   if (!isCacheValid) {
+    isRefreshing = true;
+    setButtonLoading(true);
+
     try {
-      const [msgsRes, eventsRes, campaignsRes] = await Promise.all([
-        supabase.from('email_messages').select('*'),
-        supabase.from('email_events').select('*'),
-        supabase.from('campaigns').select('*').eq('channel', 'email')
+      const [msgsData, eventsData, campaignsData] = await Promise.all([
+        fetchAllRows(
+          'email_messages',
+          'id, status, created_at, sent_at, sender_profile_id, sender_email, lead_id, contact_id, recipient_email, campaign_id',
+          { orderCol: 'created_at', ascending: false }
+        ),
+        fetchAllRows(
+          'email_events',
+          'id, email_message_id, event_type, created_at, campaign_id',
+          { orderCol: 'created_at', ascending: false }
+        ),
+        fetchAllRows(
+          'campaigns',
+          'id, name, status, total_found, total_sent',
+          { filterCol: 'channel', filterVal: 'email', orderCol: 'created_at', ascending: false }
+        )
       ]);
 
-      if (msgsRes.error) throw msgsRes.error;
-      if (eventsRes.error) throw eventsRes.error;
-      if (campaignsRes.error) throw campaignsRes.error;
-
       statsCache = {
-        messages: msgsRes.data || [],
-        events: eventsRes.data || [],
-        campaigns: campaignsRes.data || [],
+        messages: msgsData || [],
+        events: eventsData || [],
+        campaigns: campaignsData || [],
         timestamp: now.getTime()
       };
+
+      if (isUserAction) {
+        toast.show('Estadísticas actualizadas con éxito', 'success');
+      }
     } catch (err) {
       console.error('Error fetching email statistics:', err);
+      toast.show('Error al actualizar estadísticas: ' + (err.message || 'Error de conexión'), 'error');
+    } finally {
+      isRefreshing = false;
+      setButtonLoading(false);
     }
+  }
+
+  // Update last-updated timestamp label
+  const lastUpdatedEl = container.querySelector('#stats-last-updated');
+  if (lastUpdatedEl) {
+    const timeStr = new Date(statsCache.timestamp || now.getTime()).toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    lastUpdatedEl.textContent = `Actualizado ${timeStr}`;
+    lastUpdatedEl.title = `Última sincronización con la base de datos: ${timeStr}`;
   }
 
   // Filter messages by selected period
@@ -409,6 +468,7 @@ function renderCommercials(container, messages, events, allMessages) {
 function prepareLeadBreakdownData(messages, events) {
   const leads = cache.getLeads() || [];
   const contactsMap = cache.contacts || new Map();
+  const leadsMap = new Map(leads.map(l => [l.id, l]));
 
   const msgMap = new Map(); // key: lead_id_contact_id or lead_id
 
@@ -440,7 +500,7 @@ function prepareLeadBreakdownData(messages, events) {
   currentLeadBreakdownData = [];
 
   for (const [key, item] of msgMap.entries()) {
-    const lead = leads.find(l => l.id === item.lead_id);
+    const lead = leadsMap.get(item.lead_id);
     const contact = item.contact_id ? contactsMap.get(item.contact_id) : null;
 
     const sentCount = item.messages.filter(m => m.status === 'SENT' || m.status === 'QUEUED').length;
