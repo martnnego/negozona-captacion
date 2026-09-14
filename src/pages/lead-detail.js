@@ -1472,13 +1472,19 @@ export async function renderLeadDetail(leadId, onUpdate) {
                     if (input.checked) {
                       const wabaId = input.dataset.wabaId;
                       try {
-                        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
+                        const allowRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
                           method: 'POST',
                           headers: apiHeaders,
                           body: JSON.stringify({ phone_number_id: wabaId, consumer_phone_number: newContact.phone })
                         });
+                        if (!allowRes.ok) {
+                          const errData = await allowRes.json().catch(() => ({}));
+                          const errMsg = errData.detail || errData.error?.message || errData.title || errData.error || 'Error al agregar a la lista blanca de Meta';
+                          toast.show(`Contacto creado, pero aviso de Lista Blanca: ${errMsg}`, 'warning');
+                        }
                       } catch (err) {
                         console.error(`Error adding new contact to allowlist for WABA ${wabaId}:`, err);
+                        toast.show(`Error al sincronizar con Lista Blanca: ${err.message}`, 'error');
                       }
                     }
                   }

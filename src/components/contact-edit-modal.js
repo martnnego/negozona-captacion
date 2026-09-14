@@ -452,11 +452,13 @@ export function openContactEditModal(contactId, onSave) {
 
       for (const num of numbers) {
         let isAllowlisted = false;
+        let allowlistCount = 0;
         try {
           const allowRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist?phone_number_id=${num.id}`, { headers });
           if (allowRes.ok) {
             const allowList = await allowRes.json();
             const entries = Array.isArray(allowList) ? allowList : (allowList.data || []);
+            allowlistCount = entries.length;
             isAllowlisted = entries.some(e => {
               if (!e.consumer_phone_number) return false;
               const cleanEntry = String(e.consumer_phone_number).replace(/[^\d]/g, '');
@@ -468,20 +470,32 @@ export function openContactEditModal(contactId, onSave) {
         }
 
         initialAllowlistStates.set(num.id, isAllowlisted);
+        const isQuotaFull = allowlistCount >= 20 && !isAllowlisted;
 
         html += `
-          <div class="flex items-center justify-between p-2.5 bg-neutral-50 border border-neutral-200 rounded-sm">
-            <div class="flex flex-col gap-0.5">
-              <span class="font-mono text-[10px] font-bold text-primary">${num.display_phone_number} ${num.verified_name ? `(${num.verified_name})` : ''}</span>
-              <span class="text-[9px] text-neutral-500 font-mono">Estado Agente: <strong class="${num.agent_status === 'ACTIVE' ? 'text-emerald-600' : 'text-amber-600'}">${num.agent_status || 'Elegible'}</strong></span>
+          <div class="flex flex-col gap-2 p-2.5 bg-neutral-50 border border-neutral-200 rounded-sm">
+            <div class="flex items-center justify-between">
+              <div class="flex flex-col gap-0.5">
+                <span class="font-mono text-[10px] font-bold text-primary">${num.display_phone_number} ${num.verified_name ? `(${num.verified_name})` : ''}</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[9px] text-neutral-500 font-mono">Estado Agente: <strong class="${num.agent_status === 'ACTIVE' ? 'text-emerald-600' : 'text-amber-600'}">${num.agent_status || 'Elegible'}</strong></span>
+                  <span class="text-[8px] font-mono px-1.5 py-0.2 rounded-full ${allowlistCount >= 20 ? 'bg-amber-100 text-amber-800 font-bold' : 'bg-neutral-200 text-neutral-600'}">Cupo Meta: ${allowlistCount}/20</span>
+                </div>
+              </div>
+              <label class="relative inline-flex items-center ${isQuotaFull ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">
+                <input type="checkbox" data-waba-id="${num.id}" class="sr-only peer allowlist-toggle-input" ${isAllowlisted ? 'checked' : ''} ${isQuotaFull ? 'disabled' : ''} />
+                <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                <span class="ml-2 text-[9px] font-mono font-bold uppercase text-neutral-600 allowlist-toggle-label">
+                  ${isAllowlisted ? 'Habilitado' : (isQuotaFull ? 'Cupo Lleno (20/20)' : 'Deshabilitado')}
+                </span>
+              </label>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" data-waba-id="${num.id}" class="sr-only peer allowlist-toggle-input" ${isAllowlisted ? 'checked' : ''} />
-              <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
-              <span class="ml-2 text-[9px] font-mono font-bold uppercase text-neutral-600 allowlist-toggle-label">
-                ${isAllowlisted ? 'Habilitado' : 'Deshabilitado'}
-              </span>
-            </label>
+            ${isQuotaFull ? `
+              <div class="p-1.5 bg-amber-50 border border-amber-200 rounded text-amber-800 text-[9px] leading-tight flex items-center gap-1">
+                <span>⚠️</span>
+                <span>Cupo máximo alcanzado (20 de 20). Para habilitar este número, libera un espacio desde <strong>Configuración > WhatsApp Cloud API > Agente > Lista Blanca</strong>.</span>
+              </div>
+            ` : ''}
           </div>
         `;
       }
@@ -559,21 +573,29 @@ export function openContactEditModal(contactId, onSave) {
 
           if (isChecked !== wasChecked) {
             try {
+              let res;
               if (isChecked) {
-                await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
+                res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
                   method: 'POST',
                   headers: apiHeaders,
                   body: JSON.stringify({ phone_number_id: wabaId, consumer_phone_number: currentPhone })
                 });
               } else {
-                await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
+                res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
                   method: 'DELETE',
                   headers: apiHeaders,
                   body: JSON.stringify({ phone_number_id: wabaId, consumer_phone_number: currentPhone })
                 });
               }
+
+              if (res && !res.ok) {
+                const resErr = await res.json().catch(() => ({}));
+                const msg = resErr.detail || resErr.error?.message || resErr.title || resErr.error || 'Error al comunicar con Meta';
+                toast.show(`Aviso Lista Blanca (${isChecked ? 'activar' : 'desactivar'}): ${msg}`, 'warning');
+              }
             } catch (err) {
               console.error(`Error updating allowlist for WABA ${wabaId}:`, err);
+              toast.show(`Error al sincronizar con Meta: ${err.message}`, 'error');
             }
           }
         }

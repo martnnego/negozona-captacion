@@ -2569,6 +2569,7 @@ export function renderSettings(currentUser) {
           <!-- Pestañas Superiores -->
           <div class="flex border-b border-neutral-200 gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider overflow-x-auto whitespace-nowrap pb-0.5">
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-primary text-primary active-tab cursor-pointer shrink-0" data-tab="tab-principal">Principal</button>
+            <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-allowlist">📋 Lista Blanca</button>
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-conocimiento">Conocimiento del Agente</button>
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-habilidades">Habilidades del Agente</button>
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-conectores">Conectores</button>
@@ -3816,8 +3817,230 @@ export function renderSettings(currentUser) {
           });
         }
 
+        // 8. SOLAPA LISTA BLANCA (ALLOWLIST)
+        else if (tabKey === 'tab-allowlist') {
+          await renderAllowlistTab();
+        }
+
       } catch (err) {
         tabContainer.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 text-xs rounded-sm">Error al cargar datos de la pestaña: ${err.message}</div>`;
+      }
+    }
+
+    async function renderAllowlistTab() {
+      tabContainer.innerHTML = `
+        <div class="flex items-center justify-center py-12 text-neutral-400">
+          <span class="animate-pulse mr-2">🔄</span> Consultando Lista Blanca en Meta...
+        </div>
+      `;
+
+      try {
+        const headers = await getAuthHeader();
+
+        // Ensure CRM in-memory cache is fully loaded
+        if (!cache.isLoaded || cache.contacts.size === 0) {
+          await cache.loadAll().catch(() => {});
+        }
+
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist?phone_number_id=${phoneId}`, { headers });
+        const listData = await res.json().catch(() => []);
+        const entries = Array.isArray(listData) ? listData : (listData.data || []);
+        const count = entries.length;
+        const isFull = count >= 20;
+
+        const allContacts = Array.from(cache.contacts.values());
+        const allLeads = cache.getLeads() || [];
+        const allLinks = cache.links || [];
+
+        // Enhance entries with matched contact and lead from cache
+        const enhancedEntries = entries.map(entry => {
+          const rawEntryDigits = String(entry.consumer_phone_number).replace(/[^\d]/g, '');
+          const last8 = rawEntryDigits.slice(-8);
+
+          const match = allContacts.find(c => {
+            if (!c.phone) return false;
+            const cDigits = String(c.phone).replace(/[^\d]/g, '');
+            return cDigits === rawEntryDigits || (last8.length >= 7 && (cDigits.endsWith(last8) || rawEntryDigits.endsWith(cDigits.slice(-8))));
+          });
+
+          let fullName = null;
+          let companyName = null;
+          let leadId = null;
+
+          if (match) {
+            fullName = `${match.first_name || ''} ${match.last_name || ''}`.trim() || 'Contacto sin nombre';
+            const link = allLinks.find(l => l.contact_id === match.id);
+            const lead = link ? allLeads.find(ld => ld.id === link.lead_id) : allLeads.find(ld => ld.primary_contact_id === match.id);
+            if (lead) {
+              companyName = lead.company || 'Sin nombre de empresa';
+              leadId = lead.id;
+            }
+          }
+
+          return {
+            ...entry,
+            contactName: fullName,
+            companyName,
+            leadId
+          };
+        });
+
+        tabContainer.innerHTML = `
+          <div class="flex flex-col gap-4 font-sans">
+            <div class="p-4 bg-white border border-neutral-200 rounded-sm flex flex-col gap-4">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-100 pb-3">
+                <div>
+                  <h4 class="font-mono text-[10px] font-bold text-primary uppercase">Gestión de Lista Blanca (Allowlist en Meta)</h4>
+                  <p class="text-neutral-500 text-[10px] mt-0.5">
+                    Visualiza y administra qué contactos tienen permiso para interactuar con el Agente de IA cuando la audiencia es <strong>ALLOWLISTED_ONLY</strong>.
+                  </p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-[10px] font-bold px-2.5 py-1 rounded-full border ${isFull ? 'bg-rose-50 text-rose-700 border-rose-300' : 'bg-emerald-50 text-emerald-700 border-emerald-300'}">
+                    Cupo Meta: ${count} / 20 ${isFull ? '(COMPLETO)' : ''}
+                  </span>
+                </div>
+              </div>
+
+              ${isFull ? `
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-sm text-amber-900 text-[11px] flex items-start gap-2">
+                  <span class="text-base">⚠️</span>
+                  <div>
+                    <strong>Límite máximo alcanzado (20 números):</strong> Meta establece un tope estricto de 20 números en la lista blanca del Agente. Para poder habilitar nuevos contactos (como el lead de pruebas), debes eliminar primero uno de los números existentes que ya no requieras.
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- Formulario de agregar número manual -->
+              <form id="form-add-allowlist" class="flex flex-col sm:flex-row items-end gap-2 bg-neutral-50 p-3 rounded-sm border border-neutral-200">
+                <div class="flex flex-col gap-1 flex-1 w-full">
+                  <label class="font-mono text-[9px] font-bold text-primary uppercase">Número de WhatsApp (con código de país, ej: +5492915394413)</label>
+                  <input type="text" id="input-new-allowlist-phone" class="cohere-input text-xs font-mono" placeholder="+549..." required ${isFull ? 'disabled' : ''} />
+                </div>
+                <button type="submit" id="btn-submit-allowlist-add" class="px-4 py-2 bg-primary hover:bg-neutral-800 text-white font-mono text-[10px] font-bold uppercase rounded-full tracking-wider transition-colors cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed" ${isFull ? 'disabled' : ''}>
+                  + Agregar Número
+                </button>
+              </form>
+
+              <!-- Tabla de números habilitados -->
+              <div class="border border-neutral-200 rounded-sm overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr class="bg-neutral-50 border-b border-neutral-200 font-mono text-[9px] text-muted-slate uppercase tracking-wider">
+                      <th class="py-2.5 px-3 w-10 text-center">#</th>
+                      <th class="py-2.5 px-3">Contacto</th>
+                      <th class="py-2.5 px-3">Empresa / Lead</th>
+                      <th class="py-2.5 px-3">Número de WhatsApp</th>
+                      <th class="py-2.5 px-3 text-right">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-neutral-100">
+                    ${enhancedEntries.length === 0 ? `
+                      <tr>
+                        <td colspan="5" class="py-8 text-center text-neutral-400 font-mono text-xs">
+                          No hay números registrados en la lista blanca de este agente.
+                        </td>
+                      </tr>
+                    ` : enhancedEntries.map((entry, idx) => `
+                      <tr class="hover:bg-neutral-50/60 transition-colors">
+                        <td class="py-2.5 px-3 font-mono text-[10px] text-neutral-400 text-center">${idx + 1}</td>
+                        <td class="py-2.5 px-3">
+                          <span class="font-bold text-neutral-800 text-xs">${entry.contactName || '<span class="text-neutral-400 italic">No registrado en CRM</span>'}</span>
+                        </td>
+                        <td class="py-2.5 px-3">
+                          ${entry.companyName ? `
+                            <a href="#/leads/${entry.leadId}" class="font-semibold text-primary hover:text-coral transition-colors underline decoration-neutral-300">
+                              ${entry.companyName}
+                            </a>
+                          ` : '<span class="text-neutral-400 font-mono text-[10px]">-</span>'}
+                        </td>
+                        <td class="py-2.5 px-3 font-mono font-bold text-primary text-xs select-all">${entry.consumer_phone_number}</td>
+                        <td class="py-2.5 px-3 text-right">
+                          <button data-delete-entry-id="${entry.id}" data-delete-phone="${entry.consumer_phone_number}" data-display-label="${entry.contactName || entry.consumer_phone_number}" class="btn-delete-allowlist px-2.5 py-1 text-rose-600 hover:bg-rose-50 border border-rose-200 hover:border-rose-300 rounded-sm font-mono text-[10px] font-semibold transition-colors cursor-pointer">
+                            ✕ Eliminar
+                          </button>
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Event listeners
+        const addForm = tabContainer.querySelector('#form-add-allowlist');
+        if (addForm) {
+          addForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = addForm.querySelector('#input-new-allowlist-phone');
+            const submitBtn = addForm.querySelector('#btn-submit-allowlist-add');
+            const phoneVal = input.value.trim();
+            if (!phoneVal) return;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Agregando...';
+
+            try {
+              const addRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ phone_number_id: phoneId, consumer_phone_number: phoneVal })
+              });
+              const addData = await addRes.json().catch(() => ({}));
+              if (!addRes.ok) {
+                const errMsg = addData.detail || addData.error?.message || addData.title || addData.error || 'Error al agregar número a Meta';
+                throw new Error(errMsg);
+              }
+
+              toast.show(`Número ${phoneVal} agregado a la Lista Blanca`, 'success');
+              await renderAllowlistTab();
+            } catch (err) {
+              toast.show(err.message, 'error');
+              submitBtn.disabled = false;
+              submitBtn.textContent = '+ Agregar Número';
+            }
+          });
+        }
+
+        tabContainer.querySelectorAll('.btn-delete-allowlist').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const entryId = btn.dataset.deleteEntryId;
+            const phoneVal = btn.dataset.deletePhone;
+            const displayLabel = btn.dataset.displayLabel;
+            if (!confirm(`¿Deseas eliminar a "${displayLabel}" (${phoneVal}) de la lista blanca de este agente?\nSe liberará 1 cupo en Meta.`)) {
+              return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Borrando...';
+
+            try {
+              const delRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-allowlist`, {
+                method: 'DELETE',
+                headers,
+                body: JSON.stringify({ phone_number_id: phoneId, entry_id: entryId, consumer_phone_number: phoneVal })
+              });
+
+              if (!delRes.ok && delRes.status !== 204) {
+                const delData = await delRes.json().catch(() => ({}));
+                const errMsg = delData.detail || delData.error?.message || delData.title || delData.error || 'Error al eliminar número en Meta';
+                throw new Error(errMsg);
+              }
+
+              toast.show(`"${displayLabel}" (${phoneVal}) eliminado de la Lista Blanca. Cupo liberado.`, 'success');
+              await renderAllowlistTab();
+            } catch (err) {
+              toast.show(err.message, 'error');
+              btn.disabled = false;
+              btn.textContent = '✕ Eliminar';
+            }
+          });
+        });
+
+      } catch (err) {
+        tabContainer.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 text-xs rounded-sm">Error al cargar la Lista Blanca: ${err.message}</div>`;
       }
     }
 
