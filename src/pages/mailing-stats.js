@@ -1,17 +1,32 @@
 import { supabase, fetchAllRows } from '../lib/supabase';
 import { cache } from '../lib/cache';
 import { toast } from '../components/toast';
+import { renderLeadDetail } from './lead-detail';
 
 // In-memory cache for email stats data to prevent unnecessary Supabase reads
 let statsCache = {
   messages: null,
   events: null,
   campaigns: null,
+  templates: null,
   timestamp: 0
 };
 
 const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes in-memory cache
 let isRefreshing = false;
+
+// Sort state for each table
+let sortState = {
+  commercials: { column: 'sent', order: 'desc' },
+  leads: { column: 'lastSentAt', order: 'desc' },
+  campaigns: { column: 'sent', order: 'desc' }
+};
+
+let lastFilteredMessages = [];
+let lastFilteredEvents = [];
+let lastAllMessages = [];
+let lastEmailCampaigns = [];
+let lastLeadSearchQuery = '';
 
 export function renderMailingStats() {
   const container = document.createElement('div');
@@ -76,14 +91,14 @@ export function renderMailingStats() {
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
-              <tr class="border-b border-[#d9d9dd] bg-soft-stone/50 text-[11px] font-bold text-muted-slate uppercase tracking-wider">
-                <th class="py-3 px-4">Comercial</th>
-                <th class="py-3 px-4">Email Remitente</th>
-                <th class="py-3 px-4 text-center">Enviados</th>
-                <th class="py-3 px-4 text-center">Aperturas Detectadas</th>
-                <th class="py-3 px-4 text-center">Clics</th>
-                <th class="py-3 px-4 text-center">% Apertura</th>
-                <th class="py-3 px-4 text-right">Cuota Usada Hoy</th>
+              <tr class="border-b border-[#d9d9dd] bg-soft-stone/50 text-[11px] font-bold text-muted-slate uppercase tracking-wider select-none">
+                <th class="py-3 px-4 cursor-pointer hover:text-primary transition-colors" data-sort-commercial="name">Comercial <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 cursor-pointer hover:text-primary transition-colors" data-sort-commercial="email">Email Remitente <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-commercial="sent">Enviados <span class="sort-icon ml-1">▼</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-commercial="opens">Aperturas Detectadas <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-commercial="clicks">Clics <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-commercial="openRate">% Apertura <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-right cursor-pointer hover:text-primary transition-colors" data-sort-commercial="quotaToday">Cuota Usada Hoy <span class="sort-icon ml-1">↕</span></th>
               </tr>
             </thead>
             <tbody id="commercials-tbody" class="divide-y divide-[#d9d9dd] text-xs text-slate">
@@ -116,19 +131,20 @@ export function renderMailingStats() {
         <div class="overflow-x-auto max-h-96 overflow-y-auto">
           <table class="w-full text-left border-collapse">
             <thead class="sticky top-0 bg-soft-stone z-10 border-b border-[#d9d9dd] text-[11px] font-bold text-muted-slate uppercase tracking-wider">
-              <tr>
-                <th class="py-3 px-4">Lead / Empresa</th>
-                <th class="py-3 px-4">Contacto</th>
-                <th class="py-3 px-4">Email</th>
-                <th class="py-3 px-4 text-center">Enviados</th>
-                <th class="py-3 px-4 text-center">Aperturas Detectadas</th>
-                <th class="py-3 px-4 text-center">Clics</th>
-                <th class="py-3 px-4 text-right">Último Envío</th>
+              <tr class="select-none">
+                <th class="py-3 px-4 cursor-pointer hover:text-primary transition-colors" data-sort-lead="leadName">Lead / Empresa <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 cursor-pointer hover:text-primary transition-colors" data-sort-lead="contactName">Contacto <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 cursor-pointer hover:text-primary transition-colors" data-sort-lead="email">Email <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-lead="template">Template <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-lead="sent">Enviados <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-lead="opens">Aperturas Detectadas <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-lead="clicks">Clics <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-right cursor-pointer hover:text-primary transition-colors" data-sort-lead="lastSentAt">Último Envío <span class="sort-icon ml-1">▼</span></th>
               </tr>
             </thead>
             <tbody id="leads-breakdown-tbody" class="divide-y divide-[#d9d9dd] text-xs text-slate">
               <tr>
-                <td colspan="7" class="py-8 text-center text-muted">Cargando desglose de contactos...</td>
+                <td colspan="8" class="py-8 text-center text-muted">Cargando desglose de contactos...</td>
               </tr>
             </tbody>
           </table>
@@ -151,14 +167,14 @@ export function renderMailingStats() {
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
-              <tr class="border-b border-[#d9d9dd] bg-soft-stone/50 text-[11px] font-bold text-muted-slate uppercase tracking-wider">
-                <th class="py-3 px-4">Campaña</th>
-                <th class="py-3 px-4">Estado</th>
-                <th class="py-3 px-4 text-center">Audiencia</th>
-                <th class="py-3 px-4 text-center">Enviados</th>
-                <th class="py-3 px-4 text-center">Aperturas</th>
-                <th class="py-3 px-4 text-center">Clics</th>
-                <th class="py-3 px-4 text-right">% Apertura</th>
+              <tr class="border-b border-[#d9d9dd] bg-soft-stone/50 text-[11px] font-bold text-muted-slate uppercase tracking-wider select-none">
+                <th class="py-3 px-4 cursor-pointer hover:text-primary transition-colors" data-sort-campaign="name">Campaña <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 cursor-pointer hover:text-primary transition-colors" data-sort-campaign="status">Estado <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-campaign="total_found">Audiencia <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-campaign="sent">Enviados <span class="sort-icon ml-1">▼</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-campaign="opens">Aperturas <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-center cursor-pointer hover:text-primary transition-colors" data-sort-campaign="clicks">Clics <span class="sort-icon ml-1">↕</span></th>
+                <th class="py-3 px-4 text-right cursor-pointer hover:text-primary transition-colors" data-sort-campaign="openRate">% Apertura <span class="sort-icon ml-1">↕</span></th>
               </tr>
             </thead>
             <tbody id="campaigns-tbody" class="divide-y divide-[#d9d9dd] text-xs text-slate">
@@ -188,8 +204,12 @@ export function renderMailingStats() {
 
   leadSearchInput.addEventListener('input', (e) => {
     leadSearchQuery = e.target.value.toLowerCase().trim();
-    renderLeadsBreakdown(container, leadSearchQuery);
+    lastLeadSearchQuery = leadSearchQuery;
+    renderLeadsBreakdown(container, leadSearchQuery, selectedPeriod);
   });
+
+  // Attach sort handlers on table headers
+  attachSortListeners(container, () => selectedPeriod, () => leadSearchQuery);
 
   // Initial load
   loadAndRenderStats(container, selectedPeriod, leadSearchQuery, false, false);
@@ -199,6 +219,73 @@ export function renderMailingStats() {
 
 // Global cached dataset for lead breakdown rendering
 let currentLeadBreakdownData = [];
+
+function getSortIndicator(tableKey, column) {
+  if (sortState[tableKey].column !== column) return '<span class="text-neutral-300 opacity-60">↕</span>';
+  return sortState[tableKey].order === 'asc' ? '<span class="text-primary font-bold">▲</span>' : '<span class="text-primary font-bold">▼</span>';
+}
+
+function updateHeaders(container) {
+  container.querySelectorAll('[data-sort-commercial]').forEach(th => {
+    const col = th.dataset.sortCommercial;
+    const icon = th.querySelector('.sort-icon');
+    if (icon) icon.innerHTML = getSortIndicator('commercials', col);
+  });
+  container.querySelectorAll('[data-sort-lead]').forEach(th => {
+    const col = th.dataset.sortLead;
+    const icon = th.querySelector('.sort-icon');
+    if (icon) icon.innerHTML = getSortIndicator('leads', col);
+  });
+  container.querySelectorAll('[data-sort-campaign]').forEach(th => {
+    const col = th.dataset.sortCampaign;
+    const icon = th.querySelector('.sort-icon');
+    if (icon) icon.innerHTML = getSortIndicator('campaigns', col);
+  });
+}
+
+function attachSortListeners(container, getPeriod, getSearchQuery) {
+  container.querySelectorAll('[data-sort-commercial]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sortCommercial;
+      if (sortState.commercials.column === col) {
+        sortState.commercials.order = sortState.commercials.order === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortState.commercials.column = col;
+        sortState.commercials.order = (col === 'name' || col === 'email') ? 'asc' : 'desc';
+      }
+      updateHeaders(container);
+      renderCommercials(container, lastFilteredMessages, lastFilteredEvents, lastAllMessages);
+    });
+  });
+
+  container.querySelectorAll('[data-sort-lead]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sortLead;
+      if (sortState.leads.column === col) {
+        sortState.leads.order = sortState.leads.order === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortState.leads.column = col;
+        sortState.leads.order = (col === 'leadName' || col === 'contactName' || col === 'email' || col === 'template') ? 'asc' : 'desc';
+      }
+      updateHeaders(container);
+      renderLeadsBreakdown(container, getSearchQuery(), getPeriod());
+    });
+  });
+
+  container.querySelectorAll('[data-sort-campaign]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sortCampaign;
+      if (sortState.campaigns.column === col) {
+        sortState.campaigns.order = sortState.campaigns.order === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortState.campaigns.column = col;
+        sortState.campaigns.order = (col === 'name' || col === 'status') ? 'asc' : 'desc';
+      }
+      updateHeaders(container);
+      renderCampaignsTable(container, lastEmailCampaigns, lastFilteredMessages, lastFilteredEvents);
+    });
+  });
+}
 
 async function loadAndRenderStats(container, period, searchQuery, forceRefresh = false, isUserAction = false) {
   if (isRefreshing) return;
@@ -232,10 +319,10 @@ async function loadAndRenderStats(container, period, searchQuery, forceRefresh =
     setButtonLoading(true);
 
     try {
-      const [msgsData, eventsData, campaignsData] = await Promise.all([
+      const [msgsData, eventsData, campaignsData, templatesData] = await Promise.all([
         fetchAllRows(
           'email_messages',
-          'id, status, created_at, sent_at, sender_profile_id, sender_email, lead_id, contact_id, recipient_email, campaign_id',
+          'id, status, created_at, sent_at, sender_profile_id, sender_email, lead_id, contact_id, recipient_email, campaign_id, template_id, subject',
           { orderCol: 'created_at', ascending: false }
         ),
         fetchAllRows(
@@ -245,8 +332,13 @@ async function loadAndRenderStats(container, period, searchQuery, forceRefresh =
         ),
         fetchAllRows(
           'campaigns',
-          'id, name, status, total_found, total_sent',
+          'id, name, status, total_found, total_sent, email_template_id',
           { filterCol: 'channel', filterVal: 'email', orderCol: 'created_at', ascending: false }
+        ),
+        fetchAllRows(
+          'email_templates',
+          'id, name, subject',
+          { orderCol: 'name', ascending: true }
         )
       ]);
 
@@ -254,6 +346,7 @@ async function loadAndRenderStats(container, period, searchQuery, forceRefresh =
         messages: msgsData || [],
         events: eventsData || [],
         campaigns: campaignsData || [],
+        templates: templatesData || [],
         timestamp: now.getTime()
       };
 
@@ -304,6 +397,14 @@ async function loadAndRenderStats(container, period, searchQuery, forceRefresh =
     ? allEvents.filter(e => filteredMsgIds.has(e.email_message_id) || new Date(e.created_at) >= periodStartDate)
     : allEvents;
 
+  lastFilteredMessages = filteredMessages;
+  lastFilteredEvents = filteredEvents;
+  lastAllMessages = allMessages;
+  lastEmailCampaigns = emailCampaigns;
+  lastLeadSearchQuery = searchQuery;
+
+  updateHeaders(container);
+
   // Render KPI Summary
   renderKpis(container, filteredMessages, filteredEvents, allMessages);
 
@@ -311,8 +412,8 @@ async function loadAndRenderStats(container, period, searchQuery, forceRefresh =
   renderCommercials(container, filteredMessages, filteredEvents, allMessages);
 
   // Prepare Lead Breakdown Data and Render
-  prepareLeadBreakdownData(filteredMessages, filteredEvents);
-  renderLeadsBreakdown(container, searchQuery);
+  prepareLeadBreakdownData(filteredMessages, filteredEvents, statsCache.templates || [], emailCampaigns);
+  renderLeadsBreakdown(container, searchQuery, period);
 
   // Render Email Campaigns Table
   renderCampaignsTable(container, emailCampaigns, filteredMessages, filteredEvents);
@@ -417,7 +518,7 @@ function renderCommercials(container, messages, events, allMessages) {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const rowsHtml = senders.map(p => {
+  const commercialsData = senders.map(p => {
     const senderEmail = (p.mailing_email || p.email || '').toLowerCase();
     
     // Messages by this commercial
@@ -430,7 +531,8 @@ function renderCommercials(container, messages, events, allMessages) {
     const opens = new Set(userEvents.filter(e => e.event_type === 'OPEN_DETECTED').map(e => e.email_message_id)).size;
     const clicks = new Set(userEvents.filter(e => e.event_type === 'CLICKED').map(e => e.email_message_id)).size;
 
-    const openRate = totalSent > 0 ? ((opens / totalSent) * 100).toFixed(1) : '0.0';
+    const openRateNum = totalSent > 0 ? ((opens / totalSent) * 100) : 0;
+    const openRate = openRateNum.toFixed(1);
 
     // Sent today by this commercial
     const userMsgsToday = allMessages.filter(m => {
@@ -442,33 +544,58 @@ function renderCommercials(container, messages, events, allMessages) {
     const limit = 2000;
     const usedPct = Math.min(((userMsgsToday / limit) * 100), 100).toFixed(1);
 
-    return `
-      <tr class="hover:bg-soft-stone/30 transition-colors">
-        <td class="py-3 px-4 font-bold text-slate">${p.full_name || 'Comercial'}</td>
-        <td class="py-3 px-4 font-mono text-[11px] text-muted-slate">${senderEmail}</td>
-        <td class="py-3 px-4 text-center font-semibold">${totalSent.toLocaleString()}</td>
-        <td class="py-3 px-4 text-center font-semibold text-emerald-600">${opens.toLocaleString()}</td>
-        <td class="py-3 px-4 text-center font-semibold text-primary">${clicks.toLocaleString()}</td>
-        <td class="py-3 px-4 text-center font-bold text-slate">${openRate}%</td>
-        <td class="py-3 px-4 text-right">
-          <div class="inline-flex flex-col items-end">
-            <span class="font-mono text-xs font-bold">${userMsgsToday} / 2,000</span>
-            <div class="w-24 bg-soft-stone h-1.5 rounded-full mt-1 overflow-hidden">
-              <div class="bg-primary h-full" style="width: ${usedPct}%"></div>
-            </div>
+    return {
+      name: p.full_name || 'Comercial',
+      email: senderEmail,
+      sent: totalSent,
+      opens,
+      clicks,
+      openRate: parseFloat(openRate),
+      openRateStr: `${openRate}%`,
+      quotaToday: userMsgsToday,
+      usedPct
+    };
+  });
+
+  commercialsData.sort((a, b) => {
+    let valA = a[sortState.commercials.column];
+    let valB = b[sortState.commercials.column];
+    if (typeof valA === 'string') valA = valA.toLowerCase();
+    if (typeof valB === 'string') valB = (valB || '').toLowerCase();
+    if (valA < valB) return sortState.commercials.order === 'asc' ? -1 : 1;
+    if (valA > valB) return sortState.commercials.order === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const rowsHtml = commercialsData.map(c => `
+    <tr class="hover:bg-soft-stone/30 transition-colors">
+      <td class="py-3 px-4 font-bold text-slate">${c.name}</td>
+      <td class="py-3 px-4 font-mono text-[11px] text-muted-slate">${c.email}</td>
+      <td class="py-3 px-4 text-center font-semibold">${c.sent.toLocaleString()}</td>
+      <td class="py-3 px-4 text-center font-semibold text-emerald-600">${c.opens.toLocaleString()}</td>
+      <td class="py-3 px-4 text-center font-semibold text-primary">${c.clicks.toLocaleString()}</td>
+      <td class="py-3 px-4 text-center font-bold text-slate">${c.openRateStr}</td>
+      <td class="py-3 px-4 text-right">
+        <div class="inline-flex flex-col items-end">
+          <span class="font-mono text-xs font-bold">${c.quotaToday} / 2,000</span>
+          <div class="w-24 bg-soft-stone h-1.5 rounded-full mt-1 overflow-hidden">
+            <div class="bg-primary h-full" style="width: ${c.usedPct}%"></div>
           </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
+        </div>
+      </td>
+    </tr>
+  `).join('');
 
   tbody.innerHTML = rowsHtml;
 }
 
-function prepareLeadBreakdownData(messages, events) {
+function prepareLeadBreakdownData(messages, events, templates = [], campaigns = []) {
   const leads = cache.getLeads() || [];
   const contactsMap = cache.contacts || new Map();
   const leadsMap = new Map(leads.map(l => [l.id, l]));
+
+  const templatesMap = new Map((templates || []).map(t => [t.id, t.name]));
+  const campaignTemplatesMap = new Map((campaigns || []).map(c => [c.id, c.email_template_id]));
 
   const msgMap = new Map(); // key: lead_id_contact_id or lead_id
 
@@ -514,46 +641,116 @@ function prepareLeadBreakdownData(messages, events) {
       if (mEvs.some(e => e.event_type === 'CLICKED')) clicks++;
     }
 
+    // Resolve template names for this lead/contact
+    const templateNamesSet = new Set();
+    for (const m of item.messages) {
+      let tName = null;
+      if (m.template_id && templatesMap.has(m.template_id)) {
+        tName = templatesMap.get(m.template_id);
+      } else if (m.campaign_id && campaignTemplatesMap.has(m.campaign_id)) {
+        const cTmplId = campaignTemplatesMap.get(m.campaign_id);
+        if (cTmplId && templatesMap.has(cTmplId)) {
+          tName = templatesMap.get(cTmplId);
+        }
+      }
+      // Fallback matching by subject
+      if (!tName && m.subject) {
+        const cleanSubj = m.subject.toLowerCase();
+        for (const t of templates) {
+          const tSubj = (t.subject || '').toLowerCase().replace(/\{\{[^}]+\}\}/g, '').trim();
+          if (tSubj.length > 5 && cleanSubj.includes(tSubj)) {
+            tName = t.name;
+            break;
+          }
+        }
+      }
+      if (tName) {
+        templateNamesSet.add(tName);
+      }
+    }
+
     currentLeadBreakdownData.push({
+      leadId: item.lead_id,
       leadName: lead?.company || 'Lead s/n',
       contactName: contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : (lead?.company || 'Contacto Principal'),
       email: item.recipient_email || contact?.email || '-',
+      templates: Array.from(templateNamesSet),
       sent: sentCount,
       opens,
       clicks,
       lastSentAt: item.last_sent_at
     });
   }
-
-  // Sort by lastSentAt descending
-  currentLeadBreakdownData.sort((a, b) => new Date(b.lastSentAt) - new Date(a.lastSentAt));
 }
 
-function renderLeadsBreakdown(container, query) {
+function renderLeadsBreakdown(container, query, period) {
   const tbody = container.querySelector('#leads-breakdown-tbody');
   if (!tbody) return;
 
   const filtered = currentLeadBreakdownData.filter(d => {
     if (!query) return true;
-    return d.leadName.toLowerCase().includes(query) || d.contactName.toLowerCase().includes(query) || d.email.toLowerCase().includes(query);
+    const q = query.toLowerCase();
+    const matchesTemplates = (d.templates || []).some(t => t.toLowerCase().includes(q));
+    return d.leadName.toLowerCase().includes(q) || d.contactName.toLowerCase().includes(q) || d.email.toLowerCase().includes(q) || matchesTemplates;
   });
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" class="py-6 text-center text-muted italic">No se encontraron registros de interacción para la búsqueda.</td>
+        <td colspan="8" class="py-6 text-center text-muted italic">No se encontraron registros de interacción para la búsqueda.</td>
       </tr>
     `;
     return;
   }
 
-  tbody.innerHTML = filtered.slice(0, 50).map(d => {
+  const sorted = [...filtered].sort((a, b) => {
+    let valA = a[sortState.leads.column];
+    let valB = b[sortState.leads.column];
+    if (sortState.leads.column === 'template') {
+      valA = (a.templates && a.templates[0]) || '';
+      valB = (b.templates && b.templates[0]) || '';
+    }
+    if (sortState.leads.column === 'lastSentAt') {
+      valA = valA ? new Date(valA).getTime() : 0;
+      valB = valB ? new Date(valB).getTime() : 0;
+    } else if (typeof valA === 'string') {
+      valA = valA.toLowerCase();
+      valB = (valB || '').toLowerCase();
+    }
+    if (valA < valB) return sortState.leads.order === 'asc' ? -1 : 1;
+    if (valA > valB) return sortState.leads.order === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  tbody.innerHTML = sorted.slice(0, 100).map(d => {
     const dateFormatted = d.lastSentAt ? new Date(d.lastSentAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+
+    let templateBadge = `<span class="text-neutral-400 text-[11px]">—</span>`;
+    if (d.templates && d.templates.length > 0) {
+      const allTemplatesStr = d.templates.join(' | ');
+      const firstTemplate = d.templates[0];
+      const extraCount = d.templates.length > 1 ? ` (+${d.templates.length - 1})` : '';
+      templateBadge = `
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-help max-w-[170px] truncate" title="Plantilla: ${allTemplatesStr}">
+          <span>📄</span>
+          <span class="truncate">${firstTemplate}</span>${extraCount}
+        </span>
+      `;
+    }
+
     return `
       <tr class="hover:bg-soft-stone/30 transition-colors">
-        <td class="py-2.5 px-4 font-bold text-slate">${d.leadName}</td>
+        <td class="py-2.5 px-4 font-bold text-slate">
+          ${d.leadId ? `
+            <button type="button" class="btn-open-lead-stats text-left font-bold text-slate hover:text-primary hover:underline cursor-pointer flex items-center gap-1.5 transition-colors" data-lead-id="${d.leadId}" title="Ver detalle de ${d.leadName}">
+              <span>${d.leadName}</span>
+              <span class="text-[10px] text-muted opacity-70">↗</span>
+            </button>
+          ` : d.leadName}
+        </td>
         <td class="py-2.5 px-4 font-medium text-slate">${d.contactName}</td>
         <td class="py-2.5 px-4 font-mono text-[11px] text-muted-slate">${d.email}</td>
+        <td class="py-2.5 px-4 text-center">${templateBadge}</td>
         <td class="py-2.5 px-4 text-center font-semibold">${d.sent}</td>
         <td class="py-2.5 px-4 text-center font-semibold text-emerald-600">${d.opens}</td>
         <td class="py-2.5 px-4 text-center font-semibold text-primary">${d.clicks}</td>
@@ -561,6 +758,19 @@ function renderLeadsBreakdown(container, query) {
       </tr>
     `;
   }).join('');
+
+  // Attach click listener to open lead detail modal
+  tbody.querySelectorAll('.btn-open-lead-stats').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const leadId = btn.dataset.leadId;
+      if (leadId) {
+        renderLeadDetail(leadId, () => {
+          loadAndRenderStats(container, period || '30d', query, true, false);
+        });
+      }
+    });
+  });
 }
 
 function renderCampaignsTable(container, emailCampaigns, messages, events) {
@@ -576,7 +786,7 @@ function renderCampaignsTable(container, emailCampaigns, messages, events) {
     return;
   }
 
-  const rowsHtml = emailCampaigns.map(c => {
+  const campaignsData = emailCampaigns.map(c => {
     const cMsgs = messages.filter(m => m.campaign_id === c.id);
     const cMsgIds = new Set(cMsgs.map(m => m.id));
 
@@ -586,8 +796,33 @@ function renderCampaignsTable(container, emailCampaigns, messages, events) {
     const opens = new Set(cEvents.filter(e => e.event_type === 'OPEN_DETECTED').map(e => e.email_message_id)).size;
     const clicks = new Set(cEvents.filter(e => e.event_type === 'CLICKED').map(e => e.email_message_id)).size;
 
-    const openRate = totalSent > 0 ? ((opens / totalSent) * 100).toFixed(1) : '0.0';
+    const openRateNum = totalSent > 0 ? ((opens / totalSent) * 100) : 0;
+    const openRate = openRateNum.toFixed(1);
 
+    return {
+      id: c.id,
+      name: c.name || 'Sin Nombre',
+      status: c.status || 'pendiente',
+      total_found: c.total_found || 0,
+      sent: totalSent,
+      opens,
+      clicks,
+      openRate: parseFloat(openRate),
+      openRateStr: `${openRate}%`
+    };
+  });
+
+  campaignsData.sort((a, b) => {
+    let valA = a[sortState.campaigns.column];
+    let valB = b[sortState.campaigns.column];
+    if (typeof valA === 'string') valA = valA.toLowerCase();
+    if (typeof valB === 'string') valB = (valB || '').toLowerCase();
+    if (valA < valB) return sortState.campaigns.order === 'asc' ? -1 : 1;
+    if (valA > valB) return sortState.campaigns.order === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const rowsHtml = campaignsData.map(c => {
     let statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700 uppercase">${c.status}</span>`;
     if (c.status === 'finalizada') {
       statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 uppercase">Finalizada</span>`;
@@ -603,11 +838,11 @@ function renderCampaignsTable(container, emailCampaigns, messages, events) {
           <a href="#campaigns" class="hover:text-primary transition-colors">${c.name}</a>
         </td>
         <td class="py-3 px-4">${statusBadge}</td>
-        <td class="py-3 px-4 text-center font-semibold">${c.total_found || 0}</td>
-        <td class="py-3 px-4 text-center font-semibold">${totalSent}</td>
-        <td class="py-3 px-4 text-center font-semibold text-emerald-600">${opens}</td>
-        <td class="py-3 px-4 text-center font-semibold text-primary">${clicks}</td>
-        <td class="py-3 px-4 text-right font-bold text-slate">${openRate}%</td>
+        <td class="py-3 px-4 text-center font-semibold">${c.total_found}</td>
+        <td class="py-3 px-4 text-center font-semibold">${c.sent}</td>
+        <td class="py-3 px-4 text-center font-semibold text-emerald-600">${c.opens}</td>
+        <td class="py-3 px-4 text-center font-semibold text-primary">${c.clicks}</td>
+        <td class="py-3 px-4 text-right font-bold text-slate">${c.openRateStr}</td>
       </tr>
     `;
   }).join('');

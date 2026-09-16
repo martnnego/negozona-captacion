@@ -906,6 +906,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
         deleteBtn.textContent = 'Eliminando...';
 
         try {
+          const linkedContactIds = (linkedContacts || []).map(c => c.id);
           const { error } = await supabase
             .from('leads')
             .delete()
@@ -917,6 +918,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
           detailModal.close();
 
           cache.deleteLead(lead.id);
+          for (const cid of linkedContactIds) {
+            cache.deleteContact(cid);
+          }
           await cache.loadAll();
 
           if (onUpdate) onUpdate();
@@ -1122,6 +1126,13 @@ export async function renderLeadDetail(leadId, onUpdate) {
           if (error) throw error;
 
           cache.deleteLink(lead.id, contactId);
+
+          // If the contact had no other leads, the DB trigger cleaned it up. Check and update cache:
+          const { data: stillExists } = await supabase.from('contacts').select('id').eq('id', contactId).maybeSingle();
+          if (!stillExists) {
+            cache.deleteContact(contactId);
+          }
+
           toast.show('Contacto desvinculado de la empresa', 'success');
           await loadAllData();
         } catch (err) {
@@ -1440,6 +1451,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
               try {
                 // Check if email already exists
+                let contactData = null;
                 if (newContact.email) {
                   const { data: dup } = await supabase
                     .from('contacts')
@@ -1448,18 +1460,47 @@ export async function renderLeadDetail(leadId, onUpdate) {
                     .maybeSingle();
 
                   if (dup) {
-                    toast.show('El email ingresado ya pertenece a un contacto existente. Usa la opción "Vincular Existente".', 'error');
-                    return;
+                    const { data: otherLinks } = await supabase
+                      .from('lead_contacts_link')
+                      .select('lead_id, leads(id, company)')
+                      .eq('contact_id', dup.id);
+
+                    const otherActiveLinks = (otherLinks || []).filter(l => l.lead_id !== lead.id);
+                    if (otherActiveLinks.length > 0) {
+                      const otherCompanies = otherActiveLinks.map(l => l.leads?.company).filter(Boolean).join(', ');
+                      toast.show(`El email ingresado ya pertenece a un contacto de ${otherCompanies || 'otra empresa'}. Usa la opción "Vincular Existente".`, 'warning');
+                      return;
+                    }
+
+                    const isCurrentLink = (otherLinks || []).some(l => l.lead_id === lead.id);
+                    if (isCurrentLink) {
+                      toast.show('Este contacto ya está vinculado a esta empresa.', 'info');
+                      return;
+                    }
+
+                    // Exists but has no other leads (orphaned) -> update and reuse
+                    const { data: updatedContact, error: uErr } = await supabase
+                      .from('contacts')
+                      .update(newContact)
+                      .eq('id', dup.id)
+                      .select()
+                      .single();
+
+                    if (uErr) throw uErr;
+                    contactData = updatedContact;
                   }
                 }
 
-                const { data: contactData, error: contactErr } = await supabase
-                  .from('contacts')
-                  .insert([newContact])
-                  .select()
-                  .single();
+                if (!contactData) {
+                  const { data: createdContact, error: contactErr } = await supabase
+                    .from('contacts')
+                    .insert([newContact])
+                    .select()
+                    .single();
 
-                if (contactErr) throw contactErr;
+                  if (contactErr) throw contactErr;
+                  contactData = createdContact;
+                }
 
                 // Sync to allowlist if phone provided and toggle checked
                 if (newContact.phone) {
@@ -1654,8 +1695,33 @@ export async function renderLeadDetail(leadId, onUpdate) {
               ? '<span class="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-sm border border-indigo-200 uppercase">🤖 Agéntico</span>'
               : (isCampaign ? '<span class="text-[9px] font-mono font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-sm border border-rose-200 uppercase">📢 Campaña</span>' : '');
 
+            const isEmail = c.contact_type === 'email';
+            let formattedBody = c.body || 'Sin detalles registrados.';
+            let emailHeaderHtml = '';
+
+            if (isEmail) {
+              const deMatch = formattedBody.match(/^De:\s*([^\n]+)/m);
+              const paraMatch = formattedBody.match(/^Para:\s*([^\n]+)/m);
+              if (deMatch || paraMatch) {
+                const fromEmail = deMatch ? deMatch[1].trim() : '';
+                const toEmail = paraMatch ? paraMatch[1].trim() : '';
+                formattedBody = formattedBody.replace(/^De:[^\n]*\n?/m, '').replace(/^Para:[^\n]*\n?/m, '').trim();
+                emailHeaderHtml = `
+                  <div class="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-slate bg-neutral-100/80 px-2 py-0.5 rounded-xs border border-neutral-200/60 my-1">
+                    ${fromEmail ? `<span><strong class="text-neutral-700">De:</strong> ${fromEmail}</span>` : ''}
+                    ${fromEmail && toEmail ? `<span class="text-neutral-400">→</span>` : ''}
+                    ${toEmail ? `<span><strong class="text-neutral-700">Para:</strong> ${toEmail}</span>` : ''}
+                  </div>
+                `;
+              }
+              formattedBody = formattedBody.replace(/\n\s*\n\s*\n+/g, '\n\n').trim();
+            }
+
+            const isLong = formattedBody.length > 150 || (formattedBody.match(/\n/g) || []).length >= 2;
+            const interactionId = `interaction-${c.id || Math.random().toString(36).substr(2, 9)}`;
+
             return `
-              <div class="border border-[#d9d9dd] rounded-sm p-4 bg-neutral-50/30 flex flex-col gap-2">
+              <div class="border border-[#d9d9dd] rounded-sm p-3.5 bg-neutral-50/30 flex flex-col gap-1.5 transition-all">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-neutral-100 pb-2">
                   <div class="flex items-center gap-2">
                     <span class="font-mono text-[9px] font-bold text-primary uppercase bg-neutral-100 px-2 py-0.5 rounded-sm">${typeBadge}</span>
@@ -1669,7 +1735,15 @@ export async function renderLeadDetail(leadId, onUpdate) {
                     <span class="font-mono">${formatDateTime(c.contacted_at)}</span>
                   </div>
                 </div>
-                <p class="text-[#616161] leading-relaxed whitespace-pre-wrap mt-1">${c.body || 'Sin detalles registrados.'}</p>
+                ${emailHeaderHtml}
+                <div class="relative">
+                  <p id="${interactionId}-text" class="text-[#616161] leading-relaxed whitespace-pre-wrap text-xs ${isEmail && isLong ? 'line-clamp-2' : ''}">${formattedBody}</p>
+                  ${isEmail && isLong ? `
+                    <button type="button" class="btn-toggle-email-body text-[11px] font-mono font-semibold text-primary hover:underline mt-1 cursor-pointer flex items-center gap-1" data-target="${interactionId}-text">
+                      <span>Ver texto completo</span> <span class="text-[9px]">▾</span>
+                    </button>
+                  ` : ''}
+                </div>
               </div>
             `;
           }).join('')}
@@ -1689,6 +1763,23 @@ export async function renderLeadDetail(leadId, onUpdate) {
         </div>
       </div>
     `;
+
+    // Toggle email full body expand/collapse
+    parent.querySelectorAll('.btn-toggle-email-body').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.dataset.target;
+        const textEl = parent.querySelector(`#${targetId}`);
+        if (!textEl) return;
+        const isClamped = textEl.classList.contains('line-clamp-2');
+        if (isClamped) {
+          textEl.classList.remove('line-clamp-2');
+          btn.innerHTML = `<span>Ver menos</span> <span class="text-[9px]">▴</span>`;
+        } else {
+          textEl.classList.add('line-clamp-2');
+          btn.innerHTML = `<span>Ver texto completo</span> <span class="text-[9px]">▾</span>`;
+        }
+      });
+    });
 
     // Registrar Gestión modal
     parent.querySelector('#add-contact-btn').addEventListener('click', () => {
@@ -4433,6 +4524,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
             base64_content: f.base64
           }));
 
+          const templateSelect = parent.querySelector('#select-email-template');
+          const templateId = templateSelect?.value || null;
+
           // 1. Save record in email_messages
           const { data: newMsg, error: insertErr } = await supabase
             .from('email_messages')
@@ -4446,6 +4540,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
               preview_text: preview_text,
               body_html: body_html,
               body_text: body_html.replace(/<[^>]*>?/gm, ''),
+              template_id: templateId,
               status: 'QUEUED',
               sent_at: null,
               attachments: attachmentsPayload

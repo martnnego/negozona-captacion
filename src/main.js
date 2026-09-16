@@ -24,6 +24,7 @@ import { renderNotifications } from './pages/notifications';
 import { renderInDevelopment } from './pages/in-development';
 
 import { realtime } from './lib/realtime';
+import { checkAndAnnounceNewVersion } from './components/version-announcer';
 
 const routes = {
   '#login': renderLogin,
@@ -231,6 +232,11 @@ async function initApp() {
         
         // Update router container target to render page inside contentArea
         router.appContainer = contentArea;
+
+        // Check for new version announcements (discreet floating banner)
+        setTimeout(() => {
+          checkAndAnnounceNewVersion();
+        }, 500);
       }
     }
   );

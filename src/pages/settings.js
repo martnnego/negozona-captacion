@@ -1651,7 +1651,7 @@ export function renderSettings(currentUser) {
                         nameStatusBadge = '<span class="font-mono text-[8px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1 py-0.2 rounded-xs ml-1">Rechazado</span>';
                       }
 
-                      const agentStatus = num.agent_status || (num.is_eligible_agent ? 'ACTIVE' : 'NO_ELIGIBLE');
+                      const agentStatus = num.agent_status || (num.is_eligible_agent ? 'ELIGIBLE' : 'NO_ELIGIBLE');
 
                       return `
                         <tr class="hover:bg-neutral-50/50 transition-colors">

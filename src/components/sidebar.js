@@ -2,6 +2,9 @@ import { auth } from '../lib/auth';
 import { router } from '../lib/router';
 import { cache } from '../lib/cache';
 import { supabase } from '../lib/supabase';
+import { CURRENT_VERSION } from '../data/changelog';
+import { openChangelogModal } from './changelog-modal';
+import { hasUnreadVersion } from './version-announcer';
 
 export function renderSidebar(currentUser) {
   const sidebar = document.createElement('aside');
@@ -10,6 +13,7 @@ export function renderSidebar(currentUser) {
   const currentHash = window.location.hash || '#dashboard';
   const isAdmin = currentUser?.profile?.role === 'super_admin';
   const isSalesqlEnabled = cache.isSalesqlEnabled();
+  const hasUnread = hasUnreadVersion();
 
   // Determine active section for auto-expanding accordions
   const isLeadsActive = ['#leads-table', '#leads-kanban', '#unmatched-whatsapp', ...(isSalesqlEnabled ? ['#salesql-search'] : [])].includes(currentHash);
@@ -269,29 +273,46 @@ export function renderSidebar(currentUser) {
     </div>
 
     <!-- Bottom User Info & Redesigned Logout Button -->
-    <div class="p-3.5 border-t border-[#d9d9dd] flex items-center justify-between gap-2 bg-neutral-50 shrink-0">
-      <div class="flex items-center gap-2.5 overflow-hidden min-w-0">
-        <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-xs">
-          ${currentUser?.profile?.avatar_url 
-            ? `<img src="${currentUser.profile.avatar_url}" class="w-8 h-8 rounded-full object-cover" />` 
-            : (currentUser?.profile?.full_name || currentUser?.email || 'U').charAt(0).toUpperCase()}
+    <div class="p-3.5 border-t border-[#d9d9dd] flex flex-col gap-2.5 bg-neutral-50 shrink-0">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 overflow-hidden min-w-0">
+          <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-xs">
+            ${currentUser?.profile?.avatar_url 
+              ? `<img src="${currentUser.profile.avatar_url}" class="w-8 h-8 rounded-full object-cover" />` 
+              : (currentUser?.profile?.full_name || currentUser?.email || 'U').charAt(0).toUpperCase()}
+          </div>
+          <div class="flex flex-col overflow-hidden min-w-0">
+            <span class="text-xs font-semibold text-primary truncate font-sans">${currentUser?.profile?.full_name || 'Usuario'}</span>
+            <span class="text-[9px] text-muted font-mono tracking-wider uppercase">${currentUser?.profile?.role === 'super_admin' ? 'Admin' : 'Comercial'}</span>
+          </div>
         </div>
-        <div class="flex flex-col overflow-hidden min-w-0">
-          <span class="text-xs font-semibold text-primary truncate font-sans">${currentUser?.profile?.full_name || 'Usuario'}</span>
-          <span class="text-[9px] text-muted font-mono tracking-wider uppercase">${currentUser?.profile?.role === 'super_admin' ? 'Admin' : 'Comercial'}</span>
-        </div>
+
+        <button 
+          id="logout-btn" 
+          class="flex items-center gap-1.5 px-2.5 py-1.5 border border-neutral-300 hover:border-rose-400 bg-white hover:bg-rose-50 text-neutral-700 hover:text-rose-600 rounded-sm font-mono text-[10px] font-bold tracking-wider uppercase transition-all duration-150 focus:outline-none shrink-0 shadow-xs cursor-pointer" 
+          title="Cerrar sesión"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+          </svg>
+          <span>Salir</span>
+        </button>
       </div>
 
-      <button 
-        id="logout-btn" 
-        class="flex items-center gap-1.5 px-2.5 py-1.5 border border-neutral-300 hover:border-rose-400 bg-white hover:bg-rose-50 text-neutral-700 hover:text-rose-600 rounded-sm font-mono text-[10px] font-bold tracking-wider uppercase transition-all duration-150 focus:outline-none shrink-0 shadow-xs cursor-pointer" 
-        title="Cerrar sesión"
-      >
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-        </svg>
-        <span>Salir</span>
-      </button>
+      <!-- Footer Version and Changelog -->
+      <div class="pt-2 border-t border-neutral-200/80 flex items-center justify-between text-[11px] font-mono text-neutral-500">
+        <button 
+          id="sidebar-version-btn" 
+          class="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer group" 
+          title="Ver novedades de la versión v${CURRENT_VERSION}"
+        >
+          <span class="font-bold text-neutral-600 group-hover:text-primary">v${CURRENT_VERSION}</span>
+          <span class="text-neutral-300">·</span>
+          <span class="text-[10px] underline decoration-dotted text-neutral-500 group-hover:text-coral">Novedades</span>
+          <span id="sidebar-version-badge" class="${hasUnread ? '' : 'hidden'} flex h-1.5 w-1.5 rounded-full bg-coral animate-pulse" title="Nueva versión disponible"></span>
+        </button>
+        <span class="text-[9px] uppercase tracking-wider text-neutral-400 select-none">Negozona CRM</span>
+      </div>
     </div>
   `;
 
@@ -330,6 +351,14 @@ export function renderSidebar(currentUser) {
       sidebar.classList.remove('open');
       const backdrop = document.getElementById('sidebar-backdrop');
       if (backdrop) backdrop.classList.add('hidden');
+    });
+  }
+
+  // Attach changelog modal handler on version click
+  const versionBtn = sidebar.querySelector('#sidebar-version-btn');
+  if (versionBtn) {
+    versionBtn.addEventListener('click', () => {
+      openChangelogModal();
     });
   }
 

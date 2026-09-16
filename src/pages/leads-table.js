@@ -827,13 +827,48 @@ export function renderLeadsTable(currentUser) {
                   is_active: true
                 };
 
-                const { data: contactData, error: contactErr } = await supabase
-                  .from('contacts')
-                  .insert([newContact])
-                  .select()
-                  .single();
+                let contactData = null;
+                if (newContact.email) {
+                  const { data: existingContact } = await supabase
+                    .from('contacts')
+                    .select('id')
+                    .eq('email', newContact.email)
+                    .maybeSingle();
 
-                if (contactErr) throw contactErr;
+                  if (existingContact) {
+                    const { data: activeLinks } = await supabase
+                      .from('lead_contacts_link')
+                      .select('lead_id, leads(id, company)')
+                      .eq('contact_id', existingContact.id);
+
+                    if (activeLinks && activeLinks.length > 0) {
+                      const otherCompanies = activeLinks.map(l => l.leads?.company).filter(Boolean).join(', ');
+                      throw new Error(`El email "${newContact.email}" ya pertenece a un contacto registrado en: ${otherCompanies || 'otra empresa'}.`);
+                    }
+
+                    // Reutilizar contacto huérfano
+                    const { data: updated, error: uErr } = await supabase
+                      .from('contacts')
+                      .update(newContact)
+                      .eq('id', existingContact.id)
+                      .select()
+                      .single();
+
+                    if (uErr) throw uErr;
+                    contactData = updated;
+                  }
+                }
+
+                if (!contactData) {
+                  const { data: created, error: contactErr } = await supabase
+                    .from('contacts')
+                    .insert([newContact])
+                    .select()
+                    .single();
+
+                  if (contactErr) throw contactErr;
+                  contactData = created;
+                }
 
                 // Link contact with lead
                 const { error: linkErr } = await supabase
