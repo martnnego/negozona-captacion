@@ -1620,10 +1620,19 @@ export async function renderLeadDetail(leadId, onUpdate) {
         <div class="flex flex-col gap-4 font-sans text-xs">
           ${interactions.map(c => {
             const isIncoming = c.direction === 'inbound';
-            let authorName = '';
+            const isAgentic = (c.subject && (c.subject.includes('Agente IA') || c.subject.includes('🤖') || c.subject.includes('Standby') || c.subject.includes('IA ·'))) || (!c.created_by && c.contact_type === 'whatsapp');
+            const isCampaign = c.subject && c.subject.includes('Campaña WhatsApp');
+            const isAuto = c.subject && c.subject.includes('[Auto:');
             
+            let authorName = '';
             if (isIncoming) {
-              authorName = 'Cliente';
+              authorName = isAgentic ? 'Cliente (a IA)' : 'Cliente';
+            } else if (isCampaign) {
+              authorName = '📢 Campaña Marketing';
+            } else if (isAuto) {
+              authorName = '⚡ Automatización CRM';
+            } else if (isAgentic) {
+              authorName = '🤖 Agente IA (Meta)';
             } else {
               const agent = profiles.find(p => p.id === c.created_by);
               authorName = agent?.full_name || 'Comercial';
@@ -1641,12 +1650,17 @@ export async function renderLeadDetail(leadId, onUpdate) {
               ? '<span class="text-[9px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm border border-emerald-100 uppercase">Entrante</span>'
               : '<span class="text-[9px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm border border-blue-100 uppercase">Saliente</span>';
 
+            const agentBadge = isAgentic
+              ? '<span class="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-sm border border-indigo-200 uppercase">🤖 Agéntico</span>'
+              : (isCampaign ? '<span class="text-[9px] font-mono font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-sm border border-rose-200 uppercase">📢 Campaña</span>' : '');
+
             return `
               <div class="border border-[#d9d9dd] rounded-sm p-4 bg-neutral-50/30 flex flex-col gap-2">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-neutral-100 pb-2">
                   <div class="flex items-center gap-2">
                     <span class="font-mono text-[9px] font-bold text-primary uppercase bg-neutral-100 px-2 py-0.5 rounded-sm">${typeBadge}</span>
                     ${dirBadge}
+                    ${agentBadge}
                     <span class="font-semibold text-primary">${c.subject || 'Interacción'}</span>
                   </div>
                   <div class="flex items-center gap-2 text-[10px] text-muted-slate">
@@ -2706,31 +2720,68 @@ export async function renderLeadDetail(leadId, onUpdate) {
             </div>
           `;
         } else if (isOut) {
-          bubbleHtml = `
-            <div class="flex flex-col items-end w-full animate-fade-in">
-              <div class="wa-bubble-out" style="
-                background:#e8f7ed;
-                border:1px solid #d3ebd9;
-                border-radius:14px 14px 4px 14px;
-                padding:6px 10px 5px 10px;
-                width:fit-content;
-                max-width:78%;
-                min-width:80px;
-                box-shadow:0 1px 1.5px rgba(0,0,0,0.05);
-                word-break:break-word;
-              ">
-                <div style="display:flex;flex-direction:column;gap:2.5px;">
-                  ${renderMessageContent(msg)}
-                  <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
-                    <span>${timeStr}</span>
-                    ${statusTick(msg)}
+          const isAgentOutbound = (!msg.created_by && !msg.template_name) || (msg.body && (msg.body.startsWith('🤖') || msg.body.includes('[Agente IA]')));
+          if (isAgentOutbound) {
+            bubbleHtml = `
+              <div class="flex flex-col items-end w-full animate-fade-in">
+                <div class="wa-bubble-out" style="
+                  background: #f8faff;
+                  border: 1px solid #c7d2fe;
+                  border-left: 3px solid #6366f1;
+                  border-radius: 14px 14px 4px 14px;
+                  padding: 7px 11px 6px 11px;
+                  width: fit-content;
+                  max-width: 82%;
+                  min-width: 130px;
+                  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.08);
+                  word-break: break-word;
+                ">
+                  <div style="display:flex;flex-direction:column;gap:3px;">
+                    <div class="flex items-center justify-between gap-3 pb-1 border-b border-indigo-100/80 text-[8.5px] font-mono text-indigo-600 font-bold select-none">
+                      <span class="flex items-center gap-1">
+                        <span>🤖</span>
+                        <span>AGENTE IA META</span>
+                      </span>
+                      <span class="text-[7.5px] bg-indigo-50 text-indigo-600 px-1 py-0.2 rounded border border-indigo-100 uppercase tracking-wider">Autónomo</span>
+                    </div>
+                    ${renderMessageContent(msg)}
+                    <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;font-size:8.5px;color:#6366f1;font-family:var(--font-mono);line-height:1;user-select:none;margin-top:2px;">
+                      <span>${timeStr}</span>
+                      ${statusTick(msg)}
+                    </div>
                   </div>
                 </div>
+                ${metaLine}
+                ${errorLine}
               </div>
-              ${metaLine}
-              ${errorLine}
-            </div>
-          `;
+            `;
+          } else {
+            bubbleHtml = `
+              <div class="flex flex-col items-end w-full animate-fade-in">
+                <div class="wa-bubble-out" style="
+                  background:#e8f7ed;
+                  border:1px solid #d3ebd9;
+                  border-radius:14px 14px 4px 14px;
+                  padding:6px 10px 5px 10px;
+                  width:fit-content;
+                  max-width:78%;
+                  min-width:80px;
+                  box-shadow:0 1px 1.5px rgba(0,0,0,0.05);
+                  word-break:break-word;
+                ">
+                  <div style="display:flex;flex-direction:column;gap:2.5px;">
+                    ${renderMessageContent(msg)}
+                    <div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;font-size:8.5px;color:#71717a;font-family:var(--font-mono);line-height:1;user-select:none;">
+                      <span>${timeStr}</span>
+                      ${statusTick(msg)}
+                    </div>
+                  </div>
+                </div>
+                ${metaLine}
+                ${errorLine}
+              </div>
+            `;
+          }
         } else {
           bubbleHtml = `
             <div class="flex flex-col items-start w-full animate-fade-in">
@@ -2831,7 +2882,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
               <span id="wa-history-count" class="text-[9px] font-mono font-bold bg-neutral-200 text-neutral-700 px-2 py-0.5 rounded-full">${whatsappMessages.length}</span>
             </div>
             <div class="flex items-center gap-2" onclick="event.stopPropagation()">
-              <button id="btn-release-thread-control" type="button" class="px-3 py-1 text-[9.5px] border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-mono font-bold uppercase rounded-full transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs">
+              <button id="btn-release-thread-control" type="button" class="hidden px-3 py-1 text-[9.5px] border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-mono font-bold uppercase rounded-full transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs">
                 🤖 Devolver a IA
               </button>
               <button id="wa-refresh-btn" type="button" class="px-2.5 py-1 text-[9.5px] border border-[#d9d9dd] hover:border-primary text-neutral-600 hover:text-primary font-mono font-bold uppercase rounded-full bg-white transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs">
@@ -2888,6 +2939,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
                     </span>
                   </div>
                 </div>
+
+                <!-- Inline Helper Notice for AI Thread Control -->
+                <div id="wa-thread-helper-text" class="hidden"></div>
 
                 <!-- Quick Direct Message Input (Service Messages API) -->
                 <div id="wa-service-chat-form" class="flex flex-col gap-2 pt-1">
@@ -3192,6 +3246,8 @@ export async function renderLeadDetail(leadId, onUpdate) {
     const serviceWindowTimer = parent.querySelector('#wa-service-window-timer');
     const serviceWindowNotice = parent.querySelector('#wa-service-window-notice');
 
+    let currentThreadOwner = 'agent';
+
     async function refreshThreadStatus() {
       const selectedPhoneId = filterSenderSelect.value || (activeNumbers[0]?.phone_number_id || activeNumbers[0]?.id);
       const selectedContactOption = filterRecipientSelect.options[filterRecipientSelect.selectedIndex];
@@ -3210,33 +3266,63 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
         if (res.ok) {
           const statusData = await res.json();
+          currentThreadOwner = statusData.owner || 'agent';
 
           const releaseBtn = parent.querySelector('#btn-release-thread-control');
+          const helperText = parent.querySelector('#wa-thread-helper-text');
 
-          // Render Owner Badge & Toggle Release to AI Button
+          // Render Owner Badge, Helper Tip & Control Button
           if (statusData.owner === 'agent') {
             ownerBadgeContainer.innerHTML = `
-              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
-                <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
-                <span>🤖 Control: Agente de IA Meta</span>
+              <span class="relative flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-indigo-950 text-indigo-200 border border-indigo-500/50 shadow-sm shadow-indigo-500/20 select-none">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-400"></span>
+                </span>
+                <span class="tracking-wide">🤖 AGENTE IA META ACTIVO</span>
               </span>
             `;
+            // AI is responding; sending a message automatically pauses the AI, no button needed
             if (releaseBtn) {
-              releaseBtn.disabled = true;
-              releaseBtn.classList.add('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
-              releaseBtn.title = 'El Agente de IA Meta ya tiene el control de esta conversación.';
+              releaseBtn.classList.add('hidden');
+            }
+            if (helperText) {
+              helperText.className = 'text-[10px] font-medium leading-relaxed px-2.5 py-1.5 rounded-md bg-indigo-50/80 text-indigo-900 border border-indigo-200/80 flex items-center gap-1.5';
+              helperText.innerHTML = '<span>💡</span><span>El Agente de IA está respondiendo automáticamente. <strong>Escribe un mensaje abajo para pausar la IA y responder manualmente.</strong></span>';
+              helperText.classList.remove('hidden');
+            }
+            if (quickMsgInput) {
+              quickMsgInput.placeholder = 'Escribe un mensaje para responder (pausará la IA)...';
             }
           } else {
             ownerBadgeContainer.innerHTML = `
-              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs select-none">
                 <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                <span>👤 Control: Operador Humano</span>
+                <span>👤 Control: Operador Humano (IA en pausa)</span>
               </span>
             `;
+            // Operator is in control; show "Devolver a IA" so they can return thread to AI Agent
             if (releaseBtn) {
+              releaseBtn.classList.remove('hidden');
               releaseBtn.disabled = false;
-              releaseBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+              releaseBtn.dataset.action = 'release';
+              releaseBtn.className = 'px-3 py-1 text-[9.5px] border border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-mono font-bold uppercase rounded-full transition-all tracking-wider focus:outline-none cursor-pointer flex items-center gap-1 shadow-2xs';
+              releaseBtn.innerHTML = '<span>🤖</span><span>Devolver a IA</span>';
               releaseBtn.title = 'Devolver el control de esta conversación al Agente de IA Meta';
+              releaseBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+            }
+            if (helperText) {
+              helperText.className = 'text-[10px] font-medium leading-relaxed px-2.5 py-1.5 rounded-md bg-amber-50/80 text-amber-900 border border-amber-200/80 flex items-center justify-between gap-2';
+              helperText.innerHTML = `
+                <div class="flex items-center gap-1.5">
+                  <span>👤</span>
+                  <span>Control manual activo (IA pausada). Haz clic en <strong>Devolver a IA</strong> cuando termines para reactivar el bot.</span>
+                </div>
+              `;
+              helperText.classList.remove('hidden');
+            }
+            if (quickMsgInput) {
+              quickMsgInput.placeholder = 'Escribe un mensaje directo para responder al cliente...';
             }
           }
 
@@ -3321,7 +3407,11 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
         if (res.ok && data.success) {
           quickMsgInput.value = '';
-          toast.show('Mensaje enviado exitosamente', 'success');
+          if (currentThreadOwner === 'agent') {
+            toast.show('💬 Tu mensaje pausó la IA y tomaste el control manual de esta conversación.', 'success');
+          } else {
+            toast.show('Mensaje enviado exitosamente', 'success');
+          }
           await loadAllData();
           await renderWhatsAppTab(parent);
         } else {
@@ -3376,7 +3466,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
         }
 
         releaseBtn.disabled = true;
-        releaseBtn.innerHTML = '🤖 Devolviendo...';
+        releaseBtn.innerHTML = '<span>🤖</span><span>Devolviendo a IA...</span>';
 
         try {
           const { data: { session } } = await supabase.auth.getSession();
@@ -3391,24 +3481,23 @@ export async function renderLeadDetail(leadId, onUpdate) {
             body: JSON.stringify({
               phone_number_id: selectedPhoneId,
               recipient_phone: recipientPhone,
-              action: 'release'
+              action: 'release',
+              lead_id: lead.id
             })
           });
 
           if (res.ok) {
-            toast.show('Control de conversación devuelto exitosamente al Agente de IA Meta', 'success');
+            toast.show('Control de conversación devuelto exitosamente al Agente de IA Meta.', 'success');
             await loadAllData();
             await renderWhatsAppTab(parent);
           } else {
             const err = await res.json().catch(() => ({}));
-            toast.show('Error al devolver conversación: ' + (err.detail || err.error || 'Status ' + res.status), 'error');
-            releaseBtn.disabled = false;
-            releaseBtn.innerHTML = '🤖 Devolver a IA';
+            toast.show('Error al devolver control: ' + (err.detail || err.error?.message || err.error || 'Status ' + res.status), 'error');
+            await refreshThreadStatus();
           }
         } catch (e) {
           toast.show('Error de red: ' + e.message, 'error');
-          releaseBtn.disabled = false;
-          releaseBtn.innerHTML = '🤖 Devolver a IA';
+          await refreshThreadStatus();
         }
       });
     }

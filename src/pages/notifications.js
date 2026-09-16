@@ -157,6 +157,8 @@ export function renderNotifications(currentUser) {
     if (!leadId) return;
     if (type === 'lead_interaction') {
       localStorage.setItem('lead_detail_active_tab', 'interactions');
+    } else if (type === 'agentic_interaction') {
+      localStorage.setItem('lead_detail_active_tab', 'whatsapp');
     }
     renderLeadDetail(leadId, () => {
       // Optional callback on lead update
@@ -171,11 +173,12 @@ export function renderNotifications(currentUser) {
       if (statusFilter === 'read' && !n.is_read) return false;
 
       // Type filter
+      if (typeFilter === 'agentic_interaction' && !(n.type === 'agentic_interaction' || (n.title || '').includes('🤖') || (n.title || '').toLowerCase().includes('agente ia'))) return false;
       if (typeFilter === 'lead_interaction' && n.type !== 'lead_interaction') return false;
       if (typeFilter === 'lead_assigned' && n.type !== 'lead_assigned') return false;
       if (typeFilter === 'stage_changed' && n.type !== 'stage_changed') return false;
       if (typeFilter === 'campaign' && !(n.type === 'campaign_created' || n.type === 'campaign_status')) return false;
-      if (typeFilter === 'system' && ['lead_interaction', 'lead_assigned', 'stage_changed', 'campaign_created', 'campaign_status'].includes(n.type)) return false;
+      if (typeFilter === 'system' && ['lead_interaction', 'agentic_interaction', 'lead_assigned', 'stage_changed', 'campaign_created', 'campaign_status'].includes(n.type)) return false;
 
       // Search text query
       if (searchQuery.trim()) {
@@ -200,6 +203,15 @@ export function renderNotifications(currentUser) {
   function renderTypeBadge(n) {
     const type = n.type || '';
     const title = (n.title || '').toLowerCase();
+
+    if (type === 'agentic_interaction' || title.includes('🤖') || title.includes('agente ia') || title.includes('ia ·')) {
+      return `
+        <span class="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-sm shrink-0">
+          <span>🤖</span>
+          <span>Gestión Agéntica</span>
+        </span>
+      `;
+    }
 
     if (type === 'lead_interaction') {
       const isIncoming = title.includes('entrante');
@@ -406,6 +418,7 @@ export function renderNotifications(currentUser) {
             <span class="text-[10px] font-mono font-bold uppercase text-muted">Tipo:</span>
             <select id="type-filter-select" class="px-2.5 py-1.5 bg-white border border-[#d9d9dd] rounded-xs text-xs font-semibold text-slate focus:outline-none focus:border-primary cursor-pointer">
               <option value="all" ${typeFilter === 'all' ? 'selected' : ''}>Todos</option>
+              <option value="agentic_interaction" ${typeFilter === 'agentic_interaction' ? 'selected' : ''}>🤖 Gestiones Agénticas (IA)</option>
               <option value="lead_interaction" ${typeFilter === 'lead_interaction' ? 'selected' : ''}>Gestiones (WhatsApp/Email/Llamadas)</option>
               <option value="lead_assigned" ${typeFilter === 'lead_assigned' ? 'selected' : ''}>Asignaciones</option>
               <option value="stage_changed" ${typeFilter === 'stage_changed' ? 'selected' : ''}>Cambios de Etapa</option>
