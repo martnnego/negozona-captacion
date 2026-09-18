@@ -17,7 +17,8 @@ export function renderLeadsKanban(currentUser) {
 
   let activeFilters = {
     assignedTo: '',
-    country: ''
+    country: '',
+    leadType: ''
   };
 
   // Subscribe to changes in cache
@@ -52,7 +53,15 @@ export function renderLeadsKanban(currentUser) {
       </div>
 
       <!-- Filters -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 flex-wrap">
+        <!-- Lead Type Select -->
+        <select id="kanban-lead-type" class="bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
+          <option value="">TODOS LOS TIPOS</option>
+          <option value="Franquicia" ${activeFilters.leadType === 'Franquicia' ? 'selected' : ''}>FRANQUICIA</option>
+          <option value="Sponsor" ${activeFilters.leadType === 'Sponsor' ? 'selected' : ''}>SPONSOR</option>
+          <option value="unassigned" ${activeFilters.leadType === 'unassigned' ? 'selected' : ''}>SIN DEFINIR</option>
+        </select>
+
         <!-- Comercial Select -->
         <select id="kanban-comercial" class="bg-white border border-[#d9d9dd] rounded-sm py-1.5 px-3 font-mono text-[9px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
           <option value="">TODOS LOS COMERCIALES</option>
@@ -100,8 +109,14 @@ export function renderLeadsKanban(currentUser) {
   const boardWrapper = container.querySelector('#kanban-board-scroll');
   const comercialSelect = container.querySelector('#kanban-comercial');
   const countrySelect = container.querySelector('#kanban-country');
+  const leadTypeSelect = container.querySelector('#kanban-lead-type');
 
   // Filter events
+  leadTypeSelect.addEventListener('change', () => {
+    activeFilters.leadType = leadTypeSelect.value;
+    distributeCards();
+  });
+
   comercialSelect.addEventListener('change', () => {
     activeFilters.assignedTo = comercialSelect.value;
     distributeCards();
@@ -132,6 +147,13 @@ export function renderLeadsKanban(currentUser) {
 
     // Filter leads on the client side
     let filteredLeads = leads;
+    if (activeFilters.leadType) {
+      if (activeFilters.leadType === 'unassigned') {
+        filteredLeads = filteredLeads.filter(l => !l.lead_type);
+      } else {
+        filteredLeads = filteredLeads.filter(l => l.lead_type === activeFilters.leadType);
+      }
+    }
     if (activeFilters.assignedTo) {
       filteredLeads = filteredLeads.filter(l => l.assigned_to === activeFilters.assignedTo);
     }
@@ -314,9 +336,16 @@ export function renderLeadsKanban(currentUser) {
               : ''
             }
           </div>
-          <span class="text-neutral-500 text-[11px] truncate font-semibold ml-3.5">${company}
-            ${lead.nombre_validado ? `<span class="inline-block text-emerald-600 ml-1" title="Nombre de empresa validado">✓</span>` : ''}
-          </span>
+          <div class="flex items-center gap-1.5 ml-3.5 flex-wrap">
+            <span class="text-neutral-500 text-[11px] truncate font-semibold">${company}</span>
+            ${lead.lead_type === 'Sponsor'
+              ? `<span class="inline-flex items-center px-1.5 py-0.2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xs text-[7px] uppercase tracking-wider font-bold" title="Tipo: Sponsor">Sponsor</span>`
+              : lead.lead_type === 'Franquicia'
+                ? `<span class="inline-flex items-center px-1.5 py-0.2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xs text-[7px] uppercase tracking-wider font-bold" title="Tipo: Franquicia">Franquicia</span>`
+                : ''
+            }
+            ${lead.nombre_validado ? `<span class="inline-block text-emerald-600" title="Nombre de empresa validado">✓</span>` : ''}
+          </div>
         </div>
 
         <!-- Meta row -->

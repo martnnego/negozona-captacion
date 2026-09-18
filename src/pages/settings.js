@@ -2572,6 +2572,7 @@ export function renderSettings(currentUser) {
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-allowlist">📋 Lista Blanca</button>
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-conocimiento">Conocimiento del Agente</button>
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-habilidades">Habilidades del Agente</button>
+            <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-ui-skills">🎨 Habilidades UI</button>
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-conectores">Conectores</button>
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-simulador">🧪 Probador (Simulador)</button>
             <button class="agent-tab-btn px-3 py-2 border-b-2 border-transparent text-neutral-400 hover:text-primary cursor-pointer shrink-0" data-tab="tab-eventos">⚡ Eventos CRM</button>
@@ -3216,11 +3217,56 @@ export function renderSettings(currentUser) {
               const addForm = subtabContent.querySelector('#form-add-website');
               addForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const formData = new FormData(addForm);
-                const payload = { phone_number_id: phoneId, url: formData.get('url') };
-                const saveRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-knowledge/websites`, { method: 'POST', headers, body: JSON.stringify(payload) });
-                if (saveRes.ok) { toast.show('Sitio Web registrado', 'success'); loadKnowSubtab('websites'); }
-                else toast.show('Error al registrar URL', 'error');
+                const submitBtn = addForm.querySelector('button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Registrando...';
+                try {
+                  const formData = new FormData(addForm);
+                  const payload = { phone_number_id: phoneId, url: formData.get('url') };
+                  const saveRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-knowledge/websites`, { method: 'POST', headers, body: JSON.stringify(payload) });
+                  if (saveRes.ok) {
+                    toast.show('Sitio Web registrado', 'success');
+                    loadKnowSubtab('websites');
+                  } else {
+                    const resData = await saveRes.json().catch(() => ({}));
+                    toast.show('Error al registrar URL: ' + (resData.error?.message || resData.detail || 'Error en la API'), 'error');
+                  }
+                } catch (err) {
+                  toast.show('Error: ' + err.message, 'error');
+                } finally {
+                  submitBtn.disabled = false;
+                  submitBtn.textContent = '+ Registrar URL';
+                }
+              });
+
+              // Delete Website handlers
+              subtabContent.querySelectorAll('[data-delete-site-id]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                  const siteId = btn.dataset.deleteSiteId;
+                  if (!confirm('¿Seguro que deseas eliminar este sitio web de la base de conocimiento?')) return;
+                  btn.disabled = true;
+                  btn.textContent = 'Eliminando...';
+                  try {
+                    const delRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-knowledge/websites`, {
+                      method: 'DELETE',
+                      headers,
+                      body: JSON.stringify({ phone_number_id: phoneId, website_id: siteId })
+                    });
+                    if (delRes.ok) {
+                      toast.show('Sitio Web eliminado', 'success');
+                      loadKnowSubtab('websites');
+                    } else {
+                      const resData = await delRes.json().catch(() => ({}));
+                      toast.show('Error al eliminar sitio web: ' + (resData.error?.message || resData.detail || 'Error en la API'), 'error');
+                      btn.disabled = false;
+                      btn.textContent = 'Eliminar';
+                    }
+                  } catch (err) {
+                    toast.show(err.message, 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Eliminar';
+                  }
+                });
               });
             }
           }
@@ -3345,6 +3391,693 @@ export function renderSettings(currentUser) {
           });
         }
 
+        // 3b. SOLAPA HABILIDADES UI (MENSAJES INTERACTIVOS)
+        else if (tabKey === 'tab-ui-skills') {
+          const [skillsRes, flowsRes] = await Promise.all([
+            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-ui-skills?phone_number_id=${phoneId}`, { headers }).catch(e => ({ ok: false, error: e })),
+            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/whatsapp-flows`, { headers }).catch(e => ({ ok: false, error: e }))
+          ]);
+
+          let uiSkillsList = [];
+          if (skillsRes.ok) {
+            const data = await skillsRes.json().catch(() => ({}));
+            uiSkillsList = Array.isArray(data) ? data : (data.data || []);
+          }
+
+          let availableFlows = [];
+          if (flowsRes.ok) {
+            const fData = await flowsRes.json().catch(() => ({}));
+            availableFlows = Array.isArray(fData) ? fData : (fData.data || []);
+          }
+
+          const UI_COMPONENTS_MAP = {
+            cta_url: {
+              name: 'Botón URL (CTA)',
+              icon: '🔗',
+              desc: 'Envía un cuerpo de texto con un botón de llamada a la acción que abre un enlace web externo en el navegador del cliente. Ideal para catálogos, enlaces de reserva o páginas informativas.',
+              badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
+              required: ['Texto del cuerpo (1–1024 caracteres)', 'Etiqueta del botón (1–20 caracteres)', 'URL HTTPS del enlace'],
+              optional: ['URL multimedia en encabezado (imagen/video)', 'Texto de pie (1–60 caracteres)'],
+              template: 'Si el cliente consulta por nuestros modelos o catálogo de franquicias, envíale un botón con el texto "Conoce todas nuestras propuestas y planes de inversión actualizados", la etiqueta del botón "Ver Catálogo" y la URL https://franquicias.negozona.com/catalogo.'
+            },
+            interactive_reply_buttons: {
+              name: 'Botones de Respuesta Rápida',
+              icon: '🔘',
+              desc: 'Envía un mensaje con hasta 3 botones de respuesta directa. Al tocar un botón, su etiqueta se envía automáticamente como respuesta al agente. Ideal para menús principales y derivaciones.',
+              badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+              required: ['Texto del cuerpo (1–1024 caracteres)', 'De 1 a 3 botones con etiquetas únicas (1–20 caracteres)'],
+              optional: [],
+              template: 'Al comenzar la conversación o cuando el usuario pregunte cómo podemos asesorarlo, envíale un mensaje con el texto "¡Hola! ¿Qué tipo de información necesitas hoy?" y los 3 botones: "Ver Franquicias", "Hablar con asesor" y "Preguntas frecuentes".'
+            },
+            interactive_list: {
+              name: 'Lista Desplegable de Opciones',
+              icon: '📋',
+              desc: 'Envía un mensaje con un botón que despliega un menú con entre 1 y 10 opciones seleccionables. Cada fila tiene ID semántico, título y descripción opcional. Ideal para selección de zonas, rubros o franjas horarias.',
+              badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
+              required: ['Texto del cuerpo (1–4096 caracteres)', 'Texto del botón de apertura (1–20 caracteres)', 'De 1 a 10 opciones con ID único (1–188 car.) y Título (1–24 car.)'],
+              optional: ['Descripción secundaria por opción (1–72 caracteres)'],
+              template: 'Si el cliente desea seleccionar su zona geográfica de interés, envíale una lista interactiva con el texto "Selecciona la región donde buscas emprender o invertir", el botón "Ver Zonas" y las opciones: 1) id "zona_caba", título "CABA y GBA", descripción "Capital Federal y Gran Buenos Aires"; 2) id "zona_interior", título "Interior del País", descripción "Provincias y principales polos urbanos".'
+            },
+            carousel_url: {
+              name: 'Carrusel con Botones URL',
+              icon: '🎠',
+              desc: 'Conjunto horizontal deslizable de 2 a 10 tarjetas. Cada tarjeta contiene imagen, epígrafe y un botón que abre un enlace web externo. Ideal para exhibir múltiples franquicias o productos.',
+              badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
+              required: ['Texto del cuerpo (1–1024 caracteres)', 'De 2 a 10 tarjetas: cada una con URL de imagen, texto (1–160 car.), URL de destino y etiqueta del botón (1–20 car.)'],
+              optional: [],
+              template: 'Cuando el interesado solicite ver modelos de franquicia disponibles, envíale un carrusel con el texto "Nuestros modelos de franquicia destacados" y 2 tarjetas: Tarjeta 1 con imagen https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb, texto "Modelo Cafetería Especialidad", botón "Ver Ficha" y URL https://franquicias.negozona.com/cafe; Tarjeta 2 con imagen https://images.unsplash.com/photo-1534438327276-14e5300c3a48, texto "Modelo Gimnasio Boutique", botón "Ver Ficha" y URL https://franquicias.negozona.com/gimnasio.'
+            },
+            carousel_quick_reply: {
+              name: 'Carrusel con Respuestas Rápidas',
+              icon: '🔄',
+              desc: 'Carrusel horizontal deslizable de 2 a 10 tarjetas donde cada botón envía una respuesta rápida de regreso al agente sin salir de WhatsApp.',
+              badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+              required: ['Texto del cuerpo (1–1024 caracteres)', 'De 2 a 10 tarjetas: cada una con URL de imagen, texto (1–160 car.) y etiqueta del botón (1–20 car.)'],
+              optional: [],
+              template: 'Si el cliente desea explorar diferentes rubros de inversión, envíale un carrusel con el texto "Elige el rubro de tu preferencia" y 2 tarjetas: Tarjeta 1 con imagen https://images.unsplash.com/photo-1555396273-367ea4eb4db5, texto "Sector Gastronómico", botón "Gastronomía"; Tarjeta 2 con imagen https://images.unsplash.com/photo-1486406146926-c627a92ad1ab, texto "Sector Inmobiliario", botón "Inmobiliario".'
+            },
+            flow: {
+              name: 'WhatsApp Flow Interactivo',
+              icon: '📱',
+              desc: 'Abre una experiencia interactiva nativa multipantalla (WhatsApp Flow) para completar formularios, cotizaciones, agendas o encuestas sin abandonar la app.',
+              badgeColor: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+              required: ['flow_id (ID numérico del WhatsApp Flow publicado)', 'Etiqueta del botón CTA (máx. 20 caracteres)', 'Texto del cuerpo introductorio'],
+              optional: ['Valores de precarga para el flujo (data)'],
+              template: 'Cuando el interesado solicite postularse a una franquicia o agendar una entrevista, envíale el flujo con el texto "Por favor completa este breve formulario con tus datos para coordinar una reunión de asesoramiento personalizada" y el botón "Postularme".'
+            },
+            image: {
+              name: 'Imagen con Epígrafe',
+              icon: '🖼️',
+              desc: 'Envía una imagen autónoma referenciada por URL pública HTTPS o ID de imagen de Meta, con epígrafe opcional. Ideal para planos, banners o fotos de locales.',
+              badgeColor: 'bg-rose-50 text-rose-700 border-rose-200',
+              required: ['URL pública HTTPS de la imagen O ID de imagen previamente subida (proporcionar uno solo)'],
+              optional: ['Texto del cuerpo / epígrafe con la imagen'],
+              template: 'Cuando el cliente pregunte por la fachada o distribución física del local modelo, envíale la imagen con la URL https://images.unsplash.com/photo-1497366216548-37526070297c y el texto "Aquí puedes observar el diseño arquitectónico y fachada de nuestro local modelo".'
+            },
+            location: {
+              name: 'Ubicación Geográfica (Pin)',
+              icon: '📍',
+              desc: 'Envía un pin con coordenadas geográficas fijas (latitud y longitud). Ideal para compartir la dirección de oficinas comerciales o sucursales de reunión.',
+              badgeColor: 'bg-orange-50 text-orange-700 border-orange-200',
+              required: ['Latitud (-90 a 90)', 'Longitud (-180 a 180)'],
+              optional: ['Nombre del lugar o negocio', 'Dirección física'],
+              template: 'Si el cliente consulta dónde queda nuestra oficina comercial, envíale la ubicación con latitud -34.6037, longitud -58.3816, nombre "Oficina Central Negozona" y dirección "Av. Corrientes 1234, CABA".'
+            },
+            location_request: {
+              name: 'Solicitud de Ubicación al Cliente',
+              icon: '🎯',
+              desc: 'Envía un mensaje que solicita al usuario compartir su ubicación geográfica actual mediante el botón nativo de WhatsApp. Útil para verificar radio de exclusividad.',
+              badgeColor: 'bg-teal-50 text-teal-700 border-teal-200',
+              required: ['Texto del cuerpo explicativo (1–1024 caracteres)'],
+              optional: [],
+              template: 'Cuando el cliente consulte qué franquicias están disponibles cerca de su zona, envíale una solicitud de ubicación con el texto "Por favor comparte tu ubicación actual para consultar el radio de cobertura y las franquicias con exclusividad disponible en tu localidad".'
+            }
+          };
+
+          function openComponentGuideModal() {
+            const guideModal = modal.create({
+              title: 'Guía de Componentes Interactivos (Habilidades UI)',
+              sizeClass: 'max-w-4xl',
+              content: `
+                <div class="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-1">
+                  <div class="p-3 bg-blue-50/70 border border-blue-200 rounded text-blue-900 text-xs leading-relaxed">
+                    <strong>¿Cómo funcionan las Habilidades UI?</strong><br/>
+                    A diferencia de enviar un JSON rígido, tú defines el tipo de componente y redactas una directiva en <strong>lenguaje natural</strong> (prompt).
+                    El agente de IA comprenderá el contexto para saber cuándo dispararlo y extraerá de tu directiva los textos, URLs o botones correspondientes.
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    ${Object.entries(UI_COMPONENTS_MAP).map(([key, item]) => `
+                      <div class="p-3 bg-neutral-50 rounded border border-neutral-200 flex flex-col gap-2">
+                        <div class="flex items-center justify-between gap-2 border-b border-neutral-200 pb-1.5">
+                          <span class="font-bold text-xs flex items-center gap-1.5 text-primary">
+                            <span>${item.icon}</span> ${item.name}
+                          </span>
+                          <span class="px-1.5 py-0.5 font-mono text-[9px] rounded border ${item.badgeColor}">${key}</span>
+                        </div>
+                        <p class="text-neutral-600 text-[11px] leading-normal">${item.desc}</p>
+                        <div class="flex flex-col gap-1 bg-white p-2 rounded border border-neutral-200/80">
+                          <span class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Elementos Obligatorios:</span>
+                          <ul class="list-disc list-inside text-[10px] text-neutral-700 space-y-0.5">
+                            ${item.required.map(req => `<li>${req}</li>`).join('')}
+                          </ul>
+                          ${item.optional.length ? `
+                            <span class="font-mono text-[8px] font-bold text-neutral-400 uppercase mt-1">Opcionales:</span>
+                            <ul class="list-disc list-inside text-[10px] text-neutral-500 space-y-0.5">
+                              ${item.optional.map(opt => `<li>${opt}</li>`).join('')}
+                            </ul>
+                          ` : ''}
+                        </div>
+                        <div class="bg-amber-50/70 p-2 rounded border border-amber-200/70 text-[10px] text-amber-900 font-mono leading-relaxed">
+                          <strong>Ejemplo de directiva:</strong><br/>
+                          "${item.template}"
+                        </div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `,
+              actions: [
+                { text: 'Entendido', primary: true, onClick: (close) => close() }
+              ]
+            });
+            if (guideModal.backdropEl) {
+              guideModal.backdropEl.style.zIndex = '50';
+            }
+          }
+
+          function slugifySkillTitle(str) {
+            if (!str) return '';
+            return str
+              .toString()
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '') // Elimina acentos/tildes
+              .replace(/[^a-z0-9]+/g, '-')     // Convierte espacios y caracteres especiales en guiones
+              .replace(/-+/g, '-')             // Colapsa guiones repetidos
+              .replace(/^-+|-+$/g, '');        // Remueve guiones al inicio y fin
+          }
+
+          function openEditSkillModal(skill) {
+            const meta = UI_COMPONENTS_MAP[skill.component_type] || { icon: '⚡', name: skill.component_type, badgeColor: 'bg-neutral-100 text-neutral-700 border-neutral-200', desc: '', template: '' };
+            const editModal = modal.create({
+              title: `Editar Habilidad UI: ${skill.title}`,
+              sizeClass: 'max-w-2xl',
+              content: `
+                <form id="form-edit-ui-skill" class="flex flex-col gap-3 font-sans text-xs">
+                  <div class="flex items-center justify-between p-2.5 bg-neutral-50 rounded border border-neutral-200">
+                    <div class="flex items-center gap-2">
+                      <span class="text-base">${meta.icon || '⚡'}</span>
+                      <div class="flex flex-col">
+                        <span class="font-bold text-primary">${meta.name || skill.component_type}</span>
+                        <span class="text-[10px] text-neutral-500 font-mono">Tipo: ${skill.component_type}</span>
+                      </div>
+                    </div>
+                    ${skill.flow_id ? `<span class="px-2 py-0.5 bg-cyan-50 text-cyan-700 border border-cyan-200 font-mono text-[9px] rounded">Flow ID: ${skill.flow_id}</span>` : ''}
+                  </div>
+
+                  <div class="flex flex-col gap-1">
+                    <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Título / Identificador</label>
+                    <input type="text" name="title" id="input-edit-ui-skill-title" value="${skill.title || ''}" required class="cohere-input text-xs" />
+                    <span class="text-[9px] text-neutral-400 font-mono">Solo minúsculas, números y guiones. Se normaliza automáticamente al salir del campo.</span>
+                  </div>
+
+                  <div class="flex flex-col gap-1">
+                    <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Estado de la Habilidad</label>
+                    <select name="status" class="cohere-input text-xs">
+                      <option value="enabled" ${skill.status === 'enabled' ? 'selected' : ''}>Habilitada (enabled)</option>
+                      <option value="disabled" ${skill.status === 'disabled' ? 'selected' : ''}>Deshabilitada (disabled)</option>
+                    </select>
+                  </div>
+
+                  <div class="flex flex-col gap-1">
+                    <div class="flex items-center justify-between">
+                      <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Directivas e Instrucciones de la Habilidad (Lenguaje Natural)</label>
+                      ${meta.template ? `
+                        <button type="button" id="btn-edit-load-template" class="text-[9px] font-mono text-primary hover:underline cursor-pointer">
+                          📋 Cargar plantilla de ejemplo
+                        </button>
+                      ` : ''}
+                    </div>
+                    <textarea name="instruction" required rows="5" class="cohere-input text-xs font-mono">${skill.instruction || ''}</textarea>
+                    <span class="text-[9px] text-neutral-400">Describe con claridad qué debe contener el mensaje interactivo y cuándo debe dispararlo el agente.</span>
+                  </div>
+                </form>
+              `,
+              actions: [
+                { text: 'Cancelar', onClick: (close) => close() },
+                {
+                  text: 'Guardar Cambios',
+                  primary: true,
+                  onClick: async (close, submitBtn) => {
+                    const form = editModal.bodyEl.querySelector('#form-edit-ui-skill');
+                    if (!form.checkValidity()) {
+                      form.reportValidity();
+                      return;
+                    }
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Guardando...';
+                    const formData = new FormData(form);
+                    const rawTitle = formData.get('title');
+                    const cleanTitle = slugifySkillTitle(rawTitle);
+                    if (!cleanTitle) {
+                      toast.show('El título / identificador debe contener al menos una letra o número válido', 'warning');
+                      submitBtn.disabled = false;
+                      submitBtn.textContent = 'Guardar Cambios';
+                      return;
+                    }
+                    try {
+                      const putRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-ui-skills`, {
+                        method: 'PUT',
+                        headers,
+                        body: JSON.stringify({
+                          phone_number_id: phoneId,
+                          instruction_id: skill.id,
+                          skill: {
+                            title: cleanTitle,
+                            status: formData.get('status'),
+                            instruction: formData.get('instruction')
+                          }
+                        })
+                      });
+                      const resData = await putRes.json().catch(() => ({}));
+                      if (putRes.ok) {
+                        toast.show('Habilidad UI actualizada', 'success');
+                        close();
+                        loadTab('tab-ui-skills');
+                      } else {
+                        const errMsg = resData.raw_meta_response || resData.detail || resData.error?.message || resData.title || JSON.stringify(resData);
+                        toast.show('Error al actualizar habilidad: ' + errMsg, 'error');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Guardar Cambios';
+                      }
+                    } catch (err) {
+                      toast.show('Error al actualizar: ' + err.message, 'error');
+                      submitBtn.disabled = false;
+                      submitBtn.textContent = 'Guardar Cambios';
+                    }
+                  }
+                }
+              ]
+            });
+
+            if (editModal.backdropEl) {
+              editModal.backdropEl.style.zIndex = '50';
+            }
+
+            const editTitleInput = editModal.bodyEl.querySelector('#input-edit-ui-skill-title');
+            if (editTitleInput) {
+              editTitleInput.addEventListener('blur', () => {
+                if (editTitleInput.value.trim()) {
+                  editTitleInput.value = slugifySkillTitle(editTitleInput.value);
+                }
+              });
+            }
+
+            const templateBtn = editModal.bodyEl.querySelector('#btn-edit-load-template');
+            if (templateBtn && meta.template) {
+              templateBtn.addEventListener('click', () => {
+                const ta = editModal.bodyEl.querySelector('textarea[name="instruction"]');
+                ta.value = meta.template;
+                toast.show('Plantilla modelo cargada en el editor', 'info');
+              });
+            }
+          }
+
+          tabContainer.innerHTML = `
+            <div class="flex flex-col gap-4">
+              <!-- Formulario de Alta -->
+              <form id="form-add-ui-skill" class="p-4 bg-neutral-50 border border-neutral-200 rounded-sm flex flex-col gap-3">
+                <div class="flex items-center justify-between border-b border-neutral-200 pb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-base">🎨</span>
+                    <span class="font-mono text-[9px] font-bold text-primary uppercase">+ Crear Nueva Habilidad UI (Mensajes Interactivos)</span>
+                  </div>
+                  <button type="button" id="btn-open-component-guide" class="px-2.5 py-1 bg-white hover:bg-neutral-100 border border-neutral-300 text-neutral-700 text-[9px] font-mono font-bold uppercase rounded-full cursor-pointer flex items-center gap-1 shadow-2xs">
+                    <span>ℹ️</span> ¿Qué hace cada componente?
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div class="flex flex-col gap-1">
+                    <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Identificador / Título de la Habilidad</label>
+                    <input type="text" name="title" id="input-ui-skill-title" required class="cohere-input text-xs" placeholder="ej. presentacion-franquicias" />
+                    <span class="text-[9px] text-neutral-400 font-mono">Solo minúsculas, números y guiones. Se normaliza automáticamente al salir del campo.</span>
+                  </div>
+
+                  <div class="flex flex-col gap-1">
+                    <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Tipo de Componente Interactivo</label>
+                    <select name="component_type" id="ui-component-type-select" class="cohere-input text-xs">
+                      <option value="cta_url" title="${UI_COMPONENTS_MAP.cta_url.desc}">🔗 Botón URL (CTA)</option>
+                      <option value="interactive_reply_buttons" title="${UI_COMPONENTS_MAP.interactive_reply_buttons.desc}">🔘 Botones de Respuesta Rápida</option>
+                      <option value="interactive_list" title="${UI_COMPONENTS_MAP.interactive_list.desc}">📋 Lista Desplegable de Opciones</option>
+                      <option value="carousel_url" title="${UI_COMPONENTS_MAP.carousel_url.desc}">🎠 Carrusel con Botones URL</option>
+                      <option value="carousel_quick_reply" title="${UI_COMPONENTS_MAP.carousel_quick_reply.desc}">🔄 Carrusel con Respuestas Rápidas</option>
+                      <option value="flow" title="${UI_COMPONENTS_MAP.flow.desc}">📱 WhatsApp Flow Interactivo</option>
+                      <option value="image" title="${UI_COMPONENTS_MAP.image.desc}">🖼️ Imagen con Epígrafe</option>
+                      <option value="location" title="${UI_COMPONENTS_MAP.location.desc}">📍 Ubicación Geográfica (Pin)</option>
+                      <option value="location_request" title="${UI_COMPONENTS_MAP.location_request.desc}">🎯 Solicitud de Ubicación al Cliente</option>
+                    </select>
+                    <span class="text-[9px] text-neutral-400 font-mono">Pasa el cursor sobre cada opción para ver su resumen.</span>
+                  </div>
+                </div>
+
+                <!-- Caja Informativa Dinámica del Componente Seleccionado -->
+                <div id="ui-component-info-card" class="p-3 bg-white border border-neutral-200 rounded flex flex-col gap-2 transition-all">
+                  <!-- Se actualiza por JS -->
+                </div>
+
+                <!-- Campo condicional para WhatsApp Flow -->
+                <div id="ui-flow-id-container" class="hidden flex-col gap-2 p-3 bg-cyan-50/50 border border-cyan-200 rounded">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-sm">📱</span>
+                    <span class="font-mono text-[9px] font-bold text-cyan-800 uppercase">Asociación de WhatsApp Flow</span>
+                  </div>
+                  <p class="text-[11px] text-cyan-900 leading-normal">
+                    Las habilidades de tipo <em>Flow</em> requieren asociar un formulario publicado en tu cuenta de WhatsApp Business.
+                  </p>
+                  
+                  ${availableFlows.length > 0 ? `
+                    <div class="flex flex-col gap-1">
+                      <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Seleccionar Flow de la Cuenta</label>
+                      <select id="select-flow-picker" class="cohere-input text-xs">
+                        <option value="">-- Selecciona un Flow publicado --</option>
+                        ${availableFlows.map(f => `
+                          <option value="${f.id}">
+                            ${f.name || 'Sin nombre'} (ID: ${f.id}) [${f.status || 'STATUS'}]
+                          </option>
+                        `).join('')}
+                        <option value="__manual__">Ingresar ID manualmente...</option>
+                      </select>
+                    </div>
+                  ` : ''}
+
+                  <div class="flex flex-col gap-1">
+                    <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Flow ID Numérico (Requerido para tipo Flow)</label>
+                    <input type="number" name="flow_id" id="input-flow-id" class="cohere-input text-xs" placeholder="ej. 123456789012345" />
+                    <span class="text-[9px] text-neutral-500 font-mono">El Flow debe estar en estado 'PUBLISHED' en Meta Business Manager.</span>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div class="flex flex-col gap-1 md:col-span-1">
+                    <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Estado Inicial</label>
+                    <select name="status" class="cohere-input text-xs">
+                      <option value="enabled" selected>Habilitada (enabled)</option>
+                      <option value="disabled">Deshabilitada (disabled)</option>
+                    </select>
+                  </div>
+                  <div class="flex flex-col gap-1 md:col-span-2">
+                    <div class="flex items-center justify-between">
+                      <label class="font-mono text-[8px] font-bold text-neutral-600 uppercase">Directivas e Instrucciones (Lenguaje Natural)</label>
+                      <button type="button" id="btn-load-sample-template" class="text-[9px] font-mono font-bold text-primary hover:underline cursor-pointer">
+                        📋 Cargar Plantilla de Ejemplo
+                      </button>
+                    </div>
+                    <textarea name="instruction" id="input-ui-instruction" required rows="4" class="cohere-input text-xs font-mono" placeholder="Redacta en lenguaje natural cuándo enviar el componente y qué datos colocar en cada elemento..."></textarea>
+                  </div>
+                </div>
+
+                <div class="flex justify-end pt-1">
+                  <button type="submit" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-mono font-bold uppercase rounded-full shadow-xs cursor-pointer">
+                    + Crear Habilidad UI
+                  </button>
+                </div>
+              </form>
+
+              <!-- Listado de Habilidades UI Configuradas -->
+              <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-mono text-[9px] font-bold text-neutral-500 uppercase">Habilidades UI Configuradas (${uiSkillsList.length})</span>
+                  <span class="text-[10px] text-neutral-400 font-mono">Sincronizado directamente con Meta Cloud API</span>
+                </div>
+
+                ${uiSkillsList.length === 0 ? `
+                  <div class="p-6 bg-white border border-dashed border-neutral-300 rounded text-center text-neutral-400 text-xs">
+                    <span class="text-xl block mb-1">🎨</span>
+                    No hay habilidades de mensajes interactivos configuradas aún.<br/>
+                    Utiliza el formulario superior para crear botones CTA, carruseles, listas o flujos.
+                  </div>
+                ` : `
+                  <div class="divide-y divide-neutral-200 border border-neutral-200 rounded-sm bg-white shadow-2xs">
+                    ${uiSkillsList.map(sk => {
+                      const meta = UI_COMPONENTS_MAP[sk.component_type] || {
+                        name: sk.component_type,
+                        icon: '⚡',
+                        desc: 'Componente interactivo de Meta',
+                        badgeColor: 'bg-neutral-100 text-neutral-700 border-neutral-200'
+                      };
+                      const isEnabled = sk.status === 'enabled';
+                      return `
+                        <div class="p-3.5 flex flex-col gap-2.5 hover:bg-neutral-50/50 transition-colors">
+                          <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
+                              <span title="${meta.desc} (Haz hover para ver detalles)" class="px-2 py-0.5 rounded border ${meta.badgeColor} font-mono text-[10px] font-bold flex items-center gap-1 cursor-help">
+                                <span>${meta.icon}</span> ${meta.name}
+                              </span>
+                              <strong class="text-primary text-xs font-mono">${sk.title || sk.id}</strong>
+                              ${sk.flow_id ? `<span class="px-1.5 py-0.5 bg-cyan-50 text-cyan-700 border border-cyan-200 font-mono text-[8px] rounded">Flow ID: ${sk.flow_id}</span>` : ''}
+                            </div>
+
+                            <div class="flex items-center gap-2 shrink-0">
+                              <!-- Toggle rápido enabled/disabled -->
+                              <button data-toggle-ui-status="${sk.id}" data-current-status="${sk.status}" class="px-2 py-0.5 rounded-full font-mono text-[9px] font-bold uppercase transition-colors cursor-pointer border ${isEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100' : 'bg-neutral-100 text-neutral-500 border-neutral-300 hover:bg-neutral-200'}">
+                                ${isEnabled ? '● Habilitada' : '○ Deshabilitada'}
+                              </button>
+                              
+                              <button data-edit-ui-skill-id="${sk.id}" class="text-primary hover:text-primary-dark text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 hover:bg-neutral-100 rounded cursor-pointer">
+                                ✏️ Editar
+                              </button>
+                              <button data-delete-ui-skill-id="${sk.id}" class="text-rose-600 hover:text-rose-800 text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 hover:bg-rose-50 rounded cursor-pointer">
+                                🗑️ Eliminar
+                              </button>
+                            </div>
+                          </div>
+
+                          <div class="p-2 bg-neutral-50 rounded border border-neutral-150">
+                            <p class="text-neutral-700 text-[11px] font-mono whitespace-pre-wrap leading-relaxed">${sk.instruction || '<span class="text-neutral-400 italic">Sin instrucción definida</span>'}</p>
+                          </div>
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                `}
+              </div>
+            </div>
+          `;
+
+          // Handler: Botón de apertura de guía de componentes
+          const guideBtn = tabContainer.querySelector('#btn-open-component-guide');
+          if (guideBtn) {
+            guideBtn.addEventListener('click', openComponentGuideModal);
+          }
+
+          // Controlador dinámico del selector de tipo de componente
+          const compSelect = tabContainer.querySelector('#ui-component-type-select');
+          const infoCard = tabContainer.querySelector('#ui-component-info-card');
+          const flowContainer = tabContainer.querySelector('#ui-flow-id-container');
+          const instructionInput = tabContainer.querySelector('#input-ui-instruction');
+          const sampleTemplateBtn = tabContainer.querySelector('#btn-load-sample-template');
+          const flowPicker = tabContainer.querySelector('#select-flow-picker');
+          const flowIdInput = tabContainer.querySelector('#input-flow-id');
+
+          function updateComponentInfo(type) {
+            const meta = UI_COMPONENTS_MAP[type];
+            if (!meta) return;
+
+            infoCard.innerHTML = `
+              <div class="flex items-center justify-between gap-2 border-b border-neutral-200 pb-1.5">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-base">${meta.icon}</span>
+                  <strong class="text-xs text-primary">${meta.name}</strong>
+                </div>
+                <span class="px-1.5 py-0.5 rounded border ${meta.badgeColor} font-mono text-[9px]">${type}</span>
+              </div>
+              <p class="text-[11px] text-neutral-600 leading-normal">${meta.desc}</p>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] bg-neutral-50 p-2 rounded border border-neutral-200/70">
+                <div>
+                  <span class="font-mono text-[8px] font-bold text-neutral-600 uppercase block mb-0.5">Elementos de datos requeridos:</span>
+                  <ul class="list-disc list-inside text-neutral-700 space-y-0.5">
+                    ${meta.required.map(r => `<li>${r}</li>`).join('')}
+                  </ul>
+                </div>
+                <div>
+                  <span class="font-mono text-[8px] font-bold text-neutral-400 uppercase block mb-0.5">Opcionales:</span>
+                  ${meta.optional.length ? `
+                    <ul class="list-disc list-inside text-neutral-500 space-y-0.5">
+                      ${meta.optional.map(o => `<li>${o}</li>`).join('')}
+                    </ul>
+                  ` : '<span class="text-neutral-400 italic">Ninguno</span>'}
+                </div>
+              </div>
+            `;
+
+            if (type === 'flow') {
+              flowContainer.classList.remove('hidden');
+              flowContainer.classList.add('flex');
+              flowIdInput.required = true;
+            } else {
+              flowContainer.classList.add('hidden');
+              flowContainer.classList.remove('flex');
+              flowIdInput.required = false;
+            }
+          }
+
+          if (compSelect) {
+            compSelect.addEventListener('change', () => updateComponentInfo(compSelect.value));
+            updateComponentInfo(compSelect.value);
+          }
+
+          // Cargar plantilla modelo al pulsar el botón
+          if (sampleTemplateBtn) {
+            sampleTemplateBtn.addEventListener('click', () => {
+              const currentType = compSelect.value;
+              const meta = UI_COMPONENTS_MAP[currentType];
+              if (meta && meta.template) {
+                instructionInput.value = meta.template;
+                toast.show('Plantilla de ejemplo cargada', 'info');
+              }
+            });
+          }
+
+          // Vincular selector de Flows
+          if (flowPicker) {
+            flowPicker.addEventListener('change', () => {
+              if (flowPicker.value && flowPicker.value !== '__manual__') {
+                flowIdInput.value = flowPicker.value;
+              } else if (flowPicker.value === '__manual__') {
+                flowIdInput.value = '';
+                flowIdInput.focus();
+              }
+            });
+          }
+
+          // Normalización automática de título/slug al salir del campo
+          const skillTitleInput = tabContainer.querySelector('#input-ui-skill-title');
+          if (skillTitleInput) {
+            skillTitleInput.addEventListener('blur', () => {
+              if (skillTitleInput.value.trim()) {
+                skillTitleInput.value = slugifySkillTitle(skillTitleInput.value);
+              }
+            });
+          }
+
+          // Form submit: Crear Habilidad UI
+          const addUiSkillForm = tabContainer.querySelector('#form-add-ui-skill');
+          if (addUiSkillForm) {
+            addUiSkillForm.addEventListener('submit', async (e) => {
+              e.preventDefault();
+              const submitBtn = addUiSkillForm.querySelector('button[type="submit"]');
+              submitBtn.disabled = true;
+              submitBtn.textContent = 'Creando Habilidad UI...';
+
+              try {
+                const formData = new FormData(addUiSkillForm);
+                const compType = formData.get('component_type');
+                const flowIdVal = formData.get('flow_id');
+
+                const rawTitle = formData.get('title');
+                const cleanTitle = slugifySkillTitle(rawTitle);
+                if (!cleanTitle) {
+                  toast.show('El título / identificador debe contener al menos un carácter alfanumérico válido', 'warning');
+                  submitBtn.disabled = false;
+                  submitBtn.textContent = '+ Crear Habilidad UI';
+                  return;
+                }
+
+                if (compType === 'flow' && !flowIdVal) {
+                  toast.show('Debes ingresar o seleccionar un Flow ID para habilidades de tipo Flow', 'warning');
+                  submitBtn.disabled = false;
+                  submitBtn.textContent = '+ Crear Habilidad UI';
+                  return;
+                }
+
+                const payload = {
+                  phone_number_id: phoneId,
+                  skill: {
+                    title: cleanTitle,
+                    component_type: compType,
+                    status: formData.get('status') || 'enabled',
+                    instruction: formData.get('instruction'),
+                    flow_id: compType === 'flow' ? flowIdVal : undefined
+                  }
+                };
+
+                const saveRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-ui-skills`, {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify(payload)
+                });
+                const resData = await saveRes.json().catch(() => ({}));
+                if (saveRes.ok) {
+                  toast.show('¡Habilidad UI creada con éxito en Meta!', 'success');
+                  loadTab('tab-ui-skills');
+                } else {
+                  const errorMsg = resData.raw_meta_response || resData.detail || resData.error?.message || resData.title || JSON.stringify(resData);
+                  toast.show('Error al guardar habilidad UI: ' + errorMsg, 'error');
+                }
+              } catch (err) {
+                toast.show('Error al guardar habilidad UI: ' + err.message, 'error');
+              } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '+ Crear Habilidad UI';
+              }
+            });
+          }
+
+          // Toggle status handlers (enabled / disabled)
+          tabContainer.querySelectorAll('[data-toggle-ui-status]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const skillId = btn.dataset.toggleUiStatus;
+              const currentStatus = btn.dataset.currentStatus;
+              const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
+              btn.disabled = true;
+              btn.textContent = '...';
+
+              try {
+                const putRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-ui-skills`, {
+                  method: 'PUT',
+                  headers,
+                  body: JSON.stringify({
+                    phone_number_id: phoneId,
+                    instruction_id: skillId,
+                    skill: { status: newStatus }
+                  })
+                });
+                const resData = await putRes.json().catch(() => ({}));
+                if (putRes.ok) {
+                  toast.show(`Habilidad ${newStatus === 'enabled' ? 'habilitada' : 'deshabilitada'}`, 'success');
+                  loadTab('tab-ui-skills');
+                } else {
+                  const errMsg = resData.raw_meta_response || resData.detail || resData.error?.message || resData.title || JSON.stringify(resData);
+                  toast.show('Error al cambiar estado: ' + errMsg, 'error');
+                  loadTab('tab-ui-skills');
+                }
+              } catch (err) {
+                toast.show(err.message, 'error');
+                loadTab('tab-ui-skills');
+              }
+            });
+          });
+
+          // Edit Skill handlers
+          tabContainer.querySelectorAll('[data-edit-ui-skill-id]').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const skillId = btn.dataset.editUiSkillId;
+              const skillObj = uiSkillsList.find(s => String(s.id) === String(skillId));
+              if (skillObj) {
+                openEditSkillModal(skillObj);
+              }
+            });
+          });
+
+          // Delete Skill handlers
+          tabContainer.querySelectorAll('[data-delete-ui-skill-id]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const skillId = btn.dataset.deleteUiSkillId;
+              if (!confirm('¿Seguro que deseas eliminar esta Habilidad UI?')) return;
+              btn.disabled = true;
+              btn.textContent = 'Eliminando...';
+              try {
+                const delRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-ui-skills`, {
+                  method: 'DELETE',
+                  headers,
+                  body: JSON.stringify({ phone_number_id: phoneId, instruction_id: skillId })
+                });
+                if (delRes.ok) {
+                  toast.show('Habilidad UI eliminada', 'success');
+                  loadTab('tab-ui-skills');
+                } else {
+                  const resData = await delRes.json().catch(() => ({}));
+                  const errDetail = resData.raw_meta_response || resData.detail || resData.error?.message || resData.title || JSON.stringify(resData);
+                  toast.show('Error al eliminar habilidad UI: ' + errDetail, 'error');
+                }
+              } catch (err) {
+                toast.show(err.message, 'error');
+              }
+            });
+          });
+        }
+
         // 4. SOLAPA CONECTORES
         else if (tabKey === 'tab-conectores') {
           const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-connectors?phone_number_id=${phoneId}`, { headers });
@@ -3388,7 +4121,7 @@ export function renderSettings(currentUser) {
                           <strong class="text-primary text-xs">🔌 ${cn.name}</strong>
                           <span class="text-neutral-500 font-mono text-[10px]">${cn.base_url} [Auth: ${cn.auth_type}]</span>
                         </div>
-                        <button data-delete-connector-id="${cn.id}" class="text-rose-600 hover:text-rose-800 text-[10px] font-mono font-bold uppercase">Eliminar</button>
+                        <button data-delete-connector-id="${cn.id}" class="text-rose-600 hover:text-rose-800 text-[10px] font-mono font-bold uppercase cursor-pointer">Eliminar</button>
                       </div>
                     `).join('')}
                   </div>
@@ -3412,6 +4145,36 @@ export function renderSettings(currentUser) {
             const saveRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-connectors`, { method: 'POST', headers, body: JSON.stringify(payload) });
             if (saveRes.ok) { toast.show('Conector registrado', 'success'); loadTab('tab-conectores'); }
             else toast.show('Error al registrar conector', 'error');
+          });
+
+          // Delete Connector handlers
+          tabContainer.querySelectorAll('[data-delete-connector-id]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const connId = btn.dataset.deleteConnectorId;
+              if (!confirm('¿Seguro que deseas eliminar este conector externo?')) return;
+              btn.disabled = true;
+              btn.textContent = 'Eliminando...';
+              try {
+                const delRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-proxy/agent-connectors`, {
+                  method: 'DELETE',
+                  headers,
+                  body: JSON.stringify({ phone_number_id: phoneId, connector_id: connId })
+                });
+                if (delRes.ok) {
+                  toast.show('Conector eliminado', 'success');
+                  loadTab('tab-conectores');
+                } else {
+                  const resData = await delRes.json().catch(() => ({}));
+                  toast.show('Error al eliminar conector: ' + (resData.error?.message || resData.detail || 'Error en la API'), 'error');
+                  btn.disabled = false;
+                  btn.textContent = 'Eliminar';
+                }
+              } catch (err) {
+                toast.show(err.message, 'error');
+                btn.disabled = false;
+                btn.textContent = 'Eliminar';
+              }
+            });
           });
         }
 

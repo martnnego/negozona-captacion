@@ -385,9 +385,15 @@ export function renderLeadRow(lead, isSelected, { onSelectChange, onRowClick }) 
     </td>
     
     <!-- Lead Details -->
-    <td class="px-6 py-3.5 max-w-[170px] font-semibold" title="${company}">
-      <div class="flex items-center gap-1.5 min-w-0">
+    <td class="px-6 py-3.5 max-w-[190px] font-semibold" title="${company}">
+      <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
         <span class="truncate">${company}</span>
+        ${lead.lead_type === 'Sponsor'
+          ? `<span class="inline-flex items-center shrink-0 px-1.5 py-0.2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xs text-[8px] uppercase tracking-wider font-bold" title="Tipo: Sponsor">Sponsor</span>`
+          : lead.lead_type === 'Franquicia'
+            ? `<span class="inline-flex items-center shrink-0 px-1.5 py-0.2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xs text-[8px] uppercase tracking-wider font-bold" title="Tipo: Franquicia">Franquicia</span>`
+            : ''
+        }
         ${lead.nombre_validado ? `<span class="inline-flex items-center shrink-0 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-sm text-[8px] uppercase tracking-wider font-bold" title="Nombre validado">✓</span>` : ''}
       </div>
     </td>

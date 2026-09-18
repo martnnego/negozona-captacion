@@ -53,6 +53,16 @@ export function renderFilters({ activeFilters, onFilterChange }) {
         </select>
       </div>
 
+      <!-- Lead Type Filter -->
+      <div class="flex flex-col gap-0.5">
+        <select id="filter-lead-type" class="bg-white border border-[#d9d9dd] rounded-sm py-2 px-3 font-mono text-[9px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
+          <option value="">FILTRAR TIPO</option>
+          <option value="Franquicia" ${activeFilters.leadType === 'Franquicia' ? 'selected' : ''}>FRANQUICIA</option>
+          <option value="Sponsor" ${activeFilters.leadType === 'Sponsor' ? 'selected' : ''}>SPONSOR</option>
+          <option value="unassigned" ${activeFilters.leadType === 'unassigned' ? 'selected' : ''}>SIN DEFINIR</option>
+        </select>
+      </div>
+
       <!-- Valoracion Filter -->
       <div class="flex flex-col gap-0.5">
         <select id="filter-valoracion" class="bg-white border border-[#d9d9dd] rounded-sm py-2 px-3 font-mono text-[9px] font-bold text-[#616161] hover:text-primary transition-colors focus:outline-none uppercase tracking-wider">
@@ -78,6 +88,7 @@ export function renderFilters({ activeFilters, onFilterChange }) {
   const stageSelect = container.querySelector('#filter-stage');
   const comercialSelect = container.querySelector('#filter-comercial');
   const countrySelect = container.querySelector('#filter-country');
+  const leadTypeSelect = container.querySelector('#filter-lead-type');
   const valoracionSelect = container.querySelector('#filter-valoracion');
   const clearBtn = container.querySelector('#clear-filters-btn');
   const clearContainer = container.querySelector('#clear-filters-container');
@@ -104,6 +115,7 @@ export function renderFilters({ activeFilters, onFilterChange }) {
   handleSelectChange('stageId', stageSelect);
   handleSelectChange('assignedTo', comercialSelect);
   handleSelectChange('country', countrySelect);
+  handleSelectChange('leadType', leadTypeSelect);
   handleSelectChange('valoracion', valoracionSelect);
 
   function updateClearButtonVisibility() {
@@ -121,6 +133,7 @@ export function renderFilters({ activeFilters, onFilterChange }) {
     stageSelect.value = '';
     comercialSelect.value = '';
     countrySelect.value = '';
+    leadTypeSelect.value = '';
     valoracionSelect.value = '';
 
     Object.keys(activeFilters).forEach(key => {

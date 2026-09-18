@@ -30,7 +30,8 @@ export function renderLeadsTable(currentUser) {
     stageId: '',
     assignedTo: '',
     country: '',
-    valoracion: ''
+    valoracion: '',
+    leadType: ''
   };
 
   const selectedLeadIds = new Set();
@@ -268,6 +269,14 @@ export function renderLeadsTable(currentUser) {
 
       if (activeFilters.valoracion) {
         filtered = filtered.filter(l => l.valoracion === activeFilters.valoracion);
+      }
+
+      if (activeFilters.leadType) {
+        if (activeFilters.leadType === 'unassigned') {
+          filtered = filtered.filter(l => !l.lead_type);
+        } else {
+          filtered = filtered.filter(l => l.lead_type === activeFilters.leadType);
+        }
       }
 
       // Period filter (only if no active search query)
@@ -688,6 +697,14 @@ export function renderLeadsTable(currentUser) {
         <div id="new-company-suggestions" class="absolute left-0 right-0 top-full mt-1 bg-white border border-[#d9d9dd] rounded-sm shadow-lg max-h-40 overflow-y-auto hidden z-50"></div>
       </div>
       <div class="flex flex-col gap-1">
+        <label for="new-lead-type" class="font-mono text-[9px] font-bold text-primary uppercase">Tipo de Lead</label>
+        <select id="new-lead-type" name="lead_type" class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm py-2 px-3">
+          <option value="">Sin definir</option>
+          <option value="Franquicia">Franquicia</option>
+          <option value="Sponsor">Sponsor</option>
+        </select>
+      </div>
+      <div class="flex flex-col gap-1">
         <label for="new-industry" class="font-mono text-[9px] font-bold text-primary uppercase">Rubro / Industria</label>
         <input type="text" id="new-industry" name="industry" class="cohere-input text-xs" placeholder="Ej: Gastronomía, Estética..." />
       </div>
@@ -786,6 +803,7 @@ export function renderLeadsTable(currentUser) {
 
             const newLead = {
               company: formData.get('company').trim(),
+              lead_type: formData.get('lead_type') || null,
               industry: formData.get('industry').trim() || null,
               branches: formData.get('branches').trim() || null,
               investment: formData.get('investment').trim() || null,

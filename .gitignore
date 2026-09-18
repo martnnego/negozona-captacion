@@ -1,21 +1,65 @@
+# Dependencies
 node_modules/
+
+# Production build output & bundler caches
 dist/
+dist-ssr/
+.vite/
+.cache/
+
+# Environment files & Secrets
 .env
-.DS_Store
+.env.*
+!.env.example
 *.local
 
-# Negozona specific data & plans
-contactos_consolidados_negozona_20260708_200510.csv
-implementation_plan_crm_negozona_20260709.md
-scratch-test-admin.js
-scratch-test.js
+# Logs & Debugging
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Supabase Edge Functions local code
+# OS specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Editor & IDE directories
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+
+# Temporary, scratch & testing scripts
+tmp/
+temp/
+scratch/
+scratch-*
+*.scratch.*
+
+# Data exports, leads/contacts & temporary implementation plans (prevent PII leaks)
+*.csv
+*.xlsx
+*.xls
+contactos_consolidados_negozona_*.csv
+implementation_plan_*.md
+
+# Supabase Edge Functions local code & artifacts
 supabase/
 
 # Meta documentation
 documentacion-meta-whatsap/
-
-# Temporary scratch folder
-scratch/
-

@@ -112,8 +112,14 @@ export async function renderLeadDetail(leadId, onUpdate) {
     summaryHeader.innerHTML = `
       <div>
         <h4 class="text-xs font-mono font-bold text-muted-slate uppercase tracking-wider">Empresa / Marca</h4>
-        <p class="text-sm font-semibold text-primary mt-0.5 flex items-center gap-1.5">
+        <p class="text-sm font-semibold text-primary mt-0.5 flex items-center gap-1.5 flex-wrap">
           ${lead.company || '—'}
+          ${lead.lead_type === 'Sponsor'
+            ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200">Sponsor</span>`
+            : lead.lead_type === 'Franquicia'
+              ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">Franquicia</span>`
+              : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-neutral-100 text-neutral-500 border border-neutral-200">Sin Tipo</span>`
+          }
           ${lead.nombre_validado 
             ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">Validado</span>` 
             : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">Pendiente Validar</span>`}
@@ -416,6 +422,14 @@ export async function renderLeadDetail(leadId, onUpdate) {
         </div>
 
         <!-- General Inputs -->
+        <div class="flex flex-col gap-1">
+          <label for="edit-lead-type" class="font-mono text-[9px] font-bold text-primary uppercase">Tipo de Lead</label>
+          <select id="edit-lead-type" name="lead_type" class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm py-2 px-3">
+            <option value="" ${!lead.lead_type ? 'selected' : ''}>Sin definir (Pendiente)</option>
+            <option value="Franquicia" ${lead.lead_type === 'Franquicia' ? 'selected' : ''}>Franquicia</option>
+            <option value="Sponsor" ${lead.lead_type === 'Sponsor' ? 'selected' : ''}>Sponsor</option>
+          </select>
+        </div>
         <div class="flex flex-col gap-1">
           <label for="edit-industry" class="font-mono text-[9px] font-bold text-primary uppercase">Rubro / Industria</label>
           <input type="text" id="edit-industry" name="industry" value="${lead.industry || ''}" class="cohere-input text-xs" />
@@ -865,6 +879,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
       const formData = new FormData(form);
       const updatedFields = {
         company: formData.get('company').trim() || null,
+        lead_type: formData.get('lead_type') || null,
         industry: formData.get('industry').trim() || null,
         branches: formData.get('branches').trim() || null,
         investment: formData.get('investment').trim() || null,

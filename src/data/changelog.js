@@ -1,6 +1,35 @@
 // Historial estructurado de versiones y novedades del CRM Negozona
 export const CHANGELOG = [
   {
+    version: '1.3.0',
+    date: 'Septiembre 2026',
+    title: 'Tipo de Lead (Franquicia / Sponsor) y Habilidades UI para Agente de WhatsApp',
+    tag: 'Nuevo',
+    summary: 'Incorporamos la diferenciación y segmentación de leads por Tipo (Franquicia o Sponsor), junto con la nueva solapa de Habilidades UI en WhatsApp Cloud API para crear y gestionar mensajes interactivos con botones CTA, carruseles, listas desplegables y WhatsApp Flows.',
+    changes: [
+      {
+        type: 'nuevo',
+        badge: 'Nuevo',
+        text: 'Segmentación por Tipo de Lead: clasificación en Franquicia y Sponsor con etiquetas visuales, filtros combinados en vistas Tabla y Kanban, y selector en la ficha del lead.'
+      },
+      {
+        type: 'nuevo',
+        badge: 'Nuevo',
+        text: 'Solapa "Habilidades UI" en WhatsApp Cloud API: configuración directa con Meta de mensajes interactivos (botones URL/CTA, respuestas rápidas, carruseles, listas y WhatsApp Flows).'
+      },
+      {
+        type: 'nuevo',
+        badge: 'Nuevo',
+        text: 'Guía interactiva de componentes UI con plantillas de ejemplo listas para usar y vinculación directa con WhatsApp Flows publicados.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Mejora',
+        text: 'Normalización automática de identificadores técnicos y slugs en habilidades UI para garantizar compatibilidad con Meta Cloud API.'
+      }
+    ]
+  },
+  {
     version: '1.2.1',
     date: 'Septiembre 2026',
     title: 'Mejoras en estadísticas de mailing, gestiones de email y validación de contactos',
@@ -123,7 +152,7 @@ export const CHANGELOG = [
   }
 ];
 
-export const CURRENT_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.1';
+export const CURRENT_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.3.0';
 
 export function getLatestRelease() {
   return CHANGELOG[0] || null;
