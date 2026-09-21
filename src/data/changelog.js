@@ -1,6 +1,40 @@
 // Historial estructurado de versiones y novedades del CRM Negozona
 export const CHANGELOG = [
   {
+    version: '1.4.0',
+    date: 'Septiembre 2026',
+    title: 'Selector de Pipeline (Negozona / Franquiday), Filtro de Contactos y Vista Previa HTML en Campañas',
+    tag: 'Nuevo',
+    summary: 'Mejoramos el creador de campañas con soporte dual para etapas de Negozona y Franquiday, control para enviar solo al contacto principal o a todos los contactos, alertas de variabilidad de audiencia y vista previa HTML interactiva y colapsable en plantillas de email.',
+    changes: [
+      {
+        type: 'nuevo',
+        badge: 'Nuevo',
+        text: 'Selector de Pipeline en Audiencia: permite elegir entre el pipeline comercial de Negozona o Franquiday para filtrar leads según sus respectivas etapas.'
+      },
+      {
+        type: 'nuevo',
+        badge: 'Nuevo',
+        text: 'Control de Contacto Principal: opción para definir si la campaña se envía exclusivamente al contacto principal del lead o a todos los contactos asociados.'
+      },
+      {
+        type: 'nuevo',
+        badge: 'Nuevo',
+        text: 'Vista Previa HTML Real y Colapsable en Campañas de Email: visualización fiel del correo electrónico en un contenedor desplegable, con reemplazo automático de variables de muestra.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Mejora',
+        text: 'Alertas informativas en segmentos dinámicos que indican la variabilidad del volumen de envíos ante cambios de etapa posteriores.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Mejora',
+        text: 'Actualización en los motores de envío de WhatsApp e Email en Supabase para sincronizar el pipeline de Franquiday y la restricción de contacto principal.'
+      }
+    ]
+  },
+  {
     version: '1.3.0',
     date: 'Septiembre 2026',
     title: 'Tipo de Lead (Franquicia / Sponsor) y Habilidades UI para Agente de WhatsApp',
@@ -152,7 +186,7 @@ export const CHANGELOG = [
   }
 ];
 
-export const CURRENT_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.3.0';
+export const CURRENT_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.0';
 
 export function getLatestRelease() {
   return CHANGELOG[0] || null;
