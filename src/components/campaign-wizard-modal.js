@@ -15,7 +15,7 @@ export function openCampaignWizardModal(onSuccess) {
     phone_number_id: '',
     objective: 'promocion',
     audience_type: 'dynamic_segment',
-    audience_filters: { pipeline_stage_id: '', days_inactive: '', country: '', selected_lead_ids: [] },
+    audience_filters: { pipeline_type: 'negozona', pipeline_stage_id: '', primary_contact_only: false, days_inactive: '', country: '', selected_lead_ids: [] },
     template_name: '',
     template_language: 'es_AR',
     template_components: [],
@@ -384,7 +384,7 @@ export function openCampaignWizardModal(onSuccess) {
           <div class="flex flex-col gap-2">
             <label class="font-mono text-[10px] font-bold text-primary uppercase">Tipo de Audiencia</label>
             <div class="flex flex-col gap-2">
-              <label class="p-3 border ${campaignData.audience_type === 'dynamic_segment' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex items-start gap-3">
+              <label class="p-3 border ${campaignData.audience_type === 'dynamic_segment' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex items-start gap-3 transition-colors">
                 <input type="radio" name="wiz_aud_type" value="dynamic_segment" ${campaignData.audience_type === 'dynamic_segment' ? 'checked' : ''} class="mt-1 accent-primary" />
                 <div>
                   <strong class="block text-xs text-primary">⚡ Crear Segmento Dinámico (Recomendado)</strong>
@@ -392,7 +392,7 @@ export function openCampaignWizardModal(onSuccess) {
                 </div>
               </label>
 
-              <label class="p-3 border ${campaignData.audience_type === 'static_segment' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex items-start gap-3">
+              <label class="p-3 border ${campaignData.audience_type === 'static_segment' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex items-start gap-3 transition-colors">
                 <input type="radio" name="wiz_aud_type" value="static_segment" ${campaignData.audience_type === 'static_segment' ? 'checked' : ''} class="mt-1 accent-primary" />
                 <div>
                   <strong class="block text-xs text-neutral-800">📌 Crear Segmento Actual (Estático)</strong>
@@ -400,7 +400,7 @@ export function openCampaignWizardModal(onSuccess) {
                 </div>
               </label>
 
-              <label class="p-3 border ${campaignData.audience_type === 'all' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex items-start gap-3">
+              <label class="p-3 border ${campaignData.audience_type === 'all' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex items-start gap-3 transition-colors">
                 <input type="radio" name="wiz_aud_type" value="all" ${campaignData.audience_type === 'all' ? 'checked' : ''} class="mt-1 accent-primary" />
                 <div>
                   <strong class="block text-xs text-neutral-800">${campaignData.channel === 'email' ? '✉️ Todos los Contactos con Email' : '👥 Todos los Contactos con Teléfono'}</strong>
@@ -410,19 +410,53 @@ export function openCampaignWizardModal(onSuccess) {
             </div>
           </div>
 
+          <!-- Dynamic Segment Alert -->
+          <div id="dynamic-segment-alert" class="p-3.5 bg-amber-50/90 border border-amber-200 rounded-lg flex items-start gap-3 text-xs ${campaignData.audience_type === 'dynamic_segment' ? '' : 'hidden'}">
+            <span class="text-amber-600 text-base shrink-0 mt-0.5">⚠️</span>
+            <div class="flex flex-col gap-1 text-amber-900">
+              <strong class="font-bold text-[11px] uppercase tracking-wider font-mono">Variación de Audiencia (Segmento Dinámico)</strong>
+              <p class="text-[11px] leading-relaxed text-amber-800">
+                Este segmento evalúa a los prospectos en tiempo real al momento de ejecutarse el envío. <strong>La cantidad final de destinatarios y envíos puede variar</strong> si las etapas o datos de los prospectos se modifican entre la creación de la campaña y su fecha de ejecución.
+              </p>
+              <p class="text-[11px] leading-relaxed font-semibold text-amber-950 mt-0.5" id="dynamic-contact-scope-text">
+                ${campaignData.audience_filters.primary_contact_only ? '🎯 Alcance: Se enviará ÚNICAMENTE al contacto principal de cada empresa.' : '👥 Alcance: Se enviará a TODOS los contactos vinculados a cada empresa que califique.'}
+              </p>
+            </div>
+          </div>
+
           <!-- Filter Criteria -->
-          <div class="p-4 bg-white border border-neutral-200 rounded-lg flex flex-col gap-3">
-            <h5 class="font-mono text-[9px] font-bold text-neutral-600 uppercase border-b border-neutral-200 pb-1">Reglas de Filtrado de Leads</h5>
+          <div class="p-4 bg-white border border-neutral-200 rounded-lg flex flex-col gap-4">
+            <div class="flex items-center justify-between border-b border-neutral-200 pb-2">
+              <h5 class="font-mono text-[9px] font-bold text-neutral-600 uppercase">Reglas de Filtrado de Leads</h5>
+              <span class="text-[10px] text-neutral-400 font-mono">Filtros acumulativos</span>
+            </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <!-- Tipo de Pipeline: Negozona vs Franquiday -->
               <div class="flex flex-col gap-1">
-                <label class="font-mono text-[8px] font-bold text-neutral-500 uppercase">Etapa del Pipeline</label>
-                <select id="filter-stage" class="cohere-input text-xs">
+                <label class="font-mono text-[8px] font-bold text-neutral-500 uppercase">Tipo de Pipeline</label>
+                <div class="grid grid-cols-2 gap-1 bg-neutral-100 p-0.5 rounded-lg border border-neutral-200">
+                  <button type="button" id="btn-pipe-negozona" class="pipe-mode-btn py-1 px-2 rounded-md font-mono text-[10px] font-bold transition-all cursor-pointer ${campaignData.audience_filters.pipeline_type === 'negozona' ? 'bg-white text-primary shadow-2xs' : 'text-neutral-500 hover:text-neutral-800'}">
+                    💼 Negozona
+                  </button>
+                  <button type="button" id="btn-pipe-franquiday" class="pipe-mode-btn py-1 px-2 rounded-md font-mono text-[10px] font-bold transition-all cursor-pointer ${campaignData.audience_filters.pipeline_type === 'franquiday' ? 'bg-white text-primary shadow-2xs' : 'text-neutral-500 hover:text-neutral-800'}">
+                    🎪 Franquiday
+                  </button>
+                </div>
+              </div>
+
+              <!-- Etapa del Pipeline seleccionado -->
+              <div class="flex flex-col gap-1">
+                <label class="font-mono text-[8px] font-bold text-neutral-500 uppercase" id="label-filter-stage">
+                  Etapa (${campaignData.audience_filters.pipeline_type === 'franquiday' ? 'Franquiday' : 'Negozona'})
+                </label>
+                <select id="filter-stage" class="cohere-input text-xs font-medium">
                   <option value="">Todas las etapas (${pipelineStages.length})</option>
                   ${pipelineStages.map(st => `<option value="${st.id}" ${campaignData.audience_filters.pipeline_stage_id === st.id ? 'selected' : ''}>${st.name}</option>`).join('')}
                 </select>
               </div>
 
+              <!-- País -->
               <div class="flex flex-col gap-1">
                 <label class="font-mono text-[8px] font-bold text-neutral-500 uppercase">País</label>
                 <select id="filter-country" class="cohere-input text-xs">
@@ -431,6 +465,7 @@ export function openCampaignWizardModal(onSuccess) {
                 </select>
               </div>
 
+              <!-- Inactividad Comercial -->
               <div class="flex flex-col gap-1">
                 <label class="font-mono text-[8px] font-bold text-neutral-500 uppercase">Inactividad Comercial</label>
                 <select id="filter-inactivity" class="cohere-input text-xs">
@@ -440,6 +475,21 @@ export function openCampaignWizardModal(onSuccess) {
                   <option value="30" ${campaignData.audience_filters.days_inactive === '30' ? 'selected' : ''}>Más de 30 días sin gestión</option>
                 </select>
               </div>
+            </div>
+
+            <!-- Checkbox Destinatarios: Solo Contacto Principal vs Todos -->
+            <div class="pt-3 border-t border-neutral-200">
+              <label class="p-2.5 bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 rounded-lg flex items-center justify-between cursor-pointer transition-colors">
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+                    <span>👤</span> Enviar solo al contacto principal de la empresa
+                  </span>
+                  <span class="text-[10px] text-neutral-500">
+                    Si se desmarca, se enviará a todos los contactos vinculados a la empresa que cuenten con teléfono/email válido.
+                  </span>
+                </div>
+                <input type="checkbox" id="chk-primary-contact-only" ${campaignData.audience_filters.primary_contact_only ? 'checked' : ''} class="w-4 h-4 accent-primary cursor-pointer shrink-0 ml-3" />
+              </label>
             </div>
           </div>
 
@@ -455,7 +505,7 @@ export function openCampaignWizardModal(onSuccess) {
                 <span id="selected-contacts-count-badge" class="px-2 py-0.5 bg-primary/10 text-primary font-mono font-bold text-[10px] rounded-full">
                   0 seleccionados
                 </span>
-                <button id="btn-toggle-select-all" class="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-mono text-[10px] font-bold rounded cursor-pointer transition-colors">
+                <button type="button" id="btn-toggle-select-all" class="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-mono text-[10px] font-bold rounded cursor-pointer transition-colors">
                   Deseleccionar Todos
                 </button>
               </div>
@@ -499,7 +549,7 @@ export function openCampaignWizardModal(onSuccess) {
           </div>
 
           <div class="pt-4 border-t border-neutral-800 text-[9px] text-neutral-400 italic">
-            ℹ️ En modo estático, la campaña se enviará únicamente a los contactos tildados en el listado.
+            ℹ️ En modo dinámico, los destinatarios se evalúan al ejecutar la campaña. En modo estático se congelan los seleccionados.
           </div>
         </div>
 
@@ -510,16 +560,28 @@ export function openCampaignWizardModal(onSuccess) {
     let fetchedLeads = [];
     let leadSearchQuery = '';
 
+    const dynamicAlert = wizBody.querySelector('#dynamic-segment-alert');
+    const dynamicScopeText = wizBody.querySelector('#dynamic-contact-scope-text');
     const staticContainer = wizBody.querySelector('#static-contacts-container');
     const filterStage = wizBody.querySelector('#filter-stage');
     const filterCountry = wizBody.querySelector('#filter-country');
     const filterInactivity = wizBody.querySelector('#filter-inactivity');
     const contactSearch = wizBody.querySelector('#contact-list-search');
     const btnToggleAll = wizBody.querySelector('#btn-toggle-select-all');
+    const btnPipeNegozona = wizBody.querySelector('#btn-pipe-negozona');
+    const btnPipeFranquiday = wizBody.querySelector('#btn-pipe-franquiday');
+    const labelFilterStage = wizBody.querySelector('#label-filter-stage');
+    const chkPrimaryContact = wizBody.querySelector('#chk-primary-contact-only');
 
     wizBody.querySelectorAll('input[name="wiz_aud_type"]').forEach(radio => {
       radio.addEventListener('change', async (e) => {
         campaignData.audience_type = e.target.value;
+        if (campaignData.audience_type === 'dynamic_segment') {
+          if (dynamicAlert) dynamicAlert.classList.remove('hidden');
+        } else {
+          if (dynamicAlert) dynamicAlert.classList.add('hidden');
+        }
+
         if (campaignData.audience_type === 'static_segment') {
           staticContainer.classList.remove('hidden');
           await reloadContactsList();
@@ -529,6 +591,60 @@ export function openCampaignWizardModal(onSuccess) {
         }
       });
     });
+
+    // Pipeline mode toggle handler
+    const updatePipelineTypeButtons = () => {
+      const isNegozona = campaignData.audience_filters.pipeline_type === 'negozona';
+      if (btnPipeNegozona) {
+        btnPipeNegozona.className = `pipe-mode-btn py-1 px-2 rounded-md font-mono text-[10px] font-bold transition-all cursor-pointer ${isNegozona ? 'bg-white text-primary shadow-2xs' : 'text-neutral-500 hover:text-neutral-800'}`;
+      }
+      if (btnPipeFranquiday) {
+        btnPipeFranquiday.className = `pipe-mode-btn py-1 px-2 rounded-md font-mono text-[10px] font-bold transition-all cursor-pointer ${!isNegozona ? 'bg-white text-primary shadow-2xs' : 'text-neutral-500 hover:text-neutral-800'}`;
+      }
+      if (labelFilterStage) {
+        labelFilterStage.textContent = `Etapa (${isNegozona ? 'Negozona' : 'Franquiday'})`;
+      }
+    };
+
+    if (btnPipeNegozona) {
+      btnPipeNegozona.addEventListener('click', async () => {
+        campaignData.audience_filters.pipeline_type = 'negozona';
+        updatePipelineTypeButtons();
+        if (campaignData.audience_type === 'static_segment') {
+          await reloadContactsList();
+        } else {
+          calculateAudienceLiveCount();
+        }
+      });
+    }
+
+    if (btnPipeFranquiday) {
+      btnPipeFranquiday.addEventListener('click', async () => {
+        campaignData.audience_filters.pipeline_type = 'franquiday';
+        updatePipelineTypeButtons();
+        if (campaignData.audience_type === 'static_segment') {
+          await reloadContactsList();
+        } else {
+          calculateAudienceLiveCount();
+        }
+      });
+    }
+
+    if (chkPrimaryContact) {
+      chkPrimaryContact.addEventListener('change', async (e) => {
+        campaignData.audience_filters.primary_contact_only = e.target.checked;
+        if (dynamicScopeText) {
+          dynamicScopeText.textContent = e.target.checked 
+            ? '🎯 Alcance: Se enviará ÚNICAMENTE al contacto principal de cada empresa.' 
+            : '👥 Alcance: Se enviará a TODOS los contactos vinculados a cada empresa que califique.';
+        }
+        if (campaignData.audience_type === 'static_segment') {
+          await reloadContactsList();
+        } else {
+          calculateAudienceLiveCount();
+        }
+      });
+    }
 
     filterStage.addEventListener('change', async (e) => {
       campaignData.audience_filters.pipeline_stage_id = e.target.value;
@@ -603,7 +719,7 @@ export function openCampaignWizardModal(onSuccess) {
       try {
         // 1. Fetch ALL leads, links, and contacts using paginated fetchAllRows to ensure zero rows are missed
         const [leadsData, linksData, contactsData] = await Promise.all([
-          fetchAllRows('leads', 'id, company, country, primary_contact_id, pipeline_stage_id, updated_at, created_at'),
+          fetchAllRows('leads', 'id, company, country, primary_contact_id, pipeline_stage_id, franquiday_stage_id, updated_at, created_at'),
           fetchAllRows('lead_contacts_link', 'lead_id, contact_id', { orderCol: 'lead_id' }),
           fetchAllRows('contacts', 'id, first_name, last_name, phone, email')
         ]);
@@ -626,10 +742,19 @@ export function openCampaignWizardModal(onSuccess) {
           });
         }
 
-        // Apply stage filter if selected
+        // Apply stage filter according to pipeline_type
         const f = campaignData.audience_filters;
         if (f.pipeline_stage_id) {
-          leadRows = leadRows.filter(l => l.pipeline_stage_id === f.pipeline_stage_id);
+          if (f.pipeline_type === 'franquiday') {
+            leadRows = leadRows.filter(l => {
+              const activeFranquidayStage = cache.isLoaded 
+                ? (cache.getMostRecentFranquidayStageId(l.id) || l.franquiday_stage_id) 
+                : l.franquiday_stage_id;
+              return activeFranquidayStage === f.pipeline_stage_id;
+            });
+          } else {
+            leadRows = leadRows.filter(l => l.pipeline_stage_id === f.pipeline_stage_id);
+          }
         }
         if (f.country) {
           const targetCountry = f.country.trim().toLowerCase();
@@ -660,19 +785,31 @@ export function openCampaignWizardModal(onSuccess) {
           });
         }
 
-        // Build contact checklist items
+        // Build contact checklist items respecting primary_contact_only
         const contactItems = [];
 
         for (const l of leadRows) {
           const companyName = l.company ? l.company.trim() : '';
-          const contactIds = [...(linksByLead.get(l.id) || [])];
+          let contactIds = [];
 
-          // Include primary_contact_id if not already listed
-          if (l.primary_contact_id && !contactIds.includes(l.primary_contact_id)) {
-            contactIds.unshift(l.primary_contact_id);
+          if (f.primary_contact_only) {
+            if (l.primary_contact_id) {
+              contactIds = [l.primary_contact_id];
+            } else {
+              const linked = linksByLead.get(l.id) || [];
+              if (linked.length > 0) contactIds = [linked[0]];
+            }
+          } else {
+            contactIds = [...(linksByLead.get(l.id) || [])];
+            if (l.primary_contact_id && !contactIds.includes(l.primary_contact_id)) {
+              contactIds.unshift(l.primary_contact_id);
+            }
           }
 
           const linkedContacts = contactIds.map(cId => contactsMap.get(cId)).filter(Boolean);
+          const activeStageId = f.pipeline_type === 'franquiday' 
+            ? (cache.isLoaded ? (cache.getMostRecentFranquidayStageId(l.id) || l.franquiday_stage_id) : l.franquiday_stage_id) 
+            : l.pipeline_stage_id;
 
           if (linkedContacts.length > 0) {
             linkedContacts.forEach(c => {
@@ -682,7 +819,8 @@ export function openCampaignWizardModal(onSuccess) {
 
               const displayTitle = fullName;
               const contactInfoStr = campaignData.channel === 'email' ? `✉️ ${emailAddr || 'Sin email'}` : `📞 ${phoneNum || 'Sin teléfono'}`;
-              const displaySubtitle = companyName ? `${companyName} • ${contactInfoStr}` : contactInfoStr;
+              const isPrimaryBadge = (l.primary_contact_id === c.id) ? ' (Principal)' : '';
+              const displaySubtitle = companyName ? `${companyName} • ${contactInfoStr}${isPrimaryBadge}` : `${contactInfoStr}${isPrimaryBadge}`;
 
               contactItems.push({
                 itemKey: `${l.id}_${c.id}`,
@@ -693,8 +831,8 @@ export function openCampaignWizardModal(onSuccess) {
                 phone: phoneNum,
                 displayTitle,
                 displaySubtitle,
-                pipeline_stage_id: l.pipeline_stage_id,
-                searchableText: `${fullName} ${companyName} ${phoneNum}`.toLowerCase()
+                pipeline_stage_id: activeStageId,
+                searchableText: `${fullName} ${companyName} ${phoneNum} ${emailAddr}`.toLowerCase()
               });
             });
           } else {
@@ -708,7 +846,7 @@ export function openCampaignWizardModal(onSuccess) {
               phone: '',
               displayTitle: title,
               displaySubtitle: 'Sin contactos ni teléfono asignado',
-              pipeline_stage_id: l.pipeline_stage_id,
+              pipeline_stage_id: activeStageId,
               searchableText: `${title}`.toLowerCase()
             });
           }
@@ -816,22 +954,37 @@ export function openCampaignWizardModal(onSuccess) {
 
   async function calculateAudienceLiveCount() {
     const liveCountEl = wizBody.querySelector('#aud-live-count');
+    const liveSubEl = wizBody.querySelector('#aud-live-sub');
     if (!liveCountEl) return;
     liveCountEl.textContent = '...';
 
     try {
-      let query = supabase.from('leads').select('id', { count: 'exact', head: true });
       const f = campaignData.audience_filters;
-      if (f.pipeline_stage_id) query = query.eq('pipeline_stage_id', f.pipeline_stage_id);
+      let query = supabase.from('leads').select('id, primary_contact_id', { count: 'exact' });
+      if (f.pipeline_stage_id) {
+        if (f.pipeline_type === 'franquiday') {
+          query = query.eq('franquiday_stage_id', f.pipeline_stage_id);
+        } else {
+          query = query.eq('pipeline_stage_id', f.pipeline_stage_id);
+        }
+      }
       if (f.country) query = query.ilike('country', f.country);
       if (f.days_inactive) {
         const daysAgo = new Date(Date.now() - parseInt(f.days_inactive, 10) * 24 * 60 * 60 * 1000).toISOString();
         query = query.lte('updated_at', daysAgo);
       }
 
-      const { count } = await query;
+      const { data: matchedLeads, count } = await query;
       estimatedAudienceCount = count || 0;
       liveCountEl.textContent = estimatedAudienceCount.toLocaleString();
+
+      if (liveSubEl) {
+        if (f.primary_contact_only) {
+          liveSubEl.textContent = 'empresas estimadas (solo contacto principal)';
+        } else {
+          liveSubEl.textContent = 'empresas estimadas (todos sus contactos)';
+        }
+      }
     } catch (e) {
       liveCountEl.textContent = '0';
     }
@@ -855,9 +1008,9 @@ export function openCampaignWizardModal(onSuccess) {
       if (senderProfiles.length === 0) senderProfiles = allProfiles;
 
       wizBody.innerHTML = `
-        <div class="flex flex-col gap-6 max-w-2xl mx-auto font-sans text-xs">
+        <div class="flex flex-col gap-5 max-w-3xl mx-auto font-sans text-xs">
           <!-- Template Selector -->
-          <div class="flex flex-col gap-2">
+          <div class="flex flex-col gap-1.5">
             <label for="select-email-tmpl-wiz" class="font-mono text-[10px] font-bold text-primary uppercase">Plantilla de Email *</label>
             <select id="select-email-tmpl-wiz" class="cohere-input text-xs font-medium">
               <option value="">-- Seleccionar Plantilla de Email --</option>
@@ -865,9 +1018,44 @@ export function openCampaignWizardModal(onSuccess) {
             </select>
           </div>
 
-          <!-- Subject & Body Preview -->
-          <div id="email-tmpl-preview-box" class="p-4 bg-white border border-neutral-200 rounded-lg flex flex-col gap-2 shadow-inner min-h-[120px]">
-            <span class="text-neutral-400 italic">Selecciona una plantilla para ver su previsualización...</span>
+          <!-- Real Email Preview Container (Collapsible) -->
+          <div id="email-preview-collapsible-wrapper" class="border border-neutral-200 rounded-xl bg-white shadow-2xs overflow-hidden transition-all">
+            <!-- Header Bar -->
+            <div class="px-4 py-2.5 bg-neutral-50 border-b border-neutral-200 flex items-center justify-between select-none">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-sm">✉️</span>
+                <div class="flex flex-col min-w-0">
+                  <span class="font-mono text-[10px] font-bold text-neutral-800 uppercase tracking-wide">Vista Previa Real del Email</span>
+                  <span id="email-preview-subject-header" class="text-[11px] text-neutral-500 font-medium truncate">Selecciona una plantilla...</span>
+                </div>
+              </div>
+              
+              <div class="flex items-center gap-2 shrink-0">
+                <button type="button" id="btn-toggle-email-preview" class="px-2.5 py-1 text-[10px] font-mono font-bold bg-white border border-neutral-300 hover:bg-neutral-100 rounded text-neutral-700 cursor-pointer flex items-center gap-1.5 transition-colors shadow-2xs">
+                  <span id="toggle-preview-icon">▼</span>
+                  <span id="toggle-preview-text">Contraer Vista</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Preview Body (Collapsible Content) -->
+            <div id="email-preview-body-container" class="flex flex-col transition-all">
+              <!-- Subject preview -->
+              <div id="email-preview-subject-bar" class="px-4 py-2 bg-neutral-50/50 border-b border-neutral-100 flex items-center gap-2 text-xs">
+                <span class="font-mono text-[9px] font-bold text-neutral-400 uppercase">Asunto:</span>
+                <span id="email-preview-subject-text" class="text-neutral-800 font-medium italic text-neutral-400">(Sin plantilla seleccionada)</span>
+              </div>
+
+              <!-- Iframe Render Area -->
+              <div class="relative bg-neutral-100/70 p-2 sm:p-3 flex justify-center items-center">
+                <div id="email-iframe-container" class="w-full bg-white rounded-lg shadow-2xs border border-neutral-200 overflow-hidden" style="height: 320px;">
+                  <iframe id="email-preview-iframe" class="w-full h-full border-0" sandbox="allow-same-origin"></iframe>
+                </div>
+                <div id="email-preview-empty-state" class="text-center text-neutral-400 italic text-xs py-10 w-full">
+                  Selecciona una plantilla para previsualizar el diseño real del correo...
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Commercial Senders Strategy -->
@@ -875,7 +1063,7 @@ export function openCampaignWizardModal(onSuccess) {
             <label class="font-mono text-[10px] font-bold text-primary uppercase">Estrategia de Asignación de Remitente Comercial *</label>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <label class="p-3 border ${campaignData.sender_strategy === 'lead_owner' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1">
+              <label class="p-3 border ${campaignData.sender_strategy === 'lead_owner' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
                 <div class="flex items-center gap-2">
                   <input type="radio" name="wiz_sender_strategy" value="lead_owner" ${campaignData.sender_strategy === 'lead_owner' ? 'checked' : ''} class="accent-primary" />
                   <span class="font-bold text-primary text-xs">Comercial del Lead</span>
@@ -883,7 +1071,7 @@ export function openCampaignWizardModal(onSuccess) {
                 <span class="text-[10px] text-neutral-500">Envía desde la cuenta del comercial asignado a cada lead.</span>
               </label>
 
-              <label class="p-3 border ${campaignData.sender_strategy === 'single' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1">
+              <label class="p-3 border ${campaignData.sender_strategy === 'single' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
                 <div class="flex items-center gap-2">
                   <input type="radio" name="wiz_sender_strategy" value="single" ${campaignData.sender_strategy === 'single' ? 'checked' : ''} class="accent-primary" />
                   <span class="font-bold text-primary text-xs">Remitente Único</span>
@@ -891,7 +1079,7 @@ export function openCampaignWizardModal(onSuccess) {
                 <span class="text-[10px] text-neutral-500">Envía todos los emails de la campaña desde un único comercial.</span>
               </label>
 
-              <label class="p-3 border ${campaignData.sender_strategy === 'round_robin' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1">
+              <label class="p-3 border ${campaignData.sender_strategy === 'round_robin' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
                 <div class="flex items-center gap-2">
                   <input type="radio" name="wiz_sender_strategy" value="round_robin" ${campaignData.sender_strategy === 'round_robin' ? 'checked' : ''} class="accent-primary" />
                   <span class="font-bold text-primary text-xs">Round-Robin</span>
@@ -916,25 +1104,106 @@ export function openCampaignWizardModal(onSuccess) {
         </div>
       `;
 
+      function replaceEmailSampleVariables(text) {
+        if (!text) return '';
+        const currentProfile = cache.getProfiles()?.find(p => p.id === campaignData.sender_profile_ids?.[0]) || cache.getProfiles()?.[0] || {};
+        const comercialName = currentProfile.full_name || 'Martín Asesor';
+        const comercialEmail = currentProfile.mailing_email || currentProfile.email || 'info@negozona.com';
+
+        return text
+          .replace(/\{\{\s*lead\.first_name\s*\}\}/g, 'Juan')
+          .replace(/\{\{\s*lead\.last_name\s*\}\}/g, 'Pérez')
+          .replace(/\{\{\s*lead\.company_name\s*\}\}/g, 'Empresa Ejemplo')
+          .replace(/\{\{\s*lead\.company\s*\}\}/g, 'Empresa Ejemplo')
+          .replace(/\{\{\s*lead\.country\s*\}\}/g, 'Argentina')
+          .replace(/\{\{\s*lead\.industry\s*\}\}/g, 'Franquicias & Retail')
+          .replace(/\{\{\s*lead\.phone\s*\}\}/g, '+54 9 11 2345-6789')
+          .replace(/\{\{\s*lead\.email\s*\}\}/g, 'juan.perez@ejemplo.com')
+          .replace(/\{\{\s*comercial\.full_name\s*\}\}/g, comercialName)
+          .replace(/\{\{\s*comercial\.name\s*\}\}/g, comercialName)
+          .replace(/\{\{\s*comercial\.email\s*\}\}/g, comercialEmail)
+          .replace(/\{\{\s*comercial\.phone\s*\}\}/g, '+54 9 11 9876-5432')
+          .replace(/\{\{\s*1\s*\}\}/g, 'Juan')
+          .replace(/\{\{\s*2\s*\}\}/g, 'Empresa Ejemplo');
+      }
+
       const selectTmpl = wizBody.querySelector('#select-email-tmpl-wiz');
-      const previewBox = wizBody.querySelector('#email-tmpl-preview-box');
+      const previewBody = wizBody.querySelector('#email-preview-body-container');
+      const subjectHeader = wizBody.querySelector('#email-preview-subject-header');
+      const subjectText = wizBody.querySelector('#email-preview-subject-text');
+      const iframeContainer = wizBody.querySelector('#email-iframe-container');
+      const previewIframe = wizBody.querySelector('#email-preview-iframe');
+      const emptyState = wizBody.querySelector('#email-preview-empty-state');
+      const btnTogglePreview = wizBody.querySelector('#btn-toggle-email-preview');
+      const toggleIcon = wizBody.querySelector('#toggle-preview-icon');
+      const toggleText = wizBody.querySelector('#toggle-preview-text');
+
+      let isPreviewExpanded = true;
+
+      if (btnTogglePreview) {
+        btnTogglePreview.addEventListener('click', () => {
+          isPreviewExpanded = !isPreviewExpanded;
+          if (isPreviewExpanded) {
+            previewBody.classList.remove('hidden');
+            toggleIcon.textContent = '▼';
+            toggleText.textContent = 'Contraer Vista';
+          } else {
+            previewBody.classList.add('hidden');
+            toggleIcon.textContent = '▲';
+            toggleText.textContent = 'Expandir Vista';
+          }
+        });
+      }
+
+      const updateEmailPreview = (tmpl) => {
+        if (tmpl) {
+          campaignData.template_name = tmpl.name;
+          const resolvedSubject = replaceEmailSampleVariables(tmpl.subject || '');
+          let resolvedBody = replaceEmailSampleVariables(tmpl.body_html || '');
+
+          if (subjectHeader) subjectHeader.textContent = resolvedSubject || tmpl.name;
+          if (subjectText) subjectText.textContent = resolvedSubject || '(Sin asunto)';
+
+          if (!resolvedBody.includes('<html') && !resolvedBody.includes('<body') && !resolvedBody.includes('<table') && !resolvedBody.includes('<div') && !resolvedBody.includes('<p')) {
+            resolvedBody = `
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <meta charset="utf-8">
+                  <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1f2937; padding: 20px; margin: 0; }
+                  </style>
+                </head>
+                <body>
+                  ${resolvedBody.replace(/\n/g, '<br>')}
+                </body>
+              </html>
+            `;
+          }
+
+          if (emptyState) emptyState.classList.add('hidden');
+          if (iframeContainer) iframeContainer.classList.remove('hidden');
+          if (previewIframe) {
+            previewIframe.srcdoc = resolvedBody;
+          }
+        } else {
+          if (subjectHeader) subjectHeader.textContent = 'Selecciona una plantilla...';
+          if (subjectText) subjectText.textContent = '(Sin plantilla seleccionada)';
+          if (iframeContainer) iframeContainer.classList.add('hidden');
+          if (emptyState) emptyState.classList.remove('hidden');
+        }
+      };
 
       selectTmpl.addEventListener('change', (e) => {
         campaignData.email_template_id = e.target.value;
         const tmpl = (emailTemplates || []).find(t => t.id === campaignData.email_template_id);
-        if (tmpl) {
-          campaignData.template_name = tmpl.name;
-          previewBox.innerHTML = `
-            <div><span class="font-bold text-neutral-800">Asunto:</span> ${tmpl.subject}</div>
-            <div class="text-neutral-600 border-t border-neutral-100 pt-2 leading-relaxed whitespace-pre-wrap">${tmpl.body_html.replace(/<[^>]*>?/gm, '')}</div>
-          `;
-        } else {
-          previewBox.innerHTML = `<span class="text-neutral-400 italic">Selecciona una plantilla para ver su previsualización...</span>`;
-        }
+        updateEmailPreview(tmpl);
       });
 
       if (campaignData.email_template_id) {
         selectTmpl.dispatchEvent(new Event('change'));
+      } else {
+        updateEmailPreview(null);
       }
 
       wizBody.querySelectorAll('input[name="wiz_sender_strategy"]').forEach(radio => {
@@ -1301,9 +1570,15 @@ export function openCampaignWizardModal(onSuccess) {
     const selectedCount = (campaignData.audience_filters.selected_lead_ids || []).length;
     const finalRecipientsCount = campaignData.audience_type === 'static_segment' ? selectedCount : estimatedAudienceCount;
     
-    let audienceTypeLabel = '⚡ Segmento Dinámico';
+    const f = campaignData.audience_filters;
+    const pipeLabel = f.pipeline_type === 'franquiday' ? '🎪 Franquiday' : '💼 Negozona';
+    const contactScopeLabel = f.primary_contact_only ? 'Solo contacto principal' : 'Todos los contactos';
+    const stageObj = pipelineStages.find(s => s.id === f.pipeline_stage_id);
+    const stageLabel = stageObj ? ` (${stageObj.name})` : '';
+
+    let audienceTypeLabel = `⚡ Dinámico · ${pipeLabel}${stageLabel} [${contactScopeLabel}]`;
     if (campaignData.audience_type === 'static_segment') {
-      audienceTypeLabel = `📌 Segmento Estático (${selectedCount} tildados)`;
+      audienceTypeLabel = `📌 Estático · ${pipeLabel}${stageLabel} (${selectedCount} seleccionados)`;
     } else if (campaignData.audience_type === 'all') {
       audienceTypeLabel = '🌐 Todos los Leads';
     }
@@ -1324,17 +1599,17 @@ export function openCampaignWizardModal(onSuccess) {
 
               <div>
                 <span class="text-[9px] font-mono text-neutral-400 block uppercase">Canal</span>
-                <span class="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full">🟢 ${campaignData.channel.toUpperCase()}</span>
+                <span class="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full">${campaignData.channel === 'email' ? '✉️ EMAIL' : '🟢 WHATSAPP'}</span>
               </div>
 
-              <div>
-                <span class="text-[9px] font-mono text-neutral-400 block uppercase">Tipo de Audiencia</span>
+              <div class="col-span-2">
+                <span class="text-[9px] font-mono text-neutral-400 block uppercase">Tipo de Audiencia y Pipeline</span>
                 <span class="font-bold text-primary text-xs">${audienceTypeLabel}</span>
               </div>
 
               <div>
-                <span class="text-[9px] font-mono text-neutral-400 block uppercase">Número Remitente</span>
-                <span class="font-mono text-neutral-700">${selectedPhoneLabel}</span>
+                <span class="text-[9px] font-mono text-neutral-400 block uppercase">${campaignData.channel === 'email' ? 'Remitente' : 'Número Remitente'}</span>
+                <span class="font-mono text-neutral-700">${campaignData.channel === 'email' ? (campaignData.sender_strategy === 'lead_owner' ? 'Comercial del Lead' : (campaignData.sender_strategy === 'single' ? 'Remitente Único' : 'Round-Robin')) : selectedPhoneLabel}</span>
               </div>
 
               <div>
@@ -1372,7 +1647,9 @@ export function openCampaignWizardModal(onSuccess) {
         <div class="p-4 bg-neutral-100 border border-neutral-200 rounded-xl flex flex-col gap-2">
           <span class="font-mono text-[9px] font-bold text-neutral-500 uppercase">Vista Previa Final</span>
           <div class="p-3 bg-white border border-neutral-200 rounded-lg text-xs font-sans text-neutral-800 leading-relaxed">
-            ${campaignData.template_name ? `Plantilla Meta: <strong>${campaignData.template_name}</strong>` : 'Sin plantilla seleccionada.'}
+            ${campaignData.channel === 'email' 
+              ? `Plantilla Email: <strong>${campaignData.template_name || 'Sin plantilla seleccionada.'}</strong>` 
+              : (campaignData.template_name ? `Plantilla Meta: <strong>${campaignData.template_name}</strong>` : 'Sin plantilla seleccionada.')}
           </div>
         </div>
 
