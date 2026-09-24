@@ -3,10 +3,20 @@ export const CHANGELOG = [
   {
     version: '1.5.0',
     date: 'Septiembre 2026',
-    title: 'Exclusión de Gestiones Salientes en Alertas, Optimización de KPIs y Modal de Criterios',
-    tag: 'Mejoras',
-    summary: 'Optimizamos el sistema de notificaciones del CRM para evitar la saturación del equipo comercial: se excluyen las gestiones salientes de las alertas push y campanita (preservándolas en la ficha del lead), se recalibraron los KPIs de auditoría y se sumó una guía explicativa de criterios de alerta.',
+    title: 'Telemetría Granular de Campañas, Filtros en Estadísticas y Optimización de Alertas',
+    tag: 'Mayor',
+    summary: 'Consolidamos la versión 1.5.0 con telemetría adaptativa por canal en la cola de campañas (Enviados, Aperturas y Clics CTA para Mailing; Enviados, Entregados, Leídos y Clics CTA para WhatsApp), filtros cruzados por comercial remitente y país en estadísticas, y optimizaciones clave en el centro de notificaciones.',
     changes: [
+      {
+        type: 'nuevo',
+        badge: 'Campañas',
+        text: 'Telemetría Detallada en Cola de Campañas: la solapa Actividad / Cola ahora se adapta al canal seleccionado. En Mailing muestra columnas dedicadas de Enviado, Aperturas (conteo y hora vía píxel 1x1) y Clics CTA. En WhatsApp desglosa en tiempo real Enviado (✓), Entregado (✓✓), Leído (✓✓ azul) y Clics CTA / Interacción con Flows.'
+      },
+      {
+        type: 'nuevo',
+        badge: 'Estadísticas',
+        text: 'Filtros Cruzados en Interacción por Lead: nuevos selectores interactivos para filtrar el rendimiento de interacción por Comercial Remitente y por País de origen del lead, con badges visuales de país y ordenamiento reactivo en memoria.'
+      },
       {
         type: 'mejora',
         badge: 'Optimización',

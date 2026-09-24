@@ -72,6 +72,7 @@ export async function renderCampaignDetail(campaignId) {
 
   let campaign = null;
   let recipients = [];
+  let emailEventsMap = new Map();
   let currentTab = 'general';
 
   // Attach tab switching
@@ -106,6 +107,31 @@ export async function renderCampaignDetail(campaignId) {
         .order('created_at', { ascending: true });
 
       recipients = recData || [];
+
+      // Fetch email tracking events if mailing campaign
+      emailEventsMap = new Map();
+      if (campaign.channel === 'email') {
+        const { data: evData } = await supabase
+          .from('email_events')
+          .select('email_message_id, event_type, created_at, url')
+          .eq('campaign_id', campaignId)
+          .order('created_at', { ascending: true });
+
+        if (evData && evData.length > 0) {
+          for (const ev of evData) {
+            if (!ev.email_message_id) continue;
+            if (!emailEventsMap.has(ev.email_message_id)) {
+              emailEventsMap.set(ev.email_message_id, { opens: [], clicks: [] });
+            }
+            const bucket = emailEventsMap.get(ev.email_message_id);
+            if (ev.event_type === 'OPEN_DETECTED') {
+              bucket.opens.push(ev);
+            } else if (ev.event_type === 'CLICKED') {
+              bucket.clicks.push(ev);
+            }
+          }
+        }
+      }
 
       updateHeaderCards();
       renderActiveTab();
@@ -478,11 +504,15 @@ export async function renderCampaignDetail(campaignId) {
     const isEmail = campaign.channel === 'email';
     const totalAudience = campaign.total_to_send || (recipients || []).length || 1;
     const totalSent = (recipients || []).filter(r => ['sent', 'delivered', 'read'].includes(r.status)).length || campaign.total_sent || 0;
-    const totalDelivered = (recipients || []).filter(r => ['delivered', 'read'].includes(r.status)).length || campaign.total_delivered || totalSent;
+    const totalDelivered = isEmail ? totalSent : ((recipients || []).filter(r => ['delivered', 'read'].includes(r.status)).length || campaign.total_delivered || totalSent);
     const totalFailed = (recipients || []).filter(r => r.status === 'failed').length || campaign.total_failed || 0;
     const totalDiscarded = (recipients || []).filter(r => r.status === 'discarded').length || campaign.total_discarded || 0;
-    const totalRead = (recipients || []).filter(r => r.status === 'read').length || campaign.total_read || 0;
-    const totalClicks = campaign.total_clicks || 0;
+    const totalRead = isEmail
+      ? (recipients || []).filter(r => (emailEventsMap.get(r.email_message_id)?.opens.length || 0) > 0).length || campaign.total_read || 0
+      : ((recipients || []).filter(r => r.status === 'read').length || campaign.total_read || 0);
+    const totalClicks = isEmail
+      ? Array.from(emailEventsMap.values()).reduce((sum, item) => sum + (item.clicks?.length || 0), 0)
+      : (campaign.total_clicks || 0);
 
     // Calculated Rates
     const sendRate = Math.round((totalSent / totalAudience) * 100);
@@ -714,10 +744,17 @@ export async function renderCampaignDetail(campaignId) {
   // TAB 6: Actividad / Cola de Envíos en vivo
   // ----------------------------------------------------
   function renderTabActivity(tabContent) {
+    const isEmail = campaign.channel === 'email';
+
     tabContent.innerHTML = `
       <div class="flex flex-col gap-4">
         <div class="flex items-center justify-between flex-wrap gap-2">
-          <h4 class="font-mono text-xs font-bold text-primary uppercase">Historial de Cola de Envíos (${recipients.length} ítems)</h4>
+          <div class="flex items-center gap-2">
+            <h4 class="font-mono text-xs font-bold text-primary uppercase">Historial de Cola de Envíos (${recipients.length} ítems)</h4>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold ${isEmail ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
+              ${isEmail ? '✉️ Canal Mailing B2B' : '🟢 Canal WhatsApp'}
+            </span>
+          </div>
           <div class="flex items-center gap-2">
             <button id="btn-open-glossary-queue" type="button" class="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-mono text-xs font-bold rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 border border-neutral-200 shadow-2xs">
               <span>📖</span> <span>Glosario de Estados</span>
@@ -732,45 +769,234 @@ export async function renderCampaignDetail(campaignId) {
           <div class="overflow-x-auto max-h-[500px]">
             <table class="w-full text-left border-collapse text-xs">
               <thead class="sticky top-0 bg-neutral-900 text-white font-mono text-[10px] uppercase tracking-wider z-10">
-                <tr>
-                  <th class="py-2.5 px-4">Destinatario</th>
-                  <th class="py-2.5 px-4">Empresa / Marca</th>
-                  <th class="py-2.5 px-4">Teléfono</th>
-                  <th class="py-2.5 px-4">Estado</th>
-                  <th class="py-2.5 px-4">WAMID / Detalle</th>
-                  <th class="py-2.5 px-4">Enviado</th>
-                </tr>
+                ${isEmail ? `
+                  <tr>
+                    <th class="py-2.5 px-4">Destinatario</th>
+                    <th class="py-2.5 px-4">Empresa / Marca</th>
+                    <th class="py-2.5 px-4">Estado Final</th>
+                    <th class="py-2.5 px-4 text-center">Enviado</th>
+                    <th class="py-2.5 px-4 text-center">Aperturas</th>
+                    <th class="py-2.5 px-4 text-center">Clics CTA</th>
+                    <th class="py-2.5 px-4">Detalle / ID</th>
+                  </tr>
+                ` : `
+                  <tr>
+                    <th class="py-2.5 px-4">Destinatario</th>
+                    <th class="py-2.5 px-4">Empresa / Marca</th>
+                    <th class="py-2.5 px-4">Estado Final</th>
+                    <th class="py-2.5 px-4 text-center">Enviado</th>
+                    <th class="py-2.5 px-4 text-center">Entregado</th>
+                    <th class="py-2.5 px-4 text-center">Leído</th>
+                    <th class="py-2.5 px-4 text-center">Clics CTA</th>
+                    <th class="py-2.5 px-4">WAMID / Detalle</th>
+                  </tr>
+                `}
               </thead>
               <tbody class="divide-y divide-neutral-200 font-mono">
                 ${recipients.length === 0 ? `
                   <tr>
-                    <td colspan="6" class="py-8 text-center text-neutral-400">Sin registros en la cola de envíos.</td>
+                    <td colspan="${isEmail ? 7 : 8}" class="py-8 text-center text-neutral-400">Sin registros en la cola de envíos.</td>
                   </tr>
                 ` : recipients.map(r => {
                   const contactsList = cache.contacts instanceof Map ? Array.from(cache.contacts.values()) : (Array.isArray(cache.contacts) ? cache.contacts : []);
-                  const contactObj = (r.recipient_phone && contactsList.length > 0) 
-                    ? contactsList.find(c => c.phone && c.phone.replace(/[^0-9]/g, '') === String(r.recipient_phone).replace(/[^0-9]/g, ''))
-                    : null;
+                  
+                  let contactObj = null;
+                  if (isEmail && r.recipient_email && contactsList.length > 0) {
+                    contactObj = contactsList.find(c => c.email && c.email.toLowerCase() === String(r.recipient_email).toLowerCase());
+                  } else if (r.recipient_phone && contactsList.length > 0) {
+                    const cleanPhone = String(r.recipient_phone).replace(/[^0-9]/g, '');
+                    contactObj = contactsList.find(c => c.phone && c.phone.replace(/[^0-9]/g, '') === cleanPhone);
+                  }
+
                   const leadName = contactObj 
                     ? `${contactObj.first_name || ''} ${contactObj.last_name || ''}`.trim()
                     : (r.resolved_variables?.['1'] || r.leads?.company || 'Prospecto sin nombre');
                   const companyName = r.leads?.company || '-';
-                  return `
-                    <tr class="hover:bg-neutral-50 transition-colors">
-                      <td class="py-2.5 px-4 font-sans font-medium text-neutral-800">${leadName}</td>
-                      <td class="py-2.5 px-4 font-sans font-semibold text-neutral-900">${companyName}</td>
-                      <td class="py-2.5 px-4 text-neutral-600">${r.recipient_phone}</td>
-                      <td class="py-2.5 px-4">
-                        ${getRecipientStatusBadge(r.status, r.discard_reason)}
-                      </td>
-                      <td class="py-2.5 px-4 text-[10px] text-neutral-500 truncate max-w-xs font-mono">
-                        ${r.wamid || r.error_message || r.discard_reason || '-'}
-                      </td>
-                      <td class="py-2.5 px-4 text-neutral-500 text-[10px] font-mono">
-                        ${r.sent_at ? new Date(r.sent_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
-                      </td>
-                    </tr>
-                  `;
+                  const contactContactInfo = isEmail ? (r.recipient_email || '-') : (r.recipient_phone || '-');
+
+                  if (isEmail) {
+                    // --- Telemetría para MAILING ---
+                    const evData = r.email_message_id ? emailEventsMap.get(r.email_message_id) : null;
+                    const opens = evData?.opens || [];
+                    const clicks = evData?.clicks || [];
+
+                    let sentCell = `<span class="text-neutral-300 font-mono text-[11px]">—</span>`;
+                    if (r.sent_at) {
+                      sentCell = `
+                        <div class="flex flex-col items-center">
+                          <span class="text-teal-700 font-bold flex items-center gap-1 font-mono text-[11px]">
+                            <span class="text-teal-600 font-extrabold">✓</span> ${new Date(r.sent_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <span class="text-[9px] text-neutral-400 font-mono">${new Date(r.sent_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}</span>
+                        </div>
+                      `;
+                    } else if (r.status === 'failed') {
+                      sentCell = `<span class="text-rose-500 font-mono text-[11px] font-bold">✗ Fallido</span>`;
+                    } else if (r.status === 'discarded') {
+                      sentCell = `<span class="text-neutral-400 font-mono text-[11px]">🚫 Excluido</span>`;
+                    } else {
+                      sentCell = `<span class="text-amber-600 font-mono text-[11px]">🕒 En cola</span>`;
+                    }
+
+                    let opensCell = `<span class="text-neutral-300 font-mono text-[11px]">—</span>`;
+                    if (opens.length > 0) {
+                      const lastOpen = opens[opens.length - 1];
+                      opensCell = `
+                        <div class="flex flex-col items-center">
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs flex items-center gap-1">
+                            🟢 ${opens.length} ${opens.length === 1 ? 'apertura' : 'aperturas'}
+                          </span>
+                          <span class="text-[9px] text-neutral-400 font-mono mt-0.5" title="${new Date(lastOpen.created_at).toLocaleString('es-AR')}">
+                            Últ: ${new Date(lastOpen.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      `;
+                    } else if (['sent', 'delivered', 'read'].includes(r.status)) {
+                      opensCell = `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono text-neutral-400 bg-neutral-100 border border-neutral-200">⚪ Sin abrir</span>`;
+                    }
+
+                    let clicksCell = `<span class="text-neutral-300 font-mono text-[11px]">—</span>`;
+                    if (clicks.length > 0) {
+                      const lastClick = clicks[clicks.length - 1];
+                      const uniqueUrls = [...new Set(clicks.map(c => c.url).filter(Boolean))].join(' | ');
+                      clicksCell = `
+                        <div class="flex flex-col items-center">
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-purple-100 text-purple-800 border border-purple-200 shadow-2xs flex items-center gap-1 cursor-help" title="${uniqueUrls || 'Clic registrado'}">
+                            🟣 ${clicks.length} ${clicks.length === 1 ? 'clic' : 'clics'}
+                          </span>
+                          <span class="text-[9px] text-neutral-400 font-mono mt-0.5">
+                            Últ: ${new Date(lastClick.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      `;
+                    } else if (['sent', 'delivered', 'read'].includes(r.status)) {
+                      clicksCell = `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono text-neutral-400 bg-neutral-100 border border-neutral-200">⚪ Sin clics</span>`;
+                    }
+
+                    return `
+                      <tr class="hover:bg-neutral-50 transition-colors">
+                        <td class="py-2.5 px-4 font-sans font-medium text-neutral-800">
+                          <div class="flex flex-col">
+                            <span>${leadName}</span>
+                            <span class="text-[10px] font-mono text-neutral-400">${contactContactInfo}</span>
+                          </div>
+                        </td>
+                        <td class="py-2.5 px-4 font-sans font-semibold text-neutral-900">${companyName}</td>
+                        <td class="py-2.5 px-4">
+                          ${getRecipientStatusBadge(r.status, r.discard_reason)}
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                          ${sentCell}
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                          ${opensCell}
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                          ${clicksCell}
+                        </td>
+                        <td class="py-2.5 px-4 text-[10px] text-neutral-500 truncate max-w-xs font-mono">
+                          ${r.error_message || r.discard_reason || (r.email_message_id ? r.email_message_id.slice(0, 8) + '...' : '-')}
+                        </td>
+                      </tr>
+                    `;
+                  } else {
+                    // --- Telemetría para WHATSAPP ---
+                    let sentCell = `<span class="text-neutral-300 font-mono text-[11px]">—</span>`;
+                    if (r.sent_at) {
+                      sentCell = `
+                        <div class="flex flex-col items-center">
+                          <span class="text-teal-700 font-bold flex items-center gap-1 font-mono text-[11px]">
+                            <span class="text-teal-600 font-bold">✓</span> ${new Date(r.sent_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <span class="text-[9px] text-neutral-400 font-mono">${new Date(r.sent_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}</span>
+                        </div>
+                      `;
+                    } else if (r.status === 'failed') {
+                      sentCell = `<span class="text-rose-500 font-mono text-[11px] font-bold">✗ Fallido</span>`;
+                    } else if (r.status === 'discarded') {
+                      sentCell = `<span class="text-neutral-400 font-mono text-[11px]">🚫 Excluido</span>`;
+                    } else {
+                      sentCell = `<span class="text-amber-600 font-mono text-[11px]">🕒 En cola</span>`;
+                    }
+
+                    let deliveredCell = `<span class="text-neutral-300 font-mono text-[11px]">—</span>`;
+                    if (r.delivered_at) {
+                      deliveredCell = `
+                        <div class="flex flex-col items-center">
+                          <span class="text-emerald-700 font-bold flex items-center gap-1 font-mono text-[11px]">
+                            <span class="text-emerald-600 font-bold">✓✓</span> ${new Date(r.delivered_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <span class="text-[9px] text-neutral-400 font-mono">${new Date(r.delivered_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}</span>
+                        </div>
+                      `;
+                    } else if (['delivered', 'read'].includes(r.status)) {
+                      deliveredCell = `<span class="text-emerald-700 font-mono text-[11px] font-bold flex items-center justify-center gap-1"><span class="text-emerald-600 font-bold">✓✓</span> Confirmado</span>`;
+                    } else if (r.status === 'sent') {
+                      deliveredCell = `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono text-neutral-400 bg-neutral-100 border border-neutral-200">En tránsito</span>`;
+                    }
+
+                    let readCell = `<span class="text-neutral-300 font-mono text-[11px]">—</span>`;
+                    if (r.read_at) {
+                      readCell = `
+                        <div class="flex flex-col items-center">
+                          <span class="text-blue-700 font-bold flex items-center gap-1 font-mono text-[11px]">
+                            <span class="text-blue-600 font-extrabold">✓✓</span> ${new Date(r.read_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <span class="text-[9px] text-neutral-400 font-mono">${new Date(r.read_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}</span>
+                        </div>
+                      `;
+                    } else if (r.status === 'read') {
+                      readCell = `<span class="text-blue-700 font-mono text-[11px] font-bold flex items-center justify-center gap-1"><span class="text-blue-600 font-extrabold">✓✓</span> Leído</span>`;
+                    } else if (['sent', 'delivered'].includes(r.status)) {
+                      readCell = `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono text-neutral-400 bg-neutral-100 border border-neutral-200">⚪ No leído</span>`;
+                    }
+
+                    let clicksCell = `<span class="text-neutral-300 font-mono text-[11px]">—</span>`;
+                    if (r.cta_clicked_at) {
+                      clicksCell = `
+                        <div class="flex flex-col items-center">
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-purple-100 text-purple-800 border border-purple-200 shadow-2xs flex items-center gap-1">
+                            ⚡ ${r.cta_detail || 'Completado'}
+                          </span>
+                          <span class="text-[9px] text-neutral-400 font-mono mt-0.5">
+                            ${new Date(r.cta_clicked_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      `;
+                    } else if (['sent', 'delivered', 'read'].includes(r.status)) {
+                      clicksCell = `<span class="px-2 py-0.5 rounded-full text-[10px] font-mono text-neutral-400 bg-neutral-100 border border-neutral-200">⚪ Sin clics</span>`;
+                    }
+
+                    return `
+                      <tr class="hover:bg-neutral-50 transition-colors">
+                        <td class="py-2.5 px-4 font-sans font-medium text-neutral-800">
+                          <div class="flex flex-col">
+                            <span>${leadName}</span>
+                            <span class="text-[10px] font-mono text-neutral-400">${contactContactInfo}</span>
+                          </div>
+                        </td>
+                        <td class="py-2.5 px-4 font-sans font-semibold text-neutral-900">${companyName}</td>
+                        <td class="py-2.5 px-4">
+                          ${getRecipientStatusBadge(r.status, r.discard_reason)}
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                          ${sentCell}
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                          ${deliveredCell}
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                          ${readCell}
+                        </td>
+                        <td class="py-2.5 px-4 text-center">
+                          ${clicksCell}
+                        </td>
+                        <td class="py-2.5 px-4 text-[10px] text-neutral-500 truncate max-w-xs font-mono">
+                          ${r.wamid || r.error_message || r.discard_reason || '-'}
+                        </td>
+                      </tr>
+                    `;
+                  }
                 }).join('')}
               </tbody>
             </table>
@@ -869,11 +1095,58 @@ export async function renderCampaignDetail(campaignId) {
       tabBtnMetrics.className = 'gloss-tab px-3 py-1.5 rounded-lg bg-white text-neutral-600 hover:text-neutral-900 border border-neutral-200 cursor-pointer transition-colors';
 
       glossContent.innerHTML = `
-        <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-4">
           <p class="text-neutral-600 text-[11.5px] leading-relaxed">
-            Cada fila en la solapa <strong>Actividad / Cola</strong> representa el ciclo de vida de un mensaje individual enviado a un contacto:
+            Cada fila en la solapa <strong>Actividad / Cola</strong> detalla el ciclo de vida y telemetría de cada mensaje enviado según el canal:
           </p>
 
+          <!-- Canal Mailing -->
+          <div class="border border-blue-200 bg-blue-50/40 rounded-xl p-3 flex flex-col gap-2">
+            <h5 class="font-mono text-xs font-bold text-blue-900 uppercase flex items-center gap-1.5">
+              <span>✉️</span> Columnas y Métricas de Mailing (Email)
+            </h5>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
+              <div class="p-2.5 bg-white border border-blue-100 rounded-lg shadow-2xs">
+                <strong class="text-teal-700 block font-bold">1. Enviado (✓)</strong>
+                <span class="text-neutral-600">Fecha y hora en que Google Workspace Gmail API despachó el correo.</span>
+              </div>
+              <div class="p-2.5 bg-white border border-blue-100 rounded-lg shadow-2xs">
+                <strong class="text-blue-700 block font-bold">2. Aperturas (🟢)</strong>
+                <span class="text-neutral-600">Detección por píxel invisible 1x1. Cantidad y hora más reciente.</span>
+              </div>
+              <div class="p-2.5 bg-white border border-blue-100 rounded-lg shadow-2xs">
+                <strong class="text-purple-700 block font-bold">3. Clics CTA (🟣)</strong>
+                <span class="text-neutral-600">Clics en botones y enlaces rastreados vía redireccionador.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Canal WhatsApp -->
+          <div class="border border-emerald-200 bg-emerald-50/40 rounded-xl p-3 flex flex-col gap-2">
+            <h5 class="font-mono text-xs font-bold text-emerald-900 uppercase flex items-center gap-1.5">
+              <span>🟢</span> Columnas y Checks de WhatsApp
+            </h5>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-[11px]">
+              <div class="p-2.5 bg-white border border-emerald-100 rounded-lg shadow-2xs">
+                <strong class="text-teal-700 block font-bold">✓ Enviado</strong>
+                <span class="text-neutral-600">Aceptado por Meta con WAMID.</span>
+              </div>
+              <div class="p-2.5 bg-white border border-emerald-100 rounded-lg shadow-2xs">
+                <strong class="text-emerald-700 block font-bold">✓✓ Entregado</strong>
+                <span class="text-neutral-600">Recibido en el móvil del cliente.</span>
+              </div>
+              <div class="p-2.5 bg-white border border-emerald-100 rounded-lg shadow-2xs">
+                <strong class="text-blue-700 block font-bold">✓✓ Leído</strong>
+                <span class="text-neutral-600">Visto en WhatsApp (doble check azul).</span>
+              </div>
+              <div class="p-2.5 bg-white border border-emerald-100 rounded-lg shadow-2xs">
+                <strong class="text-purple-700 block font-bold">⚡ Clics CTA</strong>
+                <span class="text-neutral-600">Pulsación de botón o Flow completado.</span>
+              </div>
+            </div>
+          </div>
+
+          <h5 class="font-mono text-xs font-bold text-neutral-800 uppercase mt-1">Estados Finales del Despacho</h5>
           <div class="grid grid-cols-1 gap-2.5">
             
             <div class="p-3 bg-white border border-neutral-200 rounded-xl shadow-2xs flex items-start gap-3">

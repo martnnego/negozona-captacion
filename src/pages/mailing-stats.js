@@ -27,6 +27,8 @@ let lastFilteredEvents = [];
 let lastAllMessages = [];
 let lastEmailCampaigns = [];
 let lastLeadSearchQuery = '';
+let lastSelectedSender = 'all';
+let lastSelectedCountry = 'all';
 
 export function renderMailingStats() {
   const container = document.createElement('div');
@@ -34,6 +36,8 @@ export function renderMailingStats() {
 
   let selectedPeriod = '30d'; // '7d', '30d', 'month', 'all'
   let leadSearchQuery = '';
+  let selectedSender = 'all';
+  let selectedCountry = 'all';
 
   container.innerHTML = `
     <div class="space-y-6 select-none max-w-7xl mx-auto pb-12">
@@ -112,7 +116,7 @@ export function renderMailingStats() {
 
       <!-- Lead and Contacts Breakdown Section -->
       <div class="bg-white rounded-lg border border-[#d9d9dd] shadow-xs overflow-hidden">
-        <div class="p-4 sm:p-6 border-b border-[#d9d9dd] flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-soft-stone/30">
+        <div class="p-4 sm:p-6 border-b border-[#d9d9dd] flex flex-col md:flex-row md:items-center justify-between gap-4 bg-soft-stone/30">
           <div>
             <h2 class="text-sm font-bold text-slate tracking-tight flex items-center gap-2 uppercase">
               <span>🏢</span> Interacción por Lead / Contacto
@@ -122,9 +126,22 @@ export function renderMailingStats() {
             </p>
           </div>
 
-          <div class="relative w-full sm:w-72">
-            <input type="text" id="lead-search-input" placeholder="Buscar por Lead o Contacto..." value="${leadSearchQuery}" class="w-full pl-8 pr-3 py-1.5 bg-white border border-[#d9d9dd] rounded-xs text-xs text-slate focus:outline-none focus:border-primary">
-            <span class="absolute left-2.5 top-2 text-xs text-muted">🔍</span>
+          <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <!-- Filter by Sender -->
+            <select id="lead-sender-select" class="px-2.5 py-1.5 bg-white border border-[#d9d9dd] rounded-xs text-xs font-semibold text-slate focus:outline-none focus:border-primary cursor-pointer max-w-[190px]">
+              <option value="all">👤 Todos los remitentes</option>
+            </select>
+
+            <!-- Filter by Country -->
+            <select id="lead-country-select" class="px-2.5 py-1.5 bg-white border border-[#d9d9dd] rounded-xs text-xs font-semibold text-slate focus:outline-none focus:border-primary cursor-pointer max-w-[160px]">
+              <option value="all">🌍 Todos los países</option>
+            </select>
+
+            <!-- Search input -->
+            <div class="relative w-full sm:w-64">
+              <input type="text" id="lead-search-input" placeholder="Buscar por Lead, Contacto..." value="${leadSearchQuery}" class="w-full pl-8 pr-3 py-1.5 bg-white border border-[#d9d9dd] rounded-xs text-xs text-slate focus:outline-none focus:border-primary">
+              <span class="absolute left-2.5 top-2 text-xs text-muted">🔍</span>
+            </div>
           </div>
         </div>
 
@@ -202,14 +219,33 @@ export function renderMailingStats() {
     loadAndRenderStats(container, selectedPeriod, leadSearchQuery, true, true);
   });
 
+  const leadSenderSelect = container.querySelector('#lead-sender-select');
+  const leadCountrySelect = container.querySelector('#lead-country-select');
+
   leadSearchInput.addEventListener('input', (e) => {
     leadSearchQuery = e.target.value.toLowerCase().trim();
     lastLeadSearchQuery = leadSearchQuery;
-    renderLeadsBreakdown(container, leadSearchQuery, selectedPeriod);
+    renderLeadsBreakdown(container, leadSearchQuery, selectedPeriod, selectedSender, selectedCountry);
   });
 
+  if (leadSenderSelect) {
+    leadSenderSelect.addEventListener('change', (e) => {
+      selectedSender = e.target.value;
+      lastSelectedSender = selectedSender;
+      renderLeadsBreakdown(container, leadSearchQuery, selectedPeriod, selectedSender, selectedCountry);
+    });
+  }
+
+  if (leadCountrySelect) {
+    leadCountrySelect.addEventListener('change', (e) => {
+      selectedCountry = e.target.value;
+      lastSelectedCountry = selectedCountry;
+      renderLeadsBreakdown(container, leadSearchQuery, selectedPeriod, selectedSender, selectedCountry);
+    });
+  }
+
   // Attach sort handlers on table headers
-  attachSortListeners(container, () => selectedPeriod, () => leadSearchQuery);
+  attachSortListeners(container, () => selectedPeriod, () => leadSearchQuery, () => selectedSender, () => selectedCountry);
 
   // Initial load
   loadAndRenderStats(container, selectedPeriod, leadSearchQuery, false, false);
@@ -243,7 +279,7 @@ function updateHeaders(container) {
   });
 }
 
-function attachSortListeners(container, getPeriod, getSearchQuery) {
+function attachSortListeners(container, getPeriod, getSearchQuery, getSender, getCountry) {
   container.querySelectorAll('[data-sort-commercial]').forEach(th => {
     th.addEventListener('click', () => {
       const col = th.dataset.sortCommercial;
@@ -268,7 +304,9 @@ function attachSortListeners(container, getPeriod, getSearchQuery) {
         sortState.leads.order = (col === 'leadName' || col === 'contactName' || col === 'email' || col === 'template') ? 'asc' : 'desc';
       }
       updateHeaders(container);
-      renderLeadsBreakdown(container, getSearchQuery(), getPeriod());
+      const senderVal = getSender ? getSender() : lastSelectedSender;
+      const countryVal = getCountry ? getCountry() : lastSelectedCountry;
+      renderLeadsBreakdown(container, getSearchQuery(), getPeriod(), senderVal, countryVal);
     });
   });
 
@@ -413,7 +451,8 @@ async function loadAndRenderStats(container, period, searchQuery, forceRefresh =
 
   // Prepare Lead Breakdown Data and Render
   prepareLeadBreakdownData(filteredMessages, filteredEvents, statsCache.templates || [], emailCampaigns);
-  renderLeadsBreakdown(container, searchQuery, period);
+  populateLeadFilterDropdowns(container, currentLeadBreakdownData, lastSelectedSender, lastSelectedCountry);
+  renderLeadsBreakdown(container, searchQuery, period, lastSelectedSender, lastSelectedCountry);
 
   // Render Email Campaigns Table
   renderCampaignsTable(container, emailCampaigns, filteredMessages, filteredEvents);
@@ -669,12 +708,24 @@ function prepareLeadBreakdownData(messages, events, templates = [], campaigns = 
       }
     }
 
+    const senderIds = new Set();
+    const senderEmails = new Set();
+    for (const m of item.messages) {
+      if (m.sender_profile_id) senderIds.add(m.sender_profile_id);
+      if (m.sender_email) senderEmails.add(m.sender_email.toLowerCase());
+    }
+
+    const country = (lead?.country || '').trim() || 'Sin país';
+
     currentLeadBreakdownData.push({
       leadId: item.lead_id,
       leadName: lead?.company || 'Lead s/n',
+      country,
       contactName: contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : (lead?.company || 'Contacto Principal'),
       email: item.recipient_email || contact?.email || '-',
       templates: Array.from(templateNamesSet),
+      senderProfileIds: Array.from(senderIds),
+      senderEmails: Array.from(senderEmails),
       sent: sentCount,
       opens,
       clicks,
@@ -683,21 +734,96 @@ function prepareLeadBreakdownData(messages, events, templates = [], campaigns = 
   }
 }
 
-function renderLeadsBreakdown(container, query, period) {
+function populateLeadFilterDropdowns(container, data, currentSender, currentCountry) {
+  const senderSelect = container.querySelector('#lead-sender-select');
+  const countrySelect = container.querySelector('#lead-country-select');
+  if (!senderSelect || !countrySelect) return;
+
+  const profiles = cache.getProfiles() || [];
+  const profilesMap = new Map(profiles.map(p => [p.id, p]));
+
+  // Build unique senders
+  const sendersMap = new Map();
+  for (const item of data) {
+    for (const sId of item.senderProfileIds || []) {
+      if (!sendersMap.has(sId)) {
+        const prof = profilesMap.get(sId);
+        const name = prof ? `${prof.first_name || ''} ${prof.last_name || ''}`.trim() : null;
+        sendersMap.set(sId, name ? `${name} (${prof?.email || 'Comercial'})` : (prof?.email || 'Comercial'));
+      }
+    }
+    for (const sEmail of item.senderEmails || []) {
+      const prof = profiles.find(p => p.email && p.email.toLowerCase() === sEmail.toLowerCase());
+      if (prof) {
+        if (!sendersMap.has(prof.id)) {
+          const name = `${prof.first_name || ''} ${prof.last_name || ''}`.trim();
+          sendersMap.set(prof.id, name ? `${name} (${prof.email})` : prof.email);
+        }
+      } else {
+        if (!sendersMap.has(sEmail)) {
+          sendersMap.set(sEmail, sEmail);
+        }
+      }
+    }
+  }
+
+  // Build unique countries
+  const countriesSet = new Set();
+  let hasSinPais = false;
+  for (const item of data) {
+    if (item.country && item.country !== 'Sin país') {
+      countriesSet.add(item.country);
+    } else {
+      hasSinPais = true;
+    }
+  }
+  const sortedCountries = Array.from(countriesSet).sort((a, b) => a.localeCompare(b, 'es'));
+
+  // Sender options
+  let senderOptions = `<option value="all">👤 Todos los remitentes</option>`;
+  for (const [val, label] of sendersMap.entries()) {
+    senderOptions += `<option value="${val}" ${val === currentSender ? 'selected' : ''}>${label}</option>`;
+  }
+  senderSelect.innerHTML = senderOptions;
+
+  // Country options
+  let countryOptions = `<option value="all">🌍 Todos los países</option>`;
+  for (const c of sortedCountries) {
+    countryOptions += `<option value="${c}" ${c.toLowerCase() === (currentCountry || '').toLowerCase() ? 'selected' : ''}>${c}</option>`;
+  }
+  if (hasSinPais) {
+    countryOptions += `<option value="Sin país" ${currentCountry === 'Sin país' ? 'selected' : ''}>Sin país especificado</option>`;
+  }
+  countrySelect.innerHTML = countryOptions;
+}
+
+function renderLeadsBreakdown(container, query, period, sender = lastSelectedSender, country = lastSelectedCountry) {
   const tbody = container.querySelector('#leads-breakdown-tbody');
   if (!tbody) return;
 
   const filtered = currentLeadBreakdownData.filter(d => {
+    // Filter by sender
+    if (sender && sender !== 'all') {
+      const matchProfile = (d.senderProfileIds || []).includes(sender);
+      const matchEmail = (d.senderEmails || []).some(e => e.toLowerCase() === sender.toLowerCase());
+      if (!matchProfile && !matchEmail) return false;
+    }
+
+    // Filter by country
+    if (country && country !== 'all') {
+      if ((d.country || '').toLowerCase() !== country.toLowerCase()) return false;
+    }
+
     if (!query) return true;
     const q = query.toLowerCase();
     const matchesTemplates = (d.templates || []).some(t => t.toLowerCase().includes(q));
-    return d.leadName.toLowerCase().includes(q) || d.contactName.toLowerCase().includes(q) || d.email.toLowerCase().includes(q) || matchesTemplates;
+    return d.leadName.toLowerCase().includes(q) || d.contactName.toLowerCase().includes(q) || d.email.toLowerCase().includes(q) || (d.country && d.country.toLowerCase().includes(q)) || matchesTemplates;
   });
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" class="py-6 text-center text-muted italic">No se encontraron registros de interacción para la búsqueda.</td>
+        <td colspan="8" class="py-6 text-center text-muted italic">No se encontraron registros de interacción para los filtros seleccionados.</td>
       </tr>
     `;
     return;
@@ -725,6 +851,10 @@ function renderLeadsBreakdown(container, query, period) {
   tbody.innerHTML = sorted.slice(0, 100).map(d => {
     const dateFormatted = d.lastSentAt ? new Date(d.lastSentAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
 
+    const countryBadge = d.country && d.country !== 'Sin país'
+      ? `<span class="px-1.5 py-0.5 rounded text-[9.5px] font-mono font-medium bg-neutral-100 text-neutral-600 border border-neutral-200 shrink-0" title="País: ${d.country}">${d.country}</span>`
+      : '';
+
     let templateBadge = `<span class="text-neutral-400 text-[11px]">—</span>`;
     if (d.templates && d.templates.length > 0) {
       const allTemplatesStr = d.templates.join(' | ');
@@ -741,12 +871,15 @@ function renderLeadsBreakdown(container, query, period) {
     return `
       <tr class="hover:bg-soft-stone/30 transition-colors">
         <td class="py-2.5 px-4 font-bold text-slate">
-          ${d.leadId ? `
-            <button type="button" class="btn-open-lead-stats text-left font-bold text-slate hover:text-primary hover:underline cursor-pointer flex items-center gap-1.5 transition-colors" data-lead-id="${d.leadId}" title="Ver detalle de ${d.leadName}">
-              <span>${d.leadName}</span>
-              <span class="text-[10px] text-muted opacity-70">↗</span>
-            </button>
-          ` : d.leadName}
+          <div class="flex items-center gap-1.5 flex-wrap">
+            ${d.leadId ? `
+              <button type="button" class="btn-open-lead-stats text-left font-bold text-slate hover:text-primary hover:underline cursor-pointer flex items-center gap-1 transition-colors" data-lead-id="${d.leadId}" title="Ver detalle de ${d.leadName}">
+                <span>${d.leadName}</span>
+                <span class="text-[10px] text-muted opacity-70">↗</span>
+              </button>
+            ` : `<span>${d.leadName}</span>`}
+            ${countryBadge}
+          </div>
         </td>
         <td class="py-2.5 px-4 font-medium text-slate">${d.contactName}</td>
         <td class="py-2.5 px-4 font-mono text-[11px] text-muted-slate">${d.email}</td>
