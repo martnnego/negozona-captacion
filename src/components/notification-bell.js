@@ -143,7 +143,7 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
         .limit(15);
 
       if (error) throw error;
-      notifications = data || [];
+      notifications = (data || []).filter(n => !(n.title || '').toLowerCase().includes('saliente'));
       updateUI();
     } catch (err) {
       console.error('Error fetching notifications:', err);
@@ -256,6 +256,11 @@ export function renderNotificationBell(currentUser, onNotificationClick) {
   // Subscribe to realtime notification updates
   if (currentUser) {
     const unsubscribe = realtime.subscribeToNotifications(currentUser.id, (newNotification) => {
+      // Ignorar gestiones salientes en alertas y campanita
+      if ((newNotification.title || '').toLowerCase().includes('saliente')) {
+        return;
+      }
+
       notifications.unshift(newNotification);
       if (notifications.length > 15) notifications.pop();
       updateUI();

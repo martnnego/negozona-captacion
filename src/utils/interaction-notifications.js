@@ -13,6 +13,12 @@ import { cache } from '../lib/cache';
 export async function notifyNewInteraction({ lead, interaction, currentUser }) {
   if (!lead || !interaction) return;
 
+  // Solo se notifican gestiones entrantes (inbound) de clientes para no saturar al equipo con alertas salientes.
+  // Las gestiones salientes se preservan en lead_interactions y en la historia del lead.
+  if (interaction.direction === 'outbound') {
+    return;
+  }
+
   try {
     // 1. Resolve active profiles to notify
     let profiles = cache.getProfiles();

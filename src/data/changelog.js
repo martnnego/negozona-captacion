@@ -1,6 +1,40 @@
 // Historial estructurado de versiones y novedades del CRM Negozona
 export const CHANGELOG = [
   {
+    version: '1.5.0',
+    date: 'Septiembre 2026',
+    title: 'Exclusión de Gestiones Salientes en Alertas, Optimización de KPIs y Modal de Criterios',
+    tag: 'Mejoras',
+    summary: 'Optimizamos el sistema de notificaciones del CRM para evitar la saturación del equipo comercial: se excluyen las gestiones salientes de las alertas push y campanita (preservándolas en la ficha del lead), se recalibraron los KPIs de auditoría y se sumó una guía explicativa de criterios de alerta.',
+    changes: [
+      {
+        type: 'mejora',
+        badge: 'Optimización',
+        text: 'Política de No Saturación: las gestiones salientes (envíos individuales o masivos de email/WhatsApp de comerciales) ya no disparan notificaciones en la campanita ni en el sidebar, manteniéndose íntegras en la ficha y timeline del lead.'
+      },
+      {
+        type: 'nuevo',
+        badge: 'Nuevo',
+        text: 'Modal de Criterios de Notificación: botón "¿Qué se notifica?" en la sección de Notificaciones con una guía visual clara sobre los 5 tipos de eventos que generan alertas prioritarias.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Mejora',
+        text: 'Recalibración de KPIs en Notificaciones: métricas más limpias y coherentes, distinguiendo claramente "Respuestas de Clientes" (entrantes e IA) y "Pipeline & Campañas".'
+      },
+      {
+        type: 'mejora',
+        badge: 'Mejora',
+        text: 'Feed de Actividad Reciente en Dashboard: visualización enfocada en interacciones entrantes de clientes, conversaciones agénticas de IA y avances del pipeline.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Limpieza',
+        text: 'Depuración histórica en base de datos: remoción de más de 2.700 alertas salientes obsoletas para despejar de inmediato los contadores no leídos del equipo.'
+      }
+    ]
+  },
+  {
     version: '1.4.0',
     date: 'Septiembre 2026',
     title: 'Selector de Pipeline (Negozona / Franquiday), Filtro de Contactos y Vista Previa HTML en Campañas',

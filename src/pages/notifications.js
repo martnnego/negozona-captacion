@@ -165,6 +165,124 @@ export function renderNotifications(currentUser) {
     });
   }
 
+  // Modal explicativo de criterios y políticas de notificación
+  function openCriteriaModal() {
+    const modalId = 'notifs-criteria-modal';
+    const existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = modalId;
+    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in select-none';
+
+    overlay.innerHTML = `
+      <div class="bg-white rounded-sm border border-[#d9d9dd] shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
+        <!-- Modal Header -->
+        <div class="px-5 py-4 border-b border-[#d9d9dd] bg-neutral-50/80 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <span class="text-xl">🔔</span>
+            <div>
+              <h3 class="font-display text-base font-bold text-primary">Criterios de Notificación del CRM</h3>
+              <p class="text-[11px] text-muted font-sans">Qué eventos generan alertas y política de no saturación</p>
+            </div>
+          </div>
+          <button id="close-criteria-modal-btn" class="text-neutral-400 hover:text-primary p-1 rounded-xs transition-colors cursor-pointer text-xl leading-none" title="Cerrar">&times;</button>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-5 overflow-y-auto space-y-4 text-xs font-sans text-slate leading-relaxed max-h-[65vh]">
+          <p class="text-neutral-600">
+            El sistema de notificaciones del CRM está diseñado para alertarte <strong>exclusivamente ante eventos prioritarios</strong> que demandan tu atención o acción comercial inmediata.
+          </p>
+
+          <!-- List of notified events -->
+          <div class="space-y-2.5">
+            <div class="p-3 bg-neutral-50 border border-neutral-200 rounded-sm flex items-start gap-3">
+              <span class="text-base shrink-0">🟢</span>
+              <div>
+                <span class="font-bold text-primary block">1. Respuestas de Clientes (Gestiones Entrantes)</span>
+                <span class="text-neutral-500 text-[11px]">Cuando un prospecto responde un WhatsApp, contesta un correo electrónico o realiza una llamada entrante hacia el equipo.</span>
+              </div>
+            </div>
+
+            <div class="p-3 bg-indigo-50/60 border border-indigo-200/80 rounded-sm flex items-start gap-3">
+              <span class="text-base shrink-0">🤖</span>
+              <div>
+                <span class="font-bold text-indigo-950 block">2. Gestiones Agénticas de IA</span>
+                <span class="text-indigo-800 text-[11px]">Conversaciones donde interviene el Agente IA de Negozona para calificar, solicitar datos o interactuar con el prospecto.</span>
+              </div>
+            </div>
+
+            <div class="p-3 bg-sky-50/60 border border-sky-200/80 rounded-sm flex items-start gap-3">
+              <span class="text-base shrink-0">👤</span>
+              <div>
+                <span class="font-bold text-sky-950 block">3. Asignación de Leads</span>
+                <span class="text-sky-800 text-[11px]">Cuando un administrador te designa como responsable comercial de un lead nuevo o reasignado.</span>
+              </div>
+            </div>
+
+            <div class="p-3 bg-purple-50/60 border border-purple-200/80 rounded-sm flex items-start gap-3">
+              <span class="text-base shrink-0">🛤️</span>
+              <div>
+                <span class="font-bold text-purple-950 block">4. Cambios de Etapa en Pipeline</span>
+                <span class="text-purple-800 text-[11px]">Avances o transiciones en el embudo comercial (ej. calificado, reunión acordada, propuesta enviada).</span>
+              </div>
+            </div>
+
+            <div class="p-3 bg-amber-50/60 border border-amber-200/80 rounded-sm flex items-start gap-3">
+              <span class="text-base shrink-0">📢</span>
+              <div>
+                <span class="font-bold text-amber-950 block">5. Estado de Campañas Masivas</span>
+                <span class="text-amber-800 text-[11px]">Avisos generales cuando se programa, ejecuta o finaliza una campaña de difusión por WhatsApp o Mailing.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Highlight: Exclusión de Salientes -->
+          <div class="p-3.5 bg-emerald-50/60 border border-emerald-200 rounded-sm flex items-start gap-3">
+            <span class="text-base shrink-0">🛡️</span>
+            <div>
+              <span class="font-bold text-emerald-950 block">Política de No Saturación (Gestiones Salientes)</span>
+              <p class="text-emerald-900 text-[11px] mt-0.5 leading-normal">
+                Las gestiones de salida (envío de correos individuales, respuestas comerciales manuales o campañas masivas a cientos de contactos) 
+                <strong>se registran íntegramente en la ficha de cada Lead (<code class="font-mono text-[10px] bg-emerald-100/70 px-1 py-0.5 rounded">lead_interactions</code>)</strong> 
+                y en las métricas comerciales, pero <strong>no emiten alertas en la campanita ni en el sidebar</strong> para no desviar la atención ni saturar al equipo.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="px-5 py-3 border-t border-[#d9d9dd] bg-neutral-50/80 flex items-center justify-end">
+          <button id="ok-criteria-modal-btn" class="px-4 py-1.5 bg-primary hover:bg-primary/90 text-white font-sans text-xs font-semibold rounded-xs transition-colors cursor-pointer shadow-2xs">
+            Entendido
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const closeBtn = overlay.querySelector('#close-criteria-modal-btn');
+    const okBtn = overlay.querySelector('#ok-criteria-modal-btn');
+
+    function closeModal() {
+      overlay.remove();
+      document.removeEventListener('keydown', handleKey);
+    }
+
+    function handleKey(e) {
+      if (e.key === 'Escape') closeModal();
+    }
+
+    closeBtn.addEventListener('click', closeModal);
+    okBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeModal();
+    });
+    document.addEventListener('keydown', handleKey);
+  }
+
   // Filter and paginate records
   function getFilteredNotifications() {
     return notifications.filter(n => {
@@ -214,7 +332,7 @@ export function renderNotifications(currentUser) {
     }
 
     if (type === 'lead_interaction') {
-      const isIncoming = title.includes('entrante');
+      const isOutbound = title.includes('saliente');
       let medium = 'Gestión';
       let icon = '💬';
 
@@ -235,21 +353,21 @@ export function renderNotifications(currentUser) {
         icon = '🔗';
       }
 
-      if (isIncoming) {
+      if (isOutbound) {
         return `
-          <span class="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-sm shrink-0">
-            <span>${icon}</span>
-            <span>${medium} Entrante</span>
-          </span>
-        `;
-      } else {
-        return `
-          <span class="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-sm shrink-0">
+          <span class="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-neutral-600 bg-neutral-100 border border-neutral-300 px-2 py-0.5 rounded-sm shrink-0">
             <span>${icon}</span>
             <span>${medium} Saliente</span>
           </span>
         `;
       }
+
+      return `
+        <span class="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-sm shrink-0">
+          <span>${icon}</span>
+          <span>${medium} Entrante</span>
+        </span>
+      `;
     }
 
     if (type === 'lead_assigned') {
@@ -314,10 +432,10 @@ export function renderNotifications(currentUser) {
     const startIndex = (currentPage - 1) * rowsPerPage;
     const paginatedItems = filtered.slice(startIndex, startIndex + rowsPerPage);
 
-    // KPI Metrics calculation
+    // KPI Metrics calculation (coherentes con alertas prioritarias)
     const totalUnread = notifications.filter(n => !n.is_read).length;
-    const totalInteractions = notifications.filter(n => n.type === 'lead_interaction').length;
-    const totalCampaigns = notifications.filter(n => n.type === 'campaign_created' || n.type === 'campaign_status').length;
+    const totalCustomerReplies = notifications.filter(n => n.type === 'lead_interaction' || n.type === 'agentic_interaction').length;
+    const totalPipelineAndCampaigns = notifications.filter(n => ['lead_assigned', 'stage_changed', 'campaign_created', 'campaign_status'].includes(n.type)).length;
 
     container.innerHTML = `
       <!-- Header -->
@@ -328,11 +446,21 @@ export function renderNotifications(currentUser) {
             <h1 class="text-xl font-bold text-primary font-display tracking-tight">Historial de Notificaciones</h1>
           </div>
           <p class="text-neutral-500 text-xs">
-            Registro detallado y auditoría de alertas comerciales, mensajes entrantes y salientes, cambios de etapa y campañas.
+            Auditoría de respuestas entrantes de prospectos, gestiones agénticas IA, asignaciones, pipeline y campañas.
           </p>
         </div>
 
-        <div class="flex items-center gap-2.5 self-start sm:self-auto">
+        <div class="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          <button 
+            id="notifs-criteria-help-btn" 
+            type="button" 
+            class="px-3 py-2 border border-primary/20 hover:border-primary text-primary font-sans font-semibold text-xs rounded-xs bg-primary/5 hover:bg-primary/10 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+            title="Conocer qué eventos generan notificaciones en el CRM"
+          >
+            <span class="text-xs">ℹ️</span>
+            <span>¿Qué se notifica?</span>
+          </button>
+
           <button 
             id="mark-all-read-btn" 
             type="button" 
@@ -364,7 +492,7 @@ export function renderNotifications(currentUser) {
           <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase">Total Registradas</span>
           <div class="flex items-baseline justify-between mt-2">
             <span class="text-2xl font-bold font-display text-primary">${notifications.length}</span>
-            <span class="text-xs text-neutral-400 font-mono">histórico</span>
+            <span class="text-xs text-neutral-400 font-mono">en período</span>
           </div>
         </div>
 
@@ -379,18 +507,18 @@ export function renderNotifications(currentUser) {
         </div>
 
         <div class="bg-white border border-[#d9d9dd] rounded-sm p-4 flex flex-col justify-between shadow-2xs">
-          <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase">Gestiones de Clientes</span>
+          <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase">Respuestas de Clientes</span>
           <div class="flex items-baseline justify-between mt-2">
-            <span class="text-2xl font-bold font-display text-primary">${totalInteractions}</span>
-            <span class="text-xs text-neutral-400 font-mono">interacciones</span>
+            <span class="text-2xl font-bold font-display text-primary">${totalCustomerReplies}</span>
+            <span class="text-xs text-neutral-400 font-mono">entrantes e IA</span>
           </div>
         </div>
 
         <div class="bg-white border border-[#d9d9dd] rounded-sm p-4 flex flex-col justify-between shadow-2xs">
-          <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase">Campañas & Sistema</span>
+          <span class="font-mono text-[10px] tracking-wider text-muted font-bold uppercase">Pipeline & Campañas</span>
           <div class="flex items-baseline justify-between mt-2">
-            <span class="text-2xl font-bold font-display text-primary">${totalCampaigns}</span>
-            <span class="text-xs text-neutral-400 font-mono">avisos</span>
+            <span class="text-2xl font-bold font-display text-primary">${totalPipelineAndCampaigns}</span>
+            <span class="text-xs text-neutral-400 font-mono">eventos clave</span>
           </div>
         </div>
       </div>
@@ -418,12 +546,12 @@ export function renderNotifications(currentUser) {
             <span class="text-[10px] font-mono font-bold uppercase text-muted">Tipo:</span>
             <select id="type-filter-select" class="px-2.5 py-1.5 bg-white border border-[#d9d9dd] rounded-xs text-xs font-semibold text-slate focus:outline-none focus:border-primary cursor-pointer">
               <option value="all" ${typeFilter === 'all' ? 'selected' : ''}>Todos</option>
+              <option value="lead_interaction" ${typeFilter === 'lead_interaction' ? 'selected' : ''}>💬 Respuestas de Clientes (Entrantes)</option>
               <option value="agentic_interaction" ${typeFilter === 'agentic_interaction' ? 'selected' : ''}>🤖 Gestiones Agénticas (IA)</option>
-              <option value="lead_interaction" ${typeFilter === 'lead_interaction' ? 'selected' : ''}>Gestiones (WhatsApp/Email/Llamadas)</option>
-              <option value="lead_assigned" ${typeFilter === 'lead_assigned' ? 'selected' : ''}>Asignaciones</option>
-              <option value="stage_changed" ${typeFilter === 'stage_changed' ? 'selected' : ''}>Cambios de Etapa</option>
-              <option value="campaign" ${typeFilter === 'campaign' ? 'selected' : ''}>Campañas</option>
-              <option value="system" ${typeFilter === 'system' ? 'selected' : ''}>Sistema / Otros</option>
+              <option value="lead_assigned" ${typeFilter === 'lead_assigned' ? 'selected' : ''}>👤 Asignaciones</option>
+              <option value="stage_changed" ${typeFilter === 'stage_changed' ? 'selected' : ''}>🛤️ Cambios de Etapa</option>
+              <option value="campaign" ${typeFilter === 'campaign' ? 'selected' : ''}>📢 Campañas</option>
+              <option value="system" ${typeFilter === 'system' ? 'selected' : ''}>⚙️ Sistema / Otros</option>
             </select>
           </div>
 
@@ -690,6 +818,12 @@ export function renderNotifications(currentUser) {
         currentPage = 1;
         loadNotifications();
       });
+    }
+
+    // Help Modal: Criterios de Notificación
+    const helpBtn = container.querySelector('#notifs-criteria-help-btn');
+    if (helpBtn) {
+      helpBtn.addEventListener('click', openCriteriaModal);
     }
 
     // Mark All As Read Button
