@@ -1,6 +1,64 @@
 // Historial estructurado de versiones y novedades del CRM Negozona
 export const CHANGELOG = [
   {
+    version: '1.5.2',
+    date: 'Octubre 2026',
+    title: 'Selector de Plantillas en Automatizaciones, Estilos de Desplegables y Control de Guardado',
+    tag: 'Arreglos',
+    summary: 'Corregimos el reinicio involuntario al cambiar plantillas de WhatsApp y Email en el configurador de pasos de automatizaciones, mejoramos el estilo, altura y visualización de todos los menús desplegables (selects) del CRM, y añadimos recordatorios visuales y alertas contra pérdida de cambios sin guardar.',
+    changes: [
+      {
+        type: 'arreglo',
+        badge: 'Automatizaciones',
+        text: 'Persistencia al Cambiar Plantilla: Al seleccionar o cambiar una plantilla de WhatsApp o Email en el panel lateral, la selección se mantiene firme de forma reactiva y no vuelve a resetearse a la primera opción.'
+      },
+      {
+        type: 'mejora',
+        badge: 'UI / Selects',
+        text: 'Estilo y Altura de Desplegables: Se implementó la clase .cohere-select con altura mínima de 40px, padding equilibrado y flecha indicadora estilizada en todos los selects (WhatsApp, Email, Delays, Etapas y Filtros de Segmentación).'
+      },
+      {
+        type: 'mejora',
+        badge: 'Usabilidad',
+        text: 'Nombres de Paso Automáticos: Al elegir o cambiar una plantilla de correo o WhatsApp, el título sugerido del paso se actualiza automáticamente con el nuevo asunto o nombre de plantilla.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Seguridad',
+        text: 'Prevención de Pérdida de Datos: Se agregó resaltado visual en el botón "Guardar Cambios" y advertencia de confirmación al intentar salir o recargar la página si existen modificaciones no guardadas en el flujo.'
+      }
+    ]
+  },
+  {
+    version: '1.5.1',
+    date: 'Octubre 2026',
+    title: 'Recálculo Preciso de Audiencia en Campañas y Segmentos Estáticos Opt-In',
+    tag: 'Arreglos',
+    summary: 'Corregimos el cálculo en vivo de destinatarios en el Paso 2 del asistente de campañas: ahora desglosa con exactitud tanto los Leads Empresa como los Contactos Receptores con canal válido (WhatsApp/Email), elimina llamadas de red redundantes utilizando la memoria local y establece que en segmentos estáticos por defecto ningún contacto esté seleccionado.',
+    changes: [
+      {
+        type: 'arreglo',
+        badge: 'Audiencia',
+        text: 'Desglose Dual Leads vs Contactos: La tarjeta negra de cálculo en vivo ahora muestra con claridad tanto la cantidad de empresas calificadas como el número real de contactos con teléfono/email válido que recibirán el mensaje.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Segmento Estático',
+        text: 'Selección Limpia por Defecto: Al elegir un segmento estático, ya no se marcan todos los contactos automáticamente; inicia con 0 seleccionados para que el usuario tilde de forma intencional o utilice "Seleccionar Todos".'
+      },
+      {
+        type: 'mejora',
+        badge: 'Rendimiento',
+        text: 'Motor Reactivo en Memoria: El cálculo de audiencia y el filtrado de contactos en vivo ahora utilizan la caché local precargada del CRM, eliminando demoras, bloqueos y errores de red al alternar filtros o modos.'
+      },
+      {
+        type: 'arreglo',
+        badge: 'Validación',
+        text: 'Control de Envíos Vacíos: Se añadió validación en el Paso 2 para asegurar que en segmentos estáticos se seleccione al menos un contacto antes de continuar al siguiente paso.'
+      }
+    ]
+  },
+  {
     version: '1.5.0',
     date: 'Septiembre 2026',
     title: 'Telemetría Granular de Campañas, Filtros en Estadísticas y Optimización de Alertas',

@@ -76,6 +76,36 @@
   box-shadow: 0 0 0 2px rgba(155, 96, 170, 0.1);
 }
 
+/* Form select styled according to cohere specifications */
+.cohere-select {
+  background-color: var(--color-canvas);
+  border: 1px solid #d9d9dd;
+  border-radius: var(--radius-xs);
+  padding: 9px 36px 9px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-ink);
+  min-height: 40px;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 12px center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.cohere-select:hover {
+  border-color: #b5b5be;
+}
+
+.cohere-select:focus {
+  outline: none;
+  border-color: var(--color-form-focus);
+  box-shadow: 0 0 0 2px rgba(155, 96, 170, 0.15);
+}
+
 /* Sidebar responsive drawer (mobile) & collapse (desktop) */
 .sidebar-responsive {
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s;

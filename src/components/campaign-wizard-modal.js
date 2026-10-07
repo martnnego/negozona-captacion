@@ -359,6 +359,11 @@ export function openCampaignWizardModal(onSuccess) {
   async function renderStep2() {
     wizStepTitle.textContent = 'Audiencia y Segmentación';
 
+    // Ensure metadata cache is ready
+    if (!cache.isLoaded) {
+      await cache.loadAll();
+    }
+
     // Ensure pipeline stages are loaded
     if (!pipelineStages || pipelineStages.length === 0) {
       if (cache.stages && cache.stages.size > 0) {
@@ -498,15 +503,15 @@ export function openCampaignWizardModal(onSuccess) {
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-200 pb-2">
               <div>
                 <h5 class="font-mono text-[10px] font-bold text-primary uppercase">Destinatarios del Segmento Estático</h5>
-                <span class="text-[10px] text-neutral-500">Tilda o destilda los contactos que quieres incluir en el envío.</span>
+                <span class="text-[10px] text-neutral-500">Tilda o destilda los contactos que quieres incluir en el envío (por defecto ninguno seleccionado).</span>
               </div>
               
               <div class="flex items-center gap-2">
-                <span id="selected-contacts-count-badge" class="px-2 py-0.5 bg-primary/10 text-primary font-mono font-bold text-[10px] rounded-full">
+                <span id="selected-contacts-count-badge" class="px-2.5 py-1 bg-neutral-100 text-neutral-600 font-mono font-bold text-[10px] rounded-full border border-neutral-200">
                   0 seleccionados
                 </span>
-                <button type="button" id="btn-toggle-select-all" class="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-mono text-[10px] font-bold rounded cursor-pointer transition-colors">
-                  Deseleccionar Todos
+                <button type="button" id="btn-toggle-select-all" class="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary font-mono text-[10px] font-bold rounded cursor-pointer transition-colors">
+                  Seleccionar Todos
                 </button>
               </div>
             </div>
@@ -514,11 +519,11 @@ export function openCampaignWizardModal(onSuccess) {
             <!-- Contact Search Filter -->
             <div class="relative w-full">
               <span class="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 text-xs pointer-events-none z-10">🔍</span>
-              <input type="text" id="contact-list-search" class="cohere-input text-xs w-full !pl-9" style="padding-left: 2.25rem !important;" placeholder="Buscar contacto por nombre, empresa o teléfono..." />
+              <input type="text" id="contact-list-search" class="cohere-input text-xs w-full !pl-9" style="padding-left: 2.25rem !important;" placeholder="Buscar contacto por nombre, empresa o ${campaignData.channel === 'email' ? 'email' : 'teléfono'}..." />
             </div>
 
             <!-- Contacts Checklist Box -->
-            <div id="contacts-checklist-box" class="max-h-60 overflow-y-auto border border-neutral-200 rounded-md divide-y divide-neutral-100 bg-neutral-50 text-xs">
+            <div id="contacts-checklist-box" class="max-h-64 overflow-y-auto border border-neutral-200 rounded-md divide-y divide-neutral-100 bg-neutral-50 text-xs">
               <div class="p-4 text-center text-neutral-400 font-mono text-xs">
                 <span class="animate-pulse">🔄 Cargando contactos del segmento...</span>
               </div>
@@ -527,19 +532,48 @@ export function openCampaignWizardModal(onSuccess) {
 
         </div>
 
-        <!-- Right: Live Count Panel -->
+        <!-- Right: Live Count Panel (Black Card) -->
         <div class="bg-neutral-900 text-white p-5 rounded-xl flex flex-col justify-between shadow-md h-fit">
           <div class="flex flex-col gap-3">
-            <span class="font-mono text-[9px] font-bold text-primary uppercase tracking-wider">Cálculo de Audiencia en Vivo</span>
-            <div class="py-4 border-y border-neutral-800">
-              <span class="text-3xl font-mono font-bold text-white block" id="aud-live-count">...</span>
-              <span class="text-[10px] text-neutral-400 block mt-1" id="aud-live-sub">contactos seleccionados para envío</span>
+            <div class="flex items-center justify-between">
+              <span class="font-mono text-[9px] font-bold text-primary uppercase tracking-wider">Cálculo de Audiencia en Vivo</span>
+              <span id="aud-mode-pill" class="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300">...</span>
+            </div>
+            
+            <div class="py-3 border-y border-neutral-800 flex flex-col gap-1">
+              <div class="flex items-baseline gap-2">
+                <span class="text-3xl font-mono font-bold text-white block" id="aud-live-count">0</span>
+                <span class="text-xs font-mono text-neutral-400" id="aud-live-unit">destinatarios</span>
+              </div>
+              <span class="text-[10px] text-neutral-400 block" id="aud-live-sub">contactos a recibir mensaje</span>
             </div>
 
-            <div class="flex flex-col gap-2 text-xs">
+            <!-- Recuento desglosado: Leads Empresa vs Contactos -->
+            <div class="flex flex-col gap-2 pt-1 pb-2 border-b border-neutral-800 text-xs">
+              <div class="flex items-center justify-between text-neutral-300 font-mono text-[11px]">
+                <span class="flex items-center gap-1.5 text-neutral-400">
+                  <span>🏢</span> Leads Empresa:
+                </span>
+                <strong id="aud-leads-count" class="text-white font-bold">0</strong>
+              </div>
+              <div class="flex items-center justify-between text-neutral-300 font-mono text-[11px]">
+                <span class="flex items-center gap-1.5 text-neutral-400">
+                  <span>👤</span> Contactos Receptores:
+                </span>
+                <strong id="aud-contacts-count" class="text-emerald-400 font-bold">0</strong>
+              </div>
+              <div id="aud-static-selected-row" class="hidden flex items-center justify-between text-primary font-mono text-[11px] pt-1 border-t border-neutral-800/60">
+                <span class="flex items-center gap-1.5">
+                  <span>📌</span> Seleccionados:
+                </span>
+                <strong id="aud-stat-selected" class="text-primary font-bold">0</strong>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-1.5 text-xs">
               <div class="flex items-center justify-between text-emerald-400 font-mono text-[10px]">
-                <span>✓ Filtros aplicados</span>
-                <span>En tiempo real</span>
+                <span>✓ Filtros activos</span>
+                <span id="aud-filter-status-text">En tiempo real</span>
               </div>
               <div class="flex items-center justify-between text-neutral-400 font-mono text-[10px]">
                 <span>${campaignData.channel === 'email' ? '✉️ Email Mailing' : '⚡ WhatsApp habilitado'}</span>
@@ -548,7 +582,7 @@ export function openCampaignWizardModal(onSuccess) {
             </div>
           </div>
 
-          <div class="pt-4 border-t border-neutral-800 text-[9px] text-neutral-400 italic">
+          <div class="pt-3 border-t border-neutral-800 text-[9px] text-neutral-400 italic mt-3" id="aud-footer-note">
             ℹ️ En modo dinámico, los destinatarios se evalúan al ejecutar la campaña. En modo estático se congelan los seleccionados.
           </div>
         </div>
@@ -556,7 +590,6 @@ export function openCampaignWizardModal(onSuccess) {
       </div>
     `;
 
-    // Dynamic Aud calculation & load contacts
     let fetchedLeads = [];
     let leadSearchQuery = '';
 
@@ -572,27 +605,9 @@ export function openCampaignWizardModal(onSuccess) {
     const btnPipeFranquiday = wizBody.querySelector('#btn-pipe-franquiday');
     const labelFilterStage = wizBody.querySelector('#label-filter-stage');
     const chkPrimaryContact = wizBody.querySelector('#chk-primary-contact-only');
+    const checklistBox = wizBody.querySelector('#contacts-checklist-box');
 
-    wizBody.querySelectorAll('input[name="wiz_aud_type"]').forEach(radio => {
-      radio.addEventListener('change', async (e) => {
-        campaignData.audience_type = e.target.value;
-        if (campaignData.audience_type === 'dynamic_segment') {
-          if (dynamicAlert) dynamicAlert.classList.remove('hidden');
-        } else {
-          if (dynamicAlert) dynamicAlert.classList.add('hidden');
-        }
-
-        if (campaignData.audience_type === 'static_segment') {
-          staticContainer.classList.remove('hidden');
-          await reloadContactsList();
-        } else {
-          staticContainer.classList.add('hidden');
-          calculateAudienceLiveCount();
-        }
-      });
-    });
-
-    // Pipeline mode toggle handler
+    // Pipeline mode toggle button styling
     const updatePipelineTypeButtons = () => {
       const isNegozona = campaignData.audience_filters.pipeline_type === 'negozona';
       if (btnPipeNegozona) {
@@ -606,266 +621,6 @@ export function openCampaignWizardModal(onSuccess) {
       }
     };
 
-    if (btnPipeNegozona) {
-      btnPipeNegozona.addEventListener('click', async () => {
-        campaignData.audience_filters.pipeline_type = 'negozona';
-        updatePipelineTypeButtons();
-        if (campaignData.audience_type === 'static_segment') {
-          await reloadContactsList();
-        } else {
-          calculateAudienceLiveCount();
-        }
-      });
-    }
-
-    if (btnPipeFranquiday) {
-      btnPipeFranquiday.addEventListener('click', async () => {
-        campaignData.audience_filters.pipeline_type = 'franquiday';
-        updatePipelineTypeButtons();
-        if (campaignData.audience_type === 'static_segment') {
-          await reloadContactsList();
-        } else {
-          calculateAudienceLiveCount();
-        }
-      });
-    }
-
-    if (chkPrimaryContact) {
-      chkPrimaryContact.addEventListener('change', async (e) => {
-        campaignData.audience_filters.primary_contact_only = e.target.checked;
-        if (dynamicScopeText) {
-          dynamicScopeText.textContent = e.target.checked 
-            ? '🎯 Alcance: Se enviará ÚNICAMENTE al contacto principal de cada empresa.' 
-            : '👥 Alcance: Se enviará a TODOS los contactos vinculados a cada empresa que califique.';
-        }
-        if (campaignData.audience_type === 'static_segment') {
-          await reloadContactsList();
-        } else {
-          calculateAudienceLiveCount();
-        }
-      });
-    }
-
-    filterStage.addEventListener('change', async (e) => {
-      campaignData.audience_filters.pipeline_stage_id = e.target.value;
-      if (campaignData.audience_type === 'static_segment') {
-        await reloadContactsList();
-      } else {
-        calculateAudienceLiveCount();
-      }
-    });
-
-    if (filterCountry) {
-      filterCountry.addEventListener('change', async (e) => {
-        campaignData.audience_filters.country = e.target.value;
-        if (campaignData.audience_type === 'static_segment') {
-          await reloadContactsList();
-        } else {
-          calculateAudienceLiveCount();
-        }
-      });
-    }
-
-    filterInactivity.addEventListener('change', async (e) => {
-      campaignData.audience_filters.days_inactive = e.target.value;
-      if (campaignData.audience_type === 'static_segment') {
-        await reloadContactsList();
-      } else {
-        calculateAudienceLiveCount();
-      }
-    });
-
-    if (contactSearch) {
-      contactSearch.addEventListener('input', (e) => {
-        leadSearchQuery = e.target.value.toLowerCase().trim();
-        renderContactsChecklist();
-      });
-    }
-
-    if (btnToggleAll) {
-      btnToggleAll.addEventListener('click', () => {
-        const visibleItems = getFilteredLeads();
-        const visibleKeys = visibleItems.map(l => l.itemKey || l.id);
-        const allSelected = visibleKeys.length > 0 && visibleKeys.every(key => campaignData.audience_filters.selected_lead_ids.includes(key));
-
-        if (allSelected) {
-          campaignData.audience_filters.selected_lead_ids = campaignData.audience_filters.selected_lead_ids.filter(key => !visibleKeys.includes(key));
-        } else {
-          const set = new Set([...campaignData.audience_filters.selected_lead_ids, ...visibleKeys]);
-          campaignData.audience_filters.selected_lead_ids = Array.from(set);
-        }
-
-        renderContactsChecklist();
-        updateSelectedCountUI();
-      });
-    }
-
-    if (campaignData.audience_type === 'static_segment') {
-      await reloadContactsList();
-    } else {
-      calculateAudienceLiveCount();
-    }
-
-    async function reloadContactsList() {
-      const checklistBox = wizBody.querySelector('#contacts-checklist-box');
-      if (checklistBox) {
-        checklistBox.innerHTML = `
-          <div class="p-4 text-center text-neutral-400 font-mono text-xs">
-            <span class="animate-pulse">🔄 Cargando contactos...</span>
-          </div>
-        `;
-      }
-
-      try {
-        // 1. Fetch ALL leads, links, and contacts using paginated fetchAllRows to ensure zero rows are missed
-        const [leadsData, linksData, contactsData] = await Promise.all([
-          fetchAllRows('leads', 'id, company, country, primary_contact_id, pipeline_stage_id, franquiday_stage_id, updated_at, created_at'),
-          fetchAllRows('lead_contacts_link', 'lead_id, contact_id', { orderCol: 'lead_id' }),
-          fetchAllRows('contacts', 'id, first_name, last_name, phone, email')
-        ]);
-
-        let leadRows = leadsData || [];
-        const linksRows = linksData || [];
-        const contactsRows = contactsData || [];
-
-        // Fallback to cache if database leads query returned empty
-        if (leadRows.length === 0 && cache.isLoaded && cache.leads) {
-          leadRows = cache.leads;
-        }
-
-        // Map contacts by ID
-        const contactsMap = new Map();
-        contactsRows.forEach(c => contactsMap.set(c.id, c));
-        if (cache.isLoaded && cache.contacts) {
-          cache.contacts.forEach((c, id) => {
-            if (!contactsMap.has(id)) contactsMap.set(id, c);
-          });
-        }
-
-        // Apply stage filter according to pipeline_type
-        const f = campaignData.audience_filters;
-        if (f.pipeline_stage_id) {
-          if (f.pipeline_type === 'franquiday') {
-            leadRows = leadRows.filter(l => {
-              const activeFranquidayStage = cache.isLoaded 
-                ? (cache.getMostRecentFranquidayStageId(l.id) || l.franquiday_stage_id) 
-                : l.franquiday_stage_id;
-              return activeFranquidayStage === f.pipeline_stage_id;
-            });
-          } else {
-            leadRows = leadRows.filter(l => l.pipeline_stage_id === f.pipeline_stage_id);
-          }
-        }
-        if (f.country) {
-          const targetCountry = f.country.trim().toLowerCase();
-          leadRows = leadRows.filter(l => (l.country || '').trim().toLowerCase() === targetCountry);
-        }
-        if (f.days_inactive) {
-          const daysAgo = new Date(Date.now() - parseInt(f.days_inactive, 10) * 24 * 60 * 60 * 1000).getTime();
-          leadRows = leadRows.filter(l => {
-            const upTime = l.updated_at ? new Date(l.updated_at).getTime() : 0;
-            return upTime <= daysAgo;
-          });
-        }
-
-        // Map links by lead_id
-        const linksByLead = new Map();
-        linksRows.forEach(link => {
-          if (!linksByLead.has(link.lead_id)) linksByLead.set(link.lead_id, []);
-          if (!linksByLead.get(link.lead_id).includes(link.contact_id)) {
-            linksByLead.get(link.lead_id).push(link.contact_id);
-          }
-        });
-        if (cache.isLoaded && cache.links) {
-          cache.links.forEach(link => {
-            if (!linksByLead.has(link.lead_id)) linksByLead.set(link.lead_id, []);
-            if (!linksByLead.get(link.lead_id).includes(link.contact_id)) {
-              linksByLead.get(link.lead_id).push(link.contact_id);
-            }
-          });
-        }
-
-        // Build contact checklist items respecting primary_contact_only
-        const contactItems = [];
-
-        for (const l of leadRows) {
-          const companyName = l.company ? l.company.trim() : '';
-          let contactIds = [];
-
-          if (f.primary_contact_only) {
-            if (l.primary_contact_id) {
-              contactIds = [l.primary_contact_id];
-            } else {
-              const linked = linksByLead.get(l.id) || [];
-              if (linked.length > 0) contactIds = [linked[0]];
-            }
-          } else {
-            contactIds = [...(linksByLead.get(l.id) || [])];
-            if (l.primary_contact_id && !contactIds.includes(l.primary_contact_id)) {
-              contactIds.unshift(l.primary_contact_id);
-            }
-          }
-
-          const linkedContacts = contactIds.map(cId => contactsMap.get(cId)).filter(Boolean);
-          const activeStageId = f.pipeline_type === 'franquiday' 
-            ? (cache.isLoaded ? (cache.getMostRecentFranquidayStageId(l.id) || l.franquiday_stage_id) : l.franquiday_stage_id) 
-            : l.pipeline_stage_id;
-
-          if (linkedContacts.length > 0) {
-            linkedContacts.forEach(c => {
-              const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Contacto sin nombre';
-              const phoneNum = c.phone || '';
-              const emailAddr = c.email || '';
-
-              const displayTitle = fullName;
-              const contactInfoStr = campaignData.channel === 'email' ? `✉️ ${emailAddr || 'Sin email'}` : `📞 ${phoneNum || 'Sin teléfono'}`;
-              const isPrimaryBadge = (l.primary_contact_id === c.id) ? ' (Principal)' : '';
-              const displaySubtitle = companyName ? `${companyName} • ${contactInfoStr}${isPrimaryBadge}` : `${contactInfoStr}${isPrimaryBadge}`;
-
-              contactItems.push({
-                itemKey: `${l.id}_${c.id}`,
-                lead_id: l.id,
-                contact_id: c.id,
-                name: fullName,
-                company: companyName,
-                phone: phoneNum,
-                displayTitle,
-                displaySubtitle,
-                pipeline_stage_id: activeStageId,
-                searchableText: `${fullName} ${companyName} ${phoneNum} ${emailAddr}`.toLowerCase()
-              });
-            });
-          } else {
-            const title = companyName || 'Prospecto sin nombre';
-            contactItems.push({
-              itemKey: `${l.id}_lead`,
-              lead_id: l.id,
-              contact_id: null,
-              name: title,
-              company: companyName,
-              phone: '',
-              displayTitle: title,
-              displaySubtitle: 'Sin contactos ni teléfono asignado',
-              pipeline_stage_id: activeStageId,
-              searchableText: `${title}`.toLowerCase()
-            });
-          }
-        }
-
-        fetchedLeads = contactItems;
-
-        // Select all contact itemKeys by default if none explicitly set
-        if (!campaignData.audience_filters.selected_lead_ids || campaignData.audience_filters.selected_lead_ids.length === 0) {
-          campaignData.audience_filters.selected_lead_ids = fetchedLeads.map(item => item.itemKey);
-        }
-
-        renderContactsChecklist();
-        updateSelectedCountUI();
-      } catch (err) {
-        console.error('Error in reloadContactsList:', err);
-      }
-    }
-
     function normalizeStr(str) {
       if (!str) return '';
       return str.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -877,29 +632,145 @@ export function openCampaignWizardModal(onSuccess) {
       return fetchedLeads.filter(l => normalizeStr(l.searchableText).includes(queryNorm));
     }
 
+    // Core audience calculation engine using in-memory metadata cache
+    function getFilteredAudienceData() {
+      const allLeads = cache.getLeads() || [];
+      const f = campaignData.audience_filters;
+      const isAll = campaignData.audience_type === 'all';
+      const channel = campaignData.channel || 'whatsapp';
+
+      let matchingLeads = allLeads;
+
+      if (!isAll) {
+        if (f.pipeline_type === 'franquiday') {
+          matchingLeads = matchingLeads.filter(l => {
+            const activeStageId = cache.isLoaded 
+              ? (cache.getMostRecentFranquidayStageId(l.id) || l.franquiday_stage_id) 
+              : l.franquiday_stage_id;
+            if (f.pipeline_stage_id) {
+              return activeStageId === f.pipeline_stage_id;
+            }
+            return (cache.isLoaded && (cache.getLeadParticipations(l.id) || []).length > 0) || Boolean(l.franquiday_stage_id);
+          });
+        } else {
+          if (f.pipeline_stage_id) {
+            matchingLeads = matchingLeads.filter(l => l.pipeline_stage_id === f.pipeline_stage_id);
+          }
+        }
+
+        if (f.country) {
+          const targetCountry = f.country.trim().toLowerCase();
+          matchingLeads = matchingLeads.filter(l => (l.country || '').trim().toLowerCase() === targetCountry);
+        }
+
+        if (f.days_inactive) {
+          const daysAgo = Date.now() - parseInt(f.days_inactive, 10) * 86400000;
+          matchingLeads = matchingLeads.filter(l => {
+            const upTime = l.updated_at ? new Date(l.updated_at).getTime() : 0;
+            return upTime <= daysAgo;
+          });
+        }
+      }
+
+      const contactItems = [];
+      const leadsWithValidContacts = new Set();
+
+      for (const l of matchingLeads) {
+        const companyName = l.company ? l.company.trim() : '';
+        const activeStageId = f.pipeline_type === 'franquiday'
+          ? (cache.isLoaded ? (cache.getMostRecentFranquidayStageId(l.id) || l.franquiday_stage_id) : l.franquiday_stage_id)
+          : l.pipeline_stage_id;
+
+        let leadContacts = [];
+        if (f.primary_contact_only) {
+          if (l.primary_contact_id && cache.contacts?.has(l.primary_contact_id)) {
+            leadContacts = [cache.contacts.get(l.primary_contact_id)];
+          } else {
+            const linked = cache.getLeadContacts ? cache.getLeadContacts(l.id) : [];
+            if (linked.length > 0) leadContacts = [linked[0]];
+          }
+        } else {
+          const linked = cache.getLeadContacts ? cache.getLeadContacts(l.id) : [];
+          leadContacts = [...linked];
+          if (l.primary_contact_id && cache.contacts?.has(l.primary_contact_id)) {
+            const pc = cache.contacts.get(l.primary_contact_id);
+            if (!leadContacts.some(c => c.id === pc.id)) {
+              leadContacts.unshift(pc);
+            }
+          }
+        }
+
+        const validContacts = leadContacts.filter(c => {
+          if (!c) return false;
+          if (channel === 'email') {
+            return Boolean(c.email && c.email.includes('@'));
+          }
+          return Boolean(c.phone && c.phone.trim().replace(/\D/g, '').length >= 6);
+        });
+
+        if (validContacts.length > 0) {
+          leadsWithValidContacts.add(l.id);
+        }
+
+        for (const c of validContacts) {
+          const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Contacto sin nombre';
+          const phoneNum = c.phone || '';
+          const emailAddr = c.email || '';
+          const isPrimary = (l.primary_contact_id === c.id);
+          const contactInfoStr = channel === 'email' ? `✉️ ${emailAddr}` : `📞 ${phoneNum}`;
+          const isPrimaryBadge = isPrimary ? ' (Principal)' : '';
+          const displaySubtitle = companyName ? `${companyName} • ${contactInfoStr}${isPrimaryBadge}` : `${contactInfoStr}${isPrimaryBadge}`;
+
+          contactItems.push({
+            itemKey: `${l.id}_${c.id}`,
+            lead_id: l.id,
+            contact_id: c.id,
+            name: fullName,
+            company: companyName,
+            phone: phoneNum,
+            email: emailAddr,
+            isPrimary,
+            displayTitle: fullName,
+            displaySubtitle,
+            pipeline_stage_id: activeStageId,
+            searchableText: `${fullName} ${companyName} ${phoneNum} ${emailAddr}`.toLowerCase()
+          });
+        }
+      }
+
+      return {
+        matchingLeadsCount: matchingLeads.length,
+        leadsWithContactsCount: leadsWithValidContacts.size,
+        matchingContactsCount: contactItems.length,
+        contactItems
+      };
+    }
+
     function renderContactsChecklist() {
-      const checklistBox = wizBody.querySelector('#contacts-checklist-box');
       if (!checklistBox) return;
 
       const leads = getFilteredLeads();
 
       if (leads.length === 0) {
         checklistBox.innerHTML = `
-          <div class="p-4 text-center text-neutral-400 text-xs">
-            No se encontraron contactos que coincidan con la búsqueda.
+          <div class="p-6 text-center text-neutral-400 text-xs">
+            ${leadSearchQuery ? 'No se encontraron contactos que coincidan con la búsqueda.' : 'No hay contactos con destino válido (' + (campaignData.channel === 'email' ? 'email' : 'teléfono') + ') para los filtros seleccionados.'}
           </div>
         `;
         return;
       }
 
+      const selectedSet = new Set(campaignData.audience_filters.selected_lead_ids || []);
+      const stageMap = new Map((pipelineStages || []).map(s => [s.id, s]));
+
       checklistBox.innerHTML = leads.map(l => {
-        const isChecked = campaignData.audience_filters.selected_lead_ids.includes(l.itemKey || l.id);
-        const stageObj = pipelineStages.find(s => s.id === l.pipeline_stage_id);
+        const isChecked = selectedSet.has(l.itemKey);
+        const stageObj = stageMap.get(l.pipeline_stage_id) || (cache.getStage ? cache.getStage(l.pipeline_stage_id) : null);
 
         return `
-          <label class="p-2.5 flex items-center justify-between hover:bg-neutral-100 cursor-pointer transition-colors select-none">
+          <label class="p-2.5 flex items-center justify-between hover:bg-neutral-100/80 cursor-pointer transition-colors select-none">
             <div class="flex items-center gap-2.5 min-w-0">
-              <input type="checkbox" data-item-key="${l.itemKey || l.id}" class="chk-lead-select accent-primary w-4 h-4 rounded cursor-pointer" ${isChecked ? 'checked' : ''} />
+              <input type="checkbox" data-item-key="${l.itemKey}" class="chk-lead-select accent-primary w-4 h-4 rounded cursor-pointer shrink-0" ${isChecked ? 'checked' : ''} />
               <div class="flex flex-col min-w-0">
                 <span class="font-bold text-neutral-800 text-xs truncate">${l.displayTitle}</span>
                 <span class="text-[10px] text-neutral-500 truncate">${l.displaySubtitle}</span>
@@ -907,34 +778,25 @@ export function openCampaignWizardModal(onSuccess) {
             </div>
 
             <span class="text-[9px] font-mono font-bold px-2 py-0.5 bg-neutral-200 text-neutral-700 rounded-full shrink-0 ml-2">
-              ${stageObj ? stageObj.name : (cache.getStage ? cache.getStage(l.pipeline_stage_id)?.name : null) || 'Sin etapa'}
+              ${stageObj ? stageObj.name : 'Sin etapa'}
             </span>
           </label>
         `;
       }).join('');
-
-      checklistBox.querySelectorAll('.chk-lead-select').forEach(chk => {
-        chk.addEventListener('change', (e) => {
-          const key = chk.dataset.itemKey;
-          if (e.target.checked) {
-            if (!campaignData.audience_filters.selected_lead_ids.includes(key)) {
-              campaignData.audience_filters.selected_lead_ids.push(key);
-            }
-          } else {
-            campaignData.audience_filters.selected_lead_ids = campaignData.audience_filters.selected_lead_ids.filter(k => k !== key);
-          }
-          updateSelectedCountUI();
-        });
-      });
     }
 
-    function updateSelectedCountUI() {
-      const selectedCount = campaignData.audience_filters.selected_lead_ids.length;
-      const totalCount = fetchedLeads.length;
+    function updateSelectedCountUI(totalAvailableCount) {
+      const selectedCount = (campaignData.audience_filters.selected_lead_ids || []).length;
+      const totalCount = totalAvailableCount !== undefined ? totalAvailableCount : fetchedLeads.length;
 
       const badge = wizBody.querySelector('#selected-contacts-count-badge');
       if (badge) {
         badge.textContent = `${selectedCount} de ${totalCount} seleccionados`;
+        if (selectedCount > 0) {
+          badge.className = 'px-2.5 py-1 bg-primary/10 text-primary font-mono font-bold text-[10px] rounded-full border border-primary/20';
+        } else {
+          badge.className = 'px-2.5 py-1 bg-neutral-100 text-neutral-500 font-mono font-bold text-[10px] rounded-full border border-neutral-200';
+        }
       }
 
       const liveCountEl = wizBody.querySelector('#aud-live-count');
@@ -942,52 +804,231 @@ export function openCampaignWizardModal(onSuccess) {
         liveCountEl.textContent = selectedCount.toLocaleString();
       }
 
+      const liveUnitEl = wizBody.querySelector('#aud-live-unit');
+      if (liveUnitEl) {
+        liveUnitEl.textContent = selectedCount === 1 ? 'seleccionado' : 'seleccionados';
+      }
+
+      const liveSubEl = wizBody.querySelector('#aud-live-sub');
+      if (liveSubEl) {
+        liveSubEl.textContent = `${selectedCount} de ${totalCount.toLocaleString()} contactos para envío`;
+      }
+
+      const statSelectedEl = wizBody.querySelector('#aud-stat-selected');
+      if (statSelectedEl) {
+        statSelectedEl.textContent = `${selectedCount.toLocaleString()} contactos`;
+      }
+
       const btnToggle = wizBody.querySelector('#btn-toggle-select-all');
       if (btnToggle) {
         const visibleItems = getFilteredLeads();
-        const visibleKeys = visibleItems.map(l => l.itemKey || l.id);
-        const allSelected = visibleKeys.length > 0 && visibleKeys.every(key => campaignData.audience_filters.selected_lead_ids.includes(key));
-        btnToggle.textContent = allSelected ? 'Deseleccionar Todos' : 'Seleccionar Todos';
+        const visibleKeys = visibleItems.map(l => l.itemKey);
+        const currentSet = new Set(campaignData.audience_filters.selected_lead_ids || []);
+        const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every(k => currentSet.has(k));
+        btnToggle.textContent = allVisibleSelected ? 'Deseleccionar Todos' : 'Seleccionar Todos';
       }
     }
-  }
 
-  async function calculateAudienceLiveCount() {
-    const liveCountEl = wizBody.querySelector('#aud-live-count');
-    const liveSubEl = wizBody.querySelector('#aud-live-sub');
-    if (!liveCountEl) return;
-    liveCountEl.textContent = '...';
+    function updateAudienceLiveCard(matchingLeadsCount, matchingContactsCount) {
+      const isStatic = campaignData.audience_type === 'static_segment';
+      const isAll = campaignData.audience_type === 'all';
+      const selectedCount = (campaignData.audience_filters.selected_lead_ids || []).length;
 
-    try {
-      const f = campaignData.audience_filters;
-      let query = supabase.from('leads').select('id, primary_contact_id', { count: 'exact' });
-      if (f.pipeline_stage_id) {
-        if (f.pipeline_type === 'franquiday') {
-          query = query.eq('franquiday_stage_id', f.pipeline_stage_id);
-        } else {
-          query = query.eq('pipeline_stage_id', f.pipeline_stage_id);
+      const liveCountEl = wizBody.querySelector('#aud-live-count');
+      const liveUnitEl = wizBody.querySelector('#aud-live-unit');
+      const liveSubEl = wizBody.querySelector('#aud-live-sub');
+      const modePill = wizBody.querySelector('#aud-mode-pill');
+      const leadsCountEl = wizBody.querySelector('#aud-leads-count');
+      const contactsCountEl = wizBody.querySelector('#aud-contacts-count');
+      const staticSelectedRow = wizBody.querySelector('#aud-static-selected-row');
+      const statSelectedEl = wizBody.querySelector('#aud-stat-selected');
+      const footerNote = wizBody.querySelector('#aud-footer-note');
+
+      if (isStatic) {
+        if (modePill) {
+          modePill.textContent = 'Estático';
+          modePill.className = 'text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-950/60 text-amber-300 border border-amber-800/40';
         }
-      }
-      if (f.country) query = query.ilike('country', f.country);
-      if (f.days_inactive) {
-        const daysAgo = new Date(Date.now() - parseInt(f.days_inactive, 10) * 24 * 60 * 60 * 1000).toISOString();
-        query = query.lte('updated_at', daysAgo);
-      }
-
-      const { data: matchedLeads, count } = await query;
-      estimatedAudienceCount = count || 0;
-      liveCountEl.textContent = estimatedAudienceCount.toLocaleString();
-
-      if (liveSubEl) {
-        if (f.primary_contact_only) {
-          liveSubEl.textContent = 'empresas estimadas (solo contacto principal)';
-        } else {
-          liveSubEl.textContent = 'empresas estimadas (todos sus contactos)';
+        if (liveCountEl) liveCountEl.textContent = selectedCount.toLocaleString();
+        if (liveUnitEl) liveUnitEl.textContent = selectedCount === 1 ? 'seleccionado' : 'seleccionados';
+        if (liveSubEl) liveSubEl.textContent = `${selectedCount} de ${matchingContactsCount.toLocaleString()} contactos para envío`;
+        if (leadsCountEl) leadsCountEl.textContent = `${matchingLeadsCount.toLocaleString()} empresas`;
+        if (contactsCountEl) contactsCountEl.textContent = `${matchingContactsCount.toLocaleString()} disponibles`;
+        if (staticSelectedRow) staticSelectedRow.classList.remove('hidden');
+        if (statSelectedEl) statSelectedEl.textContent = `${selectedCount.toLocaleString()} contactos`;
+        if (footerNote) footerNote.textContent = 'ℹ️ En modo estático, solo se enviará a los contactos tildados en el listado.';
+        estimatedAudienceCount = selectedCount;
+      } else if (isAll) {
+        if (modePill) {
+          modePill.textContent = 'Todos';
+          modePill.className = 'text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 border border-neutral-700';
         }
+        if (liveCountEl) liveCountEl.textContent = matchingContactsCount.toLocaleString();
+        if (liveUnitEl) liveUnitEl.textContent = 'destinatarios';
+        if (liveSubEl) liveSubEl.textContent = `contactos destinatarios en todo el CRM`;
+        if (leadsCountEl) leadsCountEl.textContent = `${matchingLeadsCount.toLocaleString()} empresas`;
+        if (contactsCountEl) contactsCountEl.textContent = `${matchingContactsCount.toLocaleString()} contactos válidos`;
+        if (staticSelectedRow) staticSelectedRow.classList.add('hidden');
+        if (footerNote) footerNote.textContent = 'ℹ️ Se enviará a todos los contactos registrados en el CRM con teléfono o email válido.';
+        estimatedAudienceCount = matchingContactsCount;
+      } else {
+        // Dynamic Segment
+        if (modePill) {
+          modePill.textContent = 'Dinámico';
+          modePill.className = 'text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-800/40';
+        }
+        if (liveCountEl) liveCountEl.textContent = matchingContactsCount.toLocaleString();
+        if (liveUnitEl) liveUnitEl.textContent = 'destinatarios';
+        const scopeStr = campaignData.audience_filters.primary_contact_only ? 'solo contacto principal' : 'todos los vinculados';
+        if (liveSubEl) liveSubEl.textContent = `contactos estimados (${scopeStr})`;
+        if (leadsCountEl) leadsCountEl.textContent = `${matchingLeadsCount.toLocaleString()} empresas`;
+        if (contactsCountEl) contactsCountEl.textContent = `${matchingContactsCount.toLocaleString()} contactos válidos`;
+        if (staticSelectedRow) staticSelectedRow.classList.add('hidden');
+        if (footerNote) footerNote.textContent = 'ℹ️ En modo dinámico, los destinatarios se evalúan al ejecutar la campaña. En modo estático se congelan los seleccionados.';
+        estimatedAudienceCount = matchingContactsCount;
       }
-    } catch (e) {
-      liveCountEl.textContent = '0';
     }
+
+    function updateAudienceUI() {
+      const { matchingLeadsCount, matchingContactsCount, contactItems } = getFilteredAudienceData();
+      fetchedLeads = contactItems;
+
+      // In static mode, prune selected IDs that are no longer valid for active filters
+      if (campaignData.audience_type === 'static_segment') {
+        const validItemKeys = new Set(contactItems.map(item => item.itemKey));
+        campaignData.audience_filters.selected_lead_ids = (campaignData.audience_filters.selected_lead_ids || [])
+          .filter(key => validItemKeys.has(key));
+      }
+
+      updateAudienceLiveCard(matchingLeadsCount, matchingContactsCount);
+
+      if (campaignData.audience_type === 'static_segment') {
+        renderContactsChecklist();
+        updateSelectedCountUI(matchingContactsCount);
+      }
+    }
+
+    // Attach Checklist Delegation
+    if (checklistBox) {
+      checklistBox.addEventListener('change', (e) => {
+        const chk = e.target.closest('.chk-lead-select');
+        if (!chk) return;
+        const key = chk.dataset.itemKey;
+        const currentSet = new Set(campaignData.audience_filters.selected_lead_ids || []);
+        if (chk.checked) {
+          currentSet.add(key);
+        } else {
+          currentSet.delete(key);
+        }
+        campaignData.audience_filters.selected_lead_ids = Array.from(currentSet);
+        updateSelectedCountUI();
+      });
+    }
+
+    // Radio Audience Type Listeners
+    wizBody.querySelectorAll('input[name="wiz_aud_type"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        campaignData.audience_type = e.target.value;
+        if (campaignData.audience_type === 'dynamic_segment') {
+          if (dynamicAlert) dynamicAlert.classList.remove('hidden');
+        } else {
+          if (dynamicAlert) dynamicAlert.classList.add('hidden');
+        }
+
+        if (campaignData.audience_type === 'static_segment') {
+          staticContainer.classList.remove('hidden');
+          // Por defecto ningún contacto seleccionado en segmento estático
+          campaignData.audience_filters.selected_lead_ids = [];
+        } else {
+          staticContainer.classList.add('hidden');
+        }
+
+        updateAudienceUI();
+      });
+    });
+
+    // Pipeline mode toggles
+    if (btnPipeNegozona) {
+      btnPipeNegozona.addEventListener('click', () => {
+        campaignData.audience_filters.pipeline_type = 'negozona';
+        updatePipelineTypeButtons();
+        updateAudienceUI();
+      });
+    }
+
+    if (btnPipeFranquiday) {
+      btnPipeFranquiday.addEventListener('click', () => {
+        campaignData.audience_filters.pipeline_type = 'franquiday';
+        updatePipelineTypeButtons();
+        updateAudienceUI();
+      });
+    }
+
+    if (chkPrimaryContact) {
+      chkPrimaryContact.addEventListener('change', (e) => {
+        campaignData.audience_filters.primary_contact_only = e.target.checked;
+        if (dynamicScopeText) {
+          dynamicScopeText.textContent = e.target.checked 
+            ? '🎯 Alcance: Se enviará ÚNICAMENTE al contacto principal de cada empresa.' 
+            : '👥 Alcance: Se enviará a TODOS los contactos vinculados a cada empresa que califique.';
+        }
+        updateAudienceUI();
+      });
+    }
+
+    filterStage.addEventListener('change', (e) => {
+      campaignData.audience_filters.pipeline_stage_id = e.target.value;
+      updateAudienceUI();
+    });
+
+    if (filterCountry) {
+      filterCountry.addEventListener('change', (e) => {
+        campaignData.audience_filters.country = e.target.value;
+        updateAudienceUI();
+      });
+    }
+
+    filterInactivity.addEventListener('change', (e) => {
+      campaignData.audience_filters.days_inactive = e.target.value;
+      updateAudienceUI();
+    });
+
+    if (contactSearch) {
+      contactSearch.addEventListener('input', (e) => {
+        leadSearchQuery = e.target.value.toLowerCase().trim();
+        renderContactsChecklist();
+        const btnToggle = wizBody.querySelector('#btn-toggle-select-all');
+        if (btnToggle) {
+          const visibleItems = getFilteredLeads();
+          const visibleKeys = visibleItems.map(l => l.itemKey);
+          const currentSet = new Set(campaignData.audience_filters.selected_lead_ids || []);
+          const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every(k => currentSet.has(k));
+          btnToggle.textContent = allVisibleSelected ? 'Deseleccionar Todos' : 'Seleccionar Todos';
+        }
+      });
+    }
+
+    if (btnToggleAll) {
+      btnToggleAll.addEventListener('click', () => {
+        const visibleItems = getFilteredLeads();
+        const visibleKeys = visibleItems.map(l => l.itemKey);
+        const currentSet = new Set(campaignData.audience_filters.selected_lead_ids || []);
+        const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every(k => currentSet.has(k));
+
+        if (allVisibleSelected) {
+          visibleKeys.forEach(k => currentSet.delete(k));
+        } else {
+          visibleKeys.forEach(k => currentSet.add(k));
+        }
+
+        campaignData.audience_filters.selected_lead_ids = Array.from(currentSet);
+        renderContactsChecklist();
+        updateSelectedCountUI();
+      });
+    }
+
+    // Initial calculation on step 2 load
+    updateAudienceUI();
   }
 
   // ----------------------------------------------------
@@ -1670,6 +1711,21 @@ export function openCampaignWizardModal(onSuccess) {
       if (campaignData.channel === 'whatsapp' && !campaignData.phone_number_id) {
         toast.show('Selecciona un número remitente de WhatsApp', 'error');
         return;
+      }
+    }
+
+    if (currentStep === 2) {
+      if (campaignData.audience_type === 'static_segment') {
+        const selected = campaignData.audience_filters.selected_lead_ids || [];
+        if (selected.length === 0) {
+          toast.show('Debes seleccionar al menos un contacto para el segmento estático', 'error');
+          return;
+        }
+      } else {
+        if (estimatedAudienceCount === 0) {
+          toast.show('No hay contactos destinatarios que cumplan con los filtros seleccionados', 'error');
+          return;
+        }
       }
     }
 

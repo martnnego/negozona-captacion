@@ -475,6 +475,8 @@ export async function openAutomationStepDrawer({ step = null, defaultType = 'sen
         </div>
       `;
 
+      attachDelayListeners();
+
     } else if (currentStepType === 'change_stage') {
       const stages = cache.getStages() || [];
       const currentStageId = currentConfig.to_stage_id || '';
@@ -499,6 +501,8 @@ export async function openAutomationStepDrawer({ step = null, defaultType = 'sen
         </div>
       `;
 
+      attachChangeStageListeners();
+
     } else if (currentStepType === 'add_comment') {
       const comment = currentConfig.comment || '';
 
@@ -518,18 +522,15 @@ export async function openAutomationStepDrawer({ step = null, defaultType = 'sen
         </div>
       `;
 
-      dynamicArea.querySelectorAll('.btn-insert-comm-var').forEach(b => {
-        b.addEventListener('click', () => {
-          const textarea = dynamicArea.querySelector('#input-step-comment');
-          textarea.value += ' ' + b.dataset.var;
-        });
-      });
+      attachCommentListeners();
     }
   }
 
   function attachWhatsAppListeners() {
     const dynamicArea = container.querySelector('#step-config-dynamic-area');
     const selectElem = dynamicArea.querySelector('#select-wa-template');
+    const selectSender = dynamicArea.querySelector('#select-wa-sender');
+    const selectRecMode = dynamicArea.querySelector('#select-wa-recipient-mode');
     const fileInput = dynamicArea.querySelector('#wa-header-file-input');
     const urlInput = dynamicArea.querySelector('#wa-header-url-input');
     const previewBox = dynamicArea.querySelector('#wa-header-preview-box');
@@ -537,11 +538,64 @@ export async function openAutomationStepDrawer({ step = null, defaultType = 'sen
     const chatBubbleMedia = dynamicArea.querySelector('#preview-header-media');
     const chatBubbleImg = dynamicArea.querySelector('#preview-header-media img');
 
+    if (selectSender) {
+      selectSender.addEventListener('change', (e) => {
+        currentConfig.phone_number_id = e.target.value;
+      });
+    }
+
+    if (selectRecMode) {
+      selectRecMode.addEventListener('change', (e) => {
+        currentConfig.recipient_mode = e.target.value;
+      });
+    }
+
     if (selectElem) {
-      selectElem.addEventListener('change', () => {
+      selectElem.addEventListener('change', (e) => {
+        const newName = e.target.value;
+        currentConfig.template_name = newName;
+        const newTmpl = metaTemplates.find(t => t.name === newName);
+        if (newTmpl) {
+          currentConfig.template_id = newTmpl.id;
+          currentConfig.template_language = newTmpl.language || 'es_AR';
+          currentConfig.template_components = newTmpl.components || [];
+          currentConfig.variable_mappings = {};
+          headerMediaFile = null;
+          headerMediaUrl = '';
+
+          // Actualizar sugerencia del nombre de paso si no fue personalizado
+          const nameInput = container.querySelector('#input-step-name');
+          if (nameInput && (!nameInput.value || nameInput.value.startsWith('WhatsApp:'))) {
+            nameInput.value = `WhatsApp: ${newTmpl.name}`;
+            stepName = nameInput.value;
+          }
+        }
         renderDynamicConfig();
       });
     }
+
+    // Sincronizar variables de WhatsApp en currentConfig
+    const syncWhatsAppVariables = () => {
+      const mappings = {};
+      dynamicArea.querySelectorAll('.var-field-select').forEach(sel => {
+        const varKey = sel.dataset.varKey;
+        const fieldVal = sel.value;
+        const fallbackInput = dynamicArea.querySelector(`.var-fallback-input[data-var-key="${varKey}"]`);
+        const fallbackVal = fallbackInput?.value?.trim() || '';
+        mappings[varKey] = {
+          field: fieldVal === 'static:personalizado' ? `static:${fallbackVal}` : fieldVal,
+          fallback: fallbackVal || '-'
+        };
+      });
+      currentConfig.variable_mappings = mappings;
+    };
+
+    dynamicArea.querySelectorAll('.var-field-select').forEach(sel => {
+      sel.addEventListener('change', syncWhatsAppVariables);
+    });
+    dynamicArea.querySelectorAll('.var-fallback-input').forEach(inp => {
+      inp.addEventListener('input', syncWhatsAppVariables);
+    });
 
     if (fileInput) {
       fileInput.addEventListener('change', () => {
@@ -587,25 +641,80 @@ export async function openAutomationStepDrawer({ step = null, defaultType = 'sen
   function attachEmailListeners() {
     const dynamicArea = container.querySelector('#step-config-dynamic-area');
     const tmplSelect = dynamicArea.querySelector('#select-email-template');
+    const senderSelect = dynamicArea.querySelector('#select-email-sender');
+    const recModeSelect = dynamicArea.querySelector('#select-email-recipient-mode');
     const fileInput = dynamicArea.querySelector('#input-email-attachments');
+    const subjectInput = dynamicArea.querySelector('#input-email-subject');
+    const previewInput = dynamicArea.querySelector('#input-email-preview-text');
+    const bodyInput = dynamicArea.querySelector('#input-email-body');
+
+    if (senderSelect) {
+      senderSelect.addEventListener('change', (e) => {
+        currentConfig.sender_profile_id = e.target.value;
+        currentConfig.sender_email = senderSelect.options[senderSelect.selectedIndex]?.dataset?.email || null;
+      });
+    }
+
+    if (recModeSelect) {
+      recModeSelect.addEventListener('change', (e) => {
+        currentConfig.recipient_mode = e.target.value;
+      });
+    }
 
     if (tmplSelect) {
       tmplSelect.addEventListener('change', (e) => {
-        const found = emailTemplates.find(t => t.id === e.target.value);
-        if (found) {
-          dynamicArea.querySelector('#input-email-subject').value = found.subject || '';
-          if (found.preview_text && dynamicArea.querySelector('#input-email-preview-text')) {
-            dynamicArea.querySelector('#input-email-preview-text').value = found.preview_text;
-          }
-          dynamicArea.querySelector('#input-email-body').value = found.body_html || found.body_text || '';
+        const selectedId = e.target.value;
+        currentConfig.template_id = selectedId || null;
+
+        if (!selectedId) {
+          return;
         }
+
+        const found = emailTemplates.find(t => t.id === selectedId);
+        if (found) {
+          currentConfig.subject = found.subject || '';
+          currentConfig.preview_text = found.preview_text || '';
+          currentConfig.body_html = found.body_html || found.body_text || '';
+
+          if (subjectInput) subjectInput.value = found.subject || '';
+          if (previewInput) previewInput.value = found.preview_text || '';
+          if (bodyInput) bodyInput.value = found.body_html || found.body_text || '';
+
+          // Actualizar automáticamente el nombre del paso si estaba vacío o tenía prefijo por defecto
+          const nameInput = container.querySelector('#input-step-name');
+          if (nameInput && (!nameInput.value || nameInput.value.startsWith('Email:'))) {
+            nameInput.value = `Email: ${found.subject || found.name}`;
+            stepName = nameInput.value;
+          }
+        }
+      });
+    }
+
+    if (subjectInput) {
+      subjectInput.addEventListener('input', (e) => {
+        currentConfig.subject = e.target.value;
+      });
+    }
+
+    if (previewInput) {
+      previewInput.addEventListener('input', (e) => {
+        currentConfig.preview_text = e.target.value;
+      });
+    }
+
+    if (bodyInput) {
+      bodyInput.addEventListener('input', (e) => {
+        currentConfig.body_html = e.target.value;
       });
     }
 
     dynamicArea.querySelectorAll('.btn-insert-var').forEach(b => {
       b.addEventListener('click', () => {
         const textarea = dynamicArea.querySelector('#input-email-body');
-        textarea.value += ' ' + b.dataset.var;
+        if (textarea) {
+          textarea.value += ' ' + b.dataset.var;
+          currentConfig.body_html = textarea.value;
+        }
       });
     });
 
@@ -633,6 +742,55 @@ export async function openAutomationStepDrawer({ step = null, defaultType = 'sen
     }
 
     updateAttachmentsList();
+  }
+
+  function attachDelayListeners() {
+    const dynamicArea = container.querySelector('#step-config-dynamic-area');
+    const durInput = dynamicArea.querySelector('#input-delay-duration');
+    const unitSelect = dynamicArea.querySelector('#select-delay-unit');
+
+    if (durInput) {
+      durInput.addEventListener('input', (e) => {
+        currentConfig.duration = parseInt(e.target.value, 10) || 1;
+      });
+    }
+    if (unitSelect) {
+      unitSelect.addEventListener('change', (e) => {
+        currentConfig.unit = e.target.value;
+      });
+    }
+  }
+
+  function attachChangeStageListeners() {
+    const dynamicArea = container.querySelector('#step-config-dynamic-area');
+    const stageSelect = dynamicArea.querySelector('#select-target-stage');
+
+    if (stageSelect) {
+      stageSelect.addEventListener('change', (e) => {
+        currentConfig.to_stage_id = e.target.value;
+      });
+    }
+  }
+
+  function attachCommentListeners() {
+    const dynamicArea = container.querySelector('#step-config-dynamic-area');
+    const commentInput = dynamicArea.querySelector('#input-step-comment');
+
+    if (commentInput) {
+      commentInput.addEventListener('input', (e) => {
+        currentConfig.comment = e.target.value;
+      });
+    }
+
+    dynamicArea.querySelectorAll('.btn-insert-comm-var').forEach(b => {
+      b.addEventListener('click', () => {
+        const textarea = dynamicArea.querySelector('#input-step-comment');
+        if (textarea) {
+          textarea.value += ' ' + b.dataset.var;
+          currentConfig.comment = textarea.value;
+        }
+      });
+    });
   }
 
   function fileToBase64(file) {

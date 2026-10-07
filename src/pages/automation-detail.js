@@ -88,8 +88,34 @@ export async function renderAutomationDetail(automationId) {
     </div>
   `;
 
+  let automation = null;
+  let steps = [];
+  let executions = [];
+  let currentTab = 'flow';
+  let isDirty = false;
+  let isTriggerCollapsed = false;
+
+  function updateDirtyUI(dirty) {
+    isDirty = dirty;
+    const saveBtn = wrapper.querySelector('#btn-save-flow');
+    if (saveBtn) {
+      if (dirty) {
+        saveBtn.className = 'px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-mono font-bold uppercase rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-2 ring-2 ring-emerald-400/50';
+        saveBtn.innerHTML = '<span>💾 Guardar Cambios ●</span>';
+      } else {
+        saveBtn.className = 'px-4 py-1.5 bg-primary hover:bg-neutral-900 text-white text-xs font-mono font-bold uppercase rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-2';
+        saveBtn.innerHTML = '<span>💾 Guardar Cambios</span>';
+      }
+    }
+  }
+
   // Back button
   wrapper.querySelector('#btn-back-automations').addEventListener('click', () => {
+    if (isDirty) {
+      if (!confirm('Tienes cambios sin guardar en esta automatización. ¿Deseas salir de todas formas sin guardar?')) {
+        return;
+      }
+    }
     if (window.location.hash === '#automations') {
       const view = renderAutomations();
       wrapper.replaceWith(view);
@@ -98,15 +124,17 @@ export async function renderAutomationDetail(automationId) {
     }
   });
 
+  // Warn on page unload if changes are unsaved
+  const handleBeforeUnload = (e) => {
+    if (isDirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  };
+  window.addEventListener('beforeunload', handleBeforeUnload);
+
   // Help modal
   wrapper.querySelector('#btn-show-help').addEventListener('click', openAutomationHelpModal);
-
-  let automation = null;
-  let steps = [];
-  let executions = [];
-  let currentTab = 'flow';
-  let isDirty = false;
-  let isTriggerCollapsed = false;
 
   // Tab switching
   wrapper.querySelectorAll('.auto-tab').forEach(btn => {
@@ -721,9 +749,10 @@ export async function renderAutomationDetail(automationId) {
           onSave: (newStepData) => {
             steps.splice(insertIndex, 0, newStepData);
             recalcStepOrders();
-            isDirty = true;
+            updateDirtyUI(true);
             wrapper.querySelector('#tab-steps-count').textContent = steps.length;
             renderFlowTab(container);
+            toast.show('Paso añadido al flujo. Presiona "Guardar Cambios" para confirmar.', 'info');
           }
         });
       });
@@ -739,8 +768,9 @@ export async function renderAutomationDetail(automationId) {
           onSave: (updatedStepData) => {
             steps[idx] = { ...targetStep, ...updatedStepData };
             recalcStepOrders();
-            isDirty = true;
+            updateDirtyUI(true);
             renderFlowTab(container);
+            toast.show('Paso actualizado en el flujo. Presiona "Guardar Cambios" para confirmar.', 'info');
           }
         });
       });
@@ -755,7 +785,7 @@ export async function renderAutomationDetail(automationId) {
           steps[idx] = steps[idx - 1];
           steps[idx - 1] = temp;
           recalcStepOrders();
-          isDirty = true;
+          updateDirtyUI(true);
           renderFlowTab(container);
         }
       });
@@ -769,7 +799,7 @@ export async function renderAutomationDetail(automationId) {
           steps[idx] = steps[idx + 1];
           steps[idx + 1] = temp;
           recalcStepOrders();
-          isDirty = true;
+          updateDirtyUI(true);
           renderFlowTab(container);
         }
       });
@@ -782,7 +812,7 @@ export async function renderAutomationDetail(automationId) {
         if (confirm(`¿Eliminar el Paso #${idx + 1}?`)) {
           steps.splice(idx, 1);
           recalcStepOrders();
-          isDirty = true;
+          updateDirtyUI(true);
           wrapper.querySelector('#tab-steps-count').textContent = steps.length;
           renderFlowTab(container);
         }
@@ -1129,7 +1159,7 @@ export async function renderAutomationDetail(automationId) {
         }
       }
 
-      isDirty = false;
+      updateDirtyUI(false);
       toast.show('Flujo de automatización guardado con éxito', 'success');
       await loadAutomationData();
 
