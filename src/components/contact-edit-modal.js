@@ -3,6 +3,7 @@ import { cache } from '../lib/cache';
 import { auth } from '../lib/auth';
 import { modal } from './modal';
 import { toast } from './toast';
+import { confirmContactDeactivation, cascadeDeactivateContact, CONTACT_DEACTIVATION_HELPER } from '../utils/contact-status';
 
 export function openContactEditModal(contactId, onSave) {
   const contact = cache.getContact(contactId);
@@ -66,15 +67,20 @@ export function openContactEditModal(contactId, onSave) {
       </div>
 
       <!-- State Toggle -->
-      <div class="flex items-center gap-3 mt-4 sm:col-span-2">
-        <span class="font-mono text-[9px] font-bold text-primary uppercase">Estado del contacto</span>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" id="edit-c-active" name="is_active" class="sr-only peer" ${contact.is_active ? 'checked' : ''} />
-          <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
-          <span class="ml-2 text-[10px] font-bold uppercase tracking-wider text-muted-slate" id="edit-c-active-label">
-            ${contact.is_active ? 'Activo' : 'Inactivo'}
-          </span>
-        </label>
+      <div class="flex flex-col gap-1.5 mt-4 sm:col-span-2">
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-[9px] font-bold text-primary uppercase">Estado del contacto</span>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="edit-c-active" name="is_active" class="sr-only peer" ${contact.is_active ? 'checked' : ''} />
+            <div class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
+            <span class="ml-2 text-[10px] font-bold uppercase tracking-wider text-muted-slate" id="edit-c-active-label">
+              ${contact.is_active ? 'Activo' : 'Inactivo'}
+            </span>
+          </label>
+        </div>
+        <p class="text-[9.5px] text-neutral-500 leading-tight">
+          ${CONTACT_DEACTIVATION_HELPER}
+        </p>
       </div>
 
       <!-- Phone Validation Toggle -->
@@ -518,7 +524,27 @@ export function openContactEditModal(contactId, onSave) {
   loadAllowlistSection();
 
   activeToggle.addEventListener('change', () => {
-    activeLabel.textContent = activeToggle.checked ? 'Activo' : 'Inactivo';
+    if (!activeToggle.checked) {
+      confirmContactDeactivation({
+        contactName: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
+        onConfirm: () => {
+          activeToggle.checked = false;
+          activeLabel.textContent = 'Inactivo';
+          // Also visually uncheck allowlist inputs
+          formWrapper.querySelectorAll('.allowlist-toggle-input').forEach(inp => {
+            inp.checked = false;
+            const lbl = inp.parentElement?.querySelector('.allowlist-toggle-label');
+            if (lbl) lbl.textContent = 'Deshabilitado';
+          });
+        },
+        onCancel: () => {
+          activeToggle.checked = true;
+          activeLabel.textContent = 'Activo';
+        }
+      });
+    } else {
+      activeLabel.textContent = 'Activo';
+    }
   });
 
   phoneValidToggle.addEventListener('change', () => {
@@ -557,6 +583,11 @@ export function openContactEditModal(contactId, onSave) {
         .single();
 
       if (error) throw error;
+
+      // If deactivated, trigger cascading cancellations (scheduled WA messages & automations)
+      if (updatedFields.is_active === false) {
+        await cascadeDeactivateContact(contact.id, updatedFields.phone);
+      }
 
       // Sync Allowlist changes with Meta API
       const currentPhone = updatedFields.phone;

@@ -7,6 +7,7 @@ import { toast } from '../components/toast';
 import { openContactEditModal } from '../components/contact-edit-modal';
 import { notifyNewInteraction } from '../utils/interaction-notifications';
 import { openAutomationExecutionDrawer } from '../components/automation-execution-drawer';
+import { confirmContactDeactivation, cascadeDeactivateContact, CONTACT_DEACTIVATION_HELPER } from '../utils/contact-status';
 
 export async function renderLeadDetail(leadId, onUpdate) {
   const currentUser = await auth.getCurrentUser();
@@ -1046,6 +1047,11 @@ export async function renderLeadDetail(leadId, onUpdate) {
           </div>
         </div>
 
+        <div class="p-2.5 bg-amber-50/70 border border-amber-200/80 rounded-sm text-amber-900 text-[10px] flex items-center gap-2 leading-relaxed">
+          <span>⚠️</span>
+          <span><strong>Control Anti-Spam:</strong> Al desactivar un contacto, quedará excluido de campañas masivas y automatizaciones, y se inhabilitará el envío de WhatsApps y correos hacia él.</span>
+        </div>
+
         <div class="flex-1 overflow-y-auto">
           ${contactsListHtml}
         </div>
@@ -1057,23 +1063,52 @@ export async function renderLeadDetail(leadId, onUpdate) {
       checkbox.addEventListener('change', async (e) => {
         const contactId = checkbox.dataset.contactToggleId;
         const val = e.target.checked;
-        try {
-          const { error } = await supabase
-            .from('contacts')
-            .update({ is_active: val })
-            .eq('id', contactId);
-          if (error) throw error;
-          
-          // Update Cache
-          const ct = linkedContacts.find(x => x.id === contactId);
-          if (ct) {
-            ct.is_active = val;
-            cache.updateContact(ct);
+        const ct = linkedContacts.find(x => x.id === contactId);
+        const contactName = ct ? `${ct.first_name || ''} ${ct.last_name || ''}`.trim() : 'este contacto';
+
+        const applyStateChange = async () => {
+          try {
+            const { error } = await supabase
+              .from('contacts')
+              .update({ is_active: val })
+              .eq('id', contactId);
+            if (error) throw error;
+            
+            // Update Cache
+            if (ct) {
+              ct.is_active = val;
+              cache.updateContact(ct);
+            }
+
+            if (!val) {
+              await cascadeDeactivateContact(contactId, ct?.phone);
+              toast.show('Contacto desactivado y excluido de comunicaciones', 'info');
+            } else {
+              toast.show('Contacto reactivado correctamente', 'success');
+            }
+
+            // Reload data and re-render to update tabs and states
+            await loadAllData();
+          } catch (err) {
+            toast.show('Error al cambiar estado: ' + err.message, 'error');
+            e.target.checked = !val;
           }
-          toast.show('Estado de contacto actualizado', 'success');
-        } catch (err) {
-          toast.show('Error al cambiar estado: ' + err.message, 'error');
-          e.target.checked = !val;
+        };
+
+        if (!val) {
+          // Deactivation requested: prompt confirmation
+          confirmContactDeactivation({
+            contactName,
+            onConfirm: () => {
+              applyStateChange();
+            },
+            onCancel: () => {
+              e.target.checked = true;
+            }
+          });
+        } else {
+          // Immediate reactivation
+          await applyStateChange();
         }
       });
     });
@@ -2571,6 +2606,9 @@ export async function renderLeadDetail(leadId, onUpdate) {
       return 0;
     });
 
+    const allContactsInactive = sortedContacts.length > 0 && sortedContacts.every(c => c.is_active === false);
+    const firstActiveContact = sortedContacts.find(c => c.is_active !== false);
+
     // Helper to format scheduled date/time in local friendly format
     const formatScheduledDate = (isoString) => {
       if (!isoString) return '';
@@ -2603,8 +2641,11 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
     // Build filter dropdown options
     const filterContactOptions = sortedContacts.map((c, idx) => {
+      const isInactive = c.is_active === false;
       const isPrimary = c.id === primaryContactId || (!primaryContactId && idx === 0);
+      const isDefaultSelected = firstActiveContact ? c.id === firstActiveContact.id : (isPrimary && !isInactive);
       const primaryBadge = c.id === primaryContactId ? ' ⭐ (Principal)' : '';
+      const inactiveBadge = isInactive ? ' 🚫 [INACTIVO - Opt-out]' : '';
       
       const cleanContactPhone = (c.phone || '').replace(/[^0-9]/g, '');
       const hasScheduled = (whatsappMessages || []).some(m => {
@@ -2619,8 +2660,8 @@ export async function renderLeadDetail(leadId, onUpdate) {
       const schedBadge = hasScheduled ? ' 🕒 (Programado)' : '';
 
       return `
-        <option value="${c.id}" data-phone="${c.phone || ''}" ${isPrimary ? 'selected' : ''}>
-          ${c.first_name} ${c.last_name}${primaryBadge}${schedBadge} (${c.phone || 'Sin Teléfono'})
+        <option value="${c.id}" data-phone="${c.phone || ''}" data-is-active="${!isInactive}" ${isDefaultSelected ? 'selected' : ''}>
+          ${c.first_name} ${c.last_name}${primaryBadge}${inactiveBadge}${schedBadge} (${c.phone || 'Sin Teléfono'})
         </option>
       `;
     }).join('');
@@ -2933,11 +2974,14 @@ export async function renderLeadDetail(leadId, onUpdate) {
     `).join('');
 
     const contactOptions = sortedContacts.map((c, idx) => {
+      const isInactive = c.is_active === false;
       const isPrimary = c.id === primaryContactId || (!primaryContactId && idx === 0);
+      const isDefaultSelected = firstActiveContact ? c.id === firstActiveContact.id : (isPrimary && !isInactive);
       const primaryBadge = c.id === primaryContactId ? ' ⭐ (Principal)' : '';
+      const inactiveBadge = isInactive ? ' 🚫 [INACTIVO - Opt-out]' : '';
       return `
-        <option value="${c.id}" data-phone="${c.phone || ''}" ${isPrimary ? 'selected' : ''}>
-          ${c.first_name} ${c.last_name}${primaryBadge} (${c.phone || 'Sin Teléfono'})
+        <option value="${c.id}" data-phone="${c.phone || ''}" data-is-active="${!isInactive}" ${isDefaultSelected ? 'selected' : ''} ${isInactive ? 'disabled class="text-neutral-400 bg-neutral-100"' : ''}>
+          ${c.first_name} ${c.last_name}${primaryBadge}${inactiveBadge} (${c.phone || 'Sin Teléfono'})
         </option>
       `;
     }).join('');
@@ -2977,6 +3021,12 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
     parent.innerHTML = `
       <div class="flex flex-col gap-4 font-sans text-xs w-full">
+        ${allContactsInactive ? `
+          <div class="p-3 bg-rose-50 border border-rose-200 rounded-md text-rose-800 text-xs flex items-center gap-2">
+            <span class="text-base">🚫</span>
+            <span><strong>Comunicaciones Deshabilitadas:</strong> Todos los contactos vinculados a esta empresa están inactivos (opt-out anti-spam). Para enviar mensajes directos o plantillas debes activar al menos un contacto en la pestaña Contactos.</span>
+          </div>
+        ` : ''}
         
         <!-- Row 1: Historial de Conversaciones (Collapsible Row) -->
         <div class="border border-neutral-200 rounded-lg bg-white overflow-hidden shadow-xs">
@@ -3359,6 +3409,29 @@ export async function renderLeadDetail(leadId, onUpdate) {
       const selectedContactOption = filterRecipientSelect.options[filterRecipientSelect.selectedIndex];
       const recipientPhone = selectedContactOption?.dataset?.phone || (linkedContacts.find(c => c.phone)?.phone) || '';
 
+      const isContactInactive = selectedContactOption?.dataset?.isActive === 'false' || allContactsInactive;
+
+      if (isContactInactive) {
+        ownerBadgeContainer.innerHTML = `
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-rose-50 text-rose-800 border border-rose-300 shadow-2xs select-none">
+            <span>🚫</span>
+            <span>Contacto Inactivo (Opt-out)</span>
+          </span>
+        `;
+        windowBadgeContainer.innerHTML = `
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.5px] font-mono font-bold bg-neutral-100 text-neutral-500 border border-neutral-300">
+            <span>🔒 Comunicaciones Bloqueadas</span>
+          </span>
+        `;
+        quickMsgInput.disabled = true;
+        sendQuickBtn.disabled = true;
+        serviceWindowTimer.textContent = '';
+        serviceWindowNotice.classList.remove('hidden');
+        serviceWindowNotice.className = 'text-[9.5px] text-rose-800 bg-rose-50 border border-rose-200 p-2.5 rounded-md leading-relaxed';
+        serviceWindowNotice.innerHTML = '🚫 <strong>Contacto Inactivo (Opt-out):</strong> Este contacto solicitó no recibir comunicaciones. No es posible enviarle mensajes directos ni plantillas para evitar reportes de spam.';
+        return;
+      }
+
       if (!selectedPhoneId) return;
 
       try {
@@ -3481,6 +3554,11 @@ export async function renderLeadDetail(leadId, onUpdate) {
       const selectedContactOption = filterRecipientSelect.options[filterRecipientSelect.selectedIndex];
       const selectedContactId = filterRecipientSelect.value;
       const recipientPhone = selectedContactOption?.dataset?.phone || '';
+
+      if (selectedContactOption?.dataset?.isActive === 'false' || allContactsInactive) {
+        toast.show('No se puede enviar mensajes a un contacto inactivo (opt-out anti-spam).', 'error');
+        return;
+      }
 
       if (!selectedPhoneId || !recipientPhone) {
         toast.show('Por favor selecciona un contacto con teléfono de destino válido.', 'error');
@@ -3639,6 +3717,17 @@ export async function renderLeadDetail(leadId, onUpdate) {
         if (filterRecipientSelect && contactSelect.value) {
           filterRecipientSelect.value = contactSelect.value;
           applyFiltersAndRender();
+        }
+
+        const isInactive = selectedOption.dataset.isActive === 'false' || allContactsInactive;
+        if (isInactive) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          submitBtn.title = 'El contacto seleccionado está inactivo (opt-out anti-spam)';
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          submitBtn.title = '';
         }
       }
     }
@@ -3895,6 +3984,14 @@ export async function renderLeadDetail(leadId, onUpdate) {
         }
       }
 
+      const selectedContactObj = linkedContacts.find(c => c.id === contactSelect.value);
+      if ((selectedContactObj && selectedContactObj.is_active === false) || allContactsInactive) {
+        toast.show('No se puede enviar mensajes a un contacto inactivo (opt-out anti-spam).', 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalBtnText;
+        return;
+      }
+
       // Validate non-empty variables and build components payload
       const varInputs = variablesFields.querySelectorAll('input[data-comp]');
       let hasEmptyVar = false;
@@ -4095,8 +4192,12 @@ export async function renderLeadDetail(leadId, onUpdate) {
       const contactEmails = linkedContacts.map(c => ({
         id: c.id,
         name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
-        email: c.email
+        email: c.email,
+        is_active: c.is_active !== false
       })).filter(c => c.email);
+
+      const hasActiveEmailContacts = contactEmails.some(c => c.is_active);
+      const firstActiveEmailContact = contactEmails.find(c => c.is_active);
 
       // Calculate lead email statistics
       const totalSentLeadMsgs = (sentEmails || []).filter(m => m.status === 'SENT' || m.status === 'QUEUED').length;
@@ -4183,6 +4284,13 @@ export async function renderLeadDetail(leadId, onUpdate) {
             <h4 class="font-mono text-[10px] font-bold text-primary uppercase tracking-wider border-b border-neutral-100 pb-2">Redactar y Enviar Email</h4>
             
             <form id="lead-send-email-form" class="flex flex-col gap-4">
+              ${!hasActiveEmailContacts ? `
+                <div class="p-3 bg-rose-50 border border-rose-200 rounded-sm text-rose-800 text-xs flex items-center gap-2">
+                  <span class="text-base">🚫</span>
+                  <span><strong>Comunicaciones Deshabilitadas:</strong> No hay contactos activos con correo electrónico para esta empresa (contactos inactivos o con opt-out anti-spam). Para enviar correos debes activar al menos un contacto en la pestaña Contactos.</span>
+                </div>
+              ` : ''}
+
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <!-- Sender Selection -->
                 <div class="flex flex-col gap-1">
@@ -4200,10 +4308,10 @@ export async function renderLeadDetail(leadId, onUpdate) {
                 <div class="flex flex-col gap-1">
                   <label for="email-recipient" class="font-mono text-[9px] font-bold text-primary uppercase">Destinatario *</label>
                   ${contactEmails.length > 0 ? `
-                    <select id="email-recipient" required class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm p-2">
+                    <select id="email-recipient" required class="cohere-input text-xs bg-white border border-[#d9d9dd] rounded-sm p-2" ${!hasActiveEmailContacts ? 'disabled' : ''}>
                       ${contactEmails.map(c => `
-                        <option value="${c.email}" data-contact-id="${c.id}">
-                          👤 ${c.name} &lt;${c.email}&gt;
+                        <option value="${c.email}" data-contact-id="${c.id}" data-is-active="${c.is_active}" ${firstActiveEmailContact && c.id === firstActiveEmailContact.id ? 'selected' : ''} ${!c.is_active ? 'disabled class="text-neutral-400 bg-neutral-100"' : ''}>
+                          ${c.is_active ? '👤' : '🚫 [INACTIVO - Opt-out]'} ${c.name} &lt;${c.email}&gt;
                         </option>
                       `).join('')}
                     </select>
@@ -4266,7 +4374,7 @@ export async function renderLeadDetail(leadId, onUpdate) {
 
               <!-- Submit Button -->
               <div class="flex justify-end pt-2">
-                <button type="submit" id="btn-submit-send-email" class="px-6 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 cursor-pointer flex items-center gap-2">
+                <button type="submit" id="btn-submit-send-email" ${!hasActiveEmailContacts ? 'disabled class="px-6 py-2.5 bg-neutral-300 text-neutral-500 text-[10px] font-mono font-bold uppercase rounded-full tracking-wider cursor-not-allowed flex items-center gap-2"' : 'class="px-6 py-2.5 bg-primary hover:bg-cohere-black text-white text-[10px] font-mono font-bold uppercase rounded-full tracking-wider transition-colors duration-150 cursor-pointer flex items-center gap-2"'}>
                   <span>✉️ Enviar Email</span>
                 </button>
               </div>
@@ -4523,8 +4631,15 @@ export async function renderLeadDetail(leadId, onUpdate) {
           let recipientEmail = '';
           let contactId = null;
           if (recipientSelect.tagName === 'SELECT') {
+            const selectedOpt = recipientSelect.options[recipientSelect.selectedIndex];
+            if ((selectedOpt && selectedOpt.dataset.isActive === 'false') || !hasActiveEmailContacts) {
+              toast.show('No se puede enviar correos a un contacto inactivo (opt-out anti-spam).', 'error');
+              submitBtn.disabled = false;
+              submitBtn.innerHTML = '<span>✉️ Enviar Email</span>';
+              return;
+            }
             recipientEmail = recipientSelect.value;
-            contactId = recipientSelect.options[recipientSelect.selectedIndex].dataset.contactId || null;
+            contactId = selectedOpt?.dataset?.contactId || null;
           } else {
             recipientEmail = recipientSelect.value.trim();
           }

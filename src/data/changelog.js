@@ -1,6 +1,40 @@
 // Historial estructurado de versiones y novedades del CRM Negozona
 export const CHANGELOG = [
   {
+    version: '1.6.0',
+    date: 'Octubre 2026',
+    title: 'Control Anti-Spam / Opt-Out de Contactos y Bloqueo Multicanal',
+    tag: 'Nuevo',
+    summary: 'Implementamos un sistema integral de protección anti-spam y opt-out. Al desactivar un contacto, este queda automáticamente excluido de todas las campañas masivas, automatizaciones activas y canales directos (WhatsApp y Email), con cancelación en cascada de envíos programados y desvinculación preventiva de Meta Allowlist.',
+    changes: [
+      {
+        type: 'nuevo',
+        badge: 'Anti-Spam / Opt-Out',
+        text: 'Exclusión Multicanal Automática: Los contactos desactivados quedan inmediatamente excluidos del cálculo de audiencia y envíos en Campañas (WhatsApp/Email) y de los nodos ejecutables de Automatizaciones.'
+      },
+      {
+        type: 'nuevo',
+        badge: 'Lead Detail',
+        text: 'Bloqueo en Ficha del Lead: Si un contacto está inactivo, se deshabilita su selección en las pestañas de WhatsApp y Mailing. Si todos los contactos del lead están inactivos, se bloquea el envío y se exhibe una alerta preventiva con acceso directo para reactivarlos.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Cancelación en Cascada',
+        text: 'Limpieza de Mensajes y Automatizaciones: Al desactivar un contacto, se cancelan en cascada sus mensajes programados pendientes en WhatsApp y sus ejecuciones activas o en espera en flujos automáticos.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Meta Allowlist',
+        text: 'Liberación de Cupo Meta: Si el contacto desactivado estaba registrado en el Allowlist de IA de Meta, se remueve automáticamente para liberar cupo y evitar respuestas no deseadas del bot.'
+      },
+      {
+        type: 'mejora',
+        badge: 'UX / Claridad',
+        text: 'Helper Informativo y Confirmación: Se integró un texto explicativo permanente debajo del selector de estado en el modal de contacto y en la pestaña de contactos vinculados, junto a un diálogo de confirmación que detalla el impacto antes de desactivar.'
+      }
+    ]
+  },
+  {
     version: '1.5.2',
     date: 'Octubre 2026',
     title: 'Selector de Plantillas en Automatizaciones, Estilos de Desplegables y Control de Guardado',

@@ -702,6 +702,7 @@ export function openCampaignWizardModal(onSuccess) {
 
         const validContacts = leadContacts.filter(c => {
           if (!c) return false;
+          if (c.is_active === false) return false; // Exclusion anti-spam (contacto inactivo / opt-out)
           if (channel === 'email') {
             return Boolean(c.email && c.email.includes('@'));
           }

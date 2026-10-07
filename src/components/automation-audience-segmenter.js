@@ -264,7 +264,7 @@ export function createAudienceSegmenter({ audienceType = 'dynamic_segment', audi
       const [leadsData, linksData, contactsData] = await Promise.all([
         fetchAllRows('leads', 'id, company, country, primary_contact_id, pipeline_stage_id, updated_at, created_at'),
         fetchAllRows('lead_contacts_link', 'lead_id, contact_id', { orderCol: 'lead_id' }),
-        fetchAllRows('contacts', 'id, first_name, last_name, phone, email')
+        fetchAllRows('contacts', 'id, first_name, last_name, phone, email, is_active')
       ]);
 
       allLeadsRows = leadsData || [];
@@ -345,7 +345,9 @@ export function createAudienceSegmenter({ audienceType = 'dynamic_segment', audi
         contactIds.unshift(l.primary_contact_id);
       }
 
-      const linkedContacts = contactIds.map(cId => contactsMap.get(cId)).filter(Boolean);
+      const linkedContacts = contactIds
+        .map(cId => contactsMap.get(cId))
+        .filter(c => c && c.is_active !== false);
 
       if (linkedContacts.length > 0) {
         linkedContacts.forEach(c => {
