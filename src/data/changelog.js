@@ -1,6 +1,35 @@
 // Historial estructurado de versiones y novedades del CRM Negozona
 export const CHANGELOG = [
   {
+    version: '1.6.1',
+    date: 'Octubre 2026',
+    title: 'Validación Corporativa de Remitentes de Mailing y Control de Errores en Campañas',
+    tag: 'Arreglos',
+    summary: 'Restringimos la habilitación de remitentes de correo en el ABM de usuarios exclusivamente a cuentas con dominio corporativo (@negozona.com) y blindamos el motor de campañas de email para detectar comerciales no autorizados y reportar fallos de envío con métricas reales.',
+    changes: [
+      {
+        type: 'arreglo',
+        badge: 'Configuración / Usuarios',
+        text: 'Restricción de Remitente por Dominio: Solo los usuarios con cuenta corporativa (@negozona.com) pueden habilitarse como remitentes de mailing. En el ABM de Configuración, los usuarios con dominios externos quedan bloqueados con aviso informativo.'
+      },
+      {
+        type: 'arreglo',
+        badge: 'Campañas de Email',
+        text: 'Validación de Comercial del Lead: En estrategias "Comercial del Lead", el motor verifica que el comercial asignado esté habilitado para mailing institucional. Si no lo está o el lead no tiene comercial, el destinatario se marca explícitamente como Fallido con el motivo correspondiente.'
+      },
+      {
+        type: 'arreglo',
+        badge: 'Métricas Reales',
+        text: 'Eliminación de Falsos Positivos: Los destinatarios se registran como enviados únicamente tras la respuesta exitosa (HTTP 200) del servicio de envío, garantizando contadores precisos de enviados y fallidos en las campañas.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Auditoría / Gmail API',
+        text: 'Persistencia de Errores: La Edge Function de envío actualiza de forma inmediata los registros con estado FAILED ante fallos de autenticación de Google o excepciones en el proceso.'
+      }
+    ]
+  },
+  {
     version: '1.6.0',
     date: 'Octubre 2026',
     title: 'Control Anti-Spam / Opt-Out de Contactos y Bloqueo Multicanal',

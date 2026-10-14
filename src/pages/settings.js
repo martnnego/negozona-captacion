@@ -329,6 +329,9 @@ export function renderSettings(currentUser) {
           // Cannot modify own active status
           const isSelf = profile.id === currentUser.id;
 
+          const userEmail = (profile.mailing_email || profile.email || '').toLowerCase().trim();
+          const isCorporateEmail = userEmail.endsWith('@negozona.com');
+
           const row = document.createElement('tr');
           row.className = 'hover:bg-neutral-50/50 transition-colors';
           row.innerHTML = `
@@ -343,12 +346,21 @@ export function renderSettings(currentUser) {
               </select>
             </td>
             <td class="px-6 py-3.5 select-none">
-              <label class="inline-flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" class="mailing-sender-checkbox rounded-xs text-primary focus:ring-0 cursor-pointer" ${profile.is_mailing_sender ? 'checked' : ''} />
-                <span class="font-mono text-[10px] ${profile.is_mailing_sender ? 'text-emerald-700 font-bold' : 'text-neutral-500'}">
-                  ${profile.is_mailing_sender ? 'Habilitado' : 'Deshabilitado'}
-                </span>
-              </label>
+              ${isCorporateEmail ? `
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" class="mailing-sender-checkbox rounded-xs text-primary focus:ring-0 cursor-pointer" ${profile.is_mailing_sender ? 'checked' : ''} />
+                  <span class="font-mono text-[10px] ${profile.is_mailing_sender ? 'text-emerald-700 font-bold' : 'text-neutral-500'}">
+                    ${profile.is_mailing_sender ? 'Habilitado' : 'Deshabilitado'}
+                  </span>
+                </label>
+              ` : `
+                <div class="inline-flex items-center gap-1.5 opacity-60 cursor-not-allowed" title="Solo disponible para cuentas con correo corporativo (@negozona.com)">
+                  <input type="checkbox" class="rounded-xs text-neutral-300 cursor-not-allowed" disabled />
+                  <span class="font-mono text-[9px] text-neutral-400 italic">
+                    Requiere @negozona.com
+                  </span>
+                </div>
+              `}
             </td>
             <td class="px-6 py-3.5 select-none">
               <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
@@ -370,23 +382,30 @@ export function renderSettings(currentUser) {
 
           // Handle Mailing Sender Checkbox Toggle
           const senderCheckbox = row.querySelector('.mailing-sender-checkbox');
-          senderCheckbox.addEventListener('change', async () => {
-            const isSender = senderCheckbox.checked;
-            try {
-              const { error: err } = await supabase
-                .from('profiles')
-                .update({ is_mailing_sender: isSender })
-                .eq('id', profile.id);
+          if (senderCheckbox) {
+            senderCheckbox.addEventListener('change', async () => {
+              const isSender = senderCheckbox.checked;
+              if (isSender && !isCorporateEmail) {
+                toast.show('Solo usuarios con correo corporativo (@negozona.com) pueden habilitarse como remitentes', 'warning');
+                senderCheckbox.checked = false;
+                return;
+              }
+              try {
+                const { error: err } = await supabase
+                  .from('profiles')
+                  .update({ is_mailing_sender: isSender })
+                  .eq('id', profile.id);
 
-              if (err) throw err;
-              toast.show(`Usuario ${isSender ? 'habilitado' : 'deshabilitado'} como remitente de mailing`, 'success');
-              await cache.loadAll();
-              await loadUsers();
-            } catch (err) {
-              toast.show('Error al actualizar remitente: ' + err.message, 'error');
-              senderCheckbox.checked = !isSender;
-            }
-          });
+                if (err) throw err;
+                toast.show(`Usuario ${isSender ? 'habilitado' : 'deshabilitado'} como remitente de mailing`, 'success');
+                await cache.loadAll();
+                await loadUsers();
+              } catch (err) {
+                toast.show('Error al actualizar remitente: ' + err.message, 'error');
+                senderCheckbox.checked = !isSender;
+              }
+            });
+          }
 
           // Handle Role Change
           if (!isSelf) {
