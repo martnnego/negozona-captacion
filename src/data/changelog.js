@@ -1,6 +1,40 @@
 // Historial estructurado de versiones y novedades del CRM Negozona
 export const CHANGELOG = [
   {
+    version: '1.7.0',
+    date: 'Octubre 2026',
+    title: 'Búsqueda por Contacto y Teléfono en Leads, Remitentes Condicionales y Protección Anti-Spam',
+    tag: 'Nuevo',
+    summary: 'Extendimos el buscador general de leads para permitir búsquedas instantáneas por nombre, apellido, teléfono (formateado o numérico) y email del contacto. Además, rediseñamos la selección de remitentes comerciales en campañas según la estrategia elegida, incorporamos control anti-saturación de 24 horas y mejoramos el visor de la cola de envíos con filtros y exportación a CSV.',
+    changes: [
+      {
+        type: 'nuevo',
+        badge: 'Leads / Embudo',
+        text: 'Búsqueda por Contacto y Teléfono: El buscador principal de la tabla de leads ahora busca por nombre del contacto principal, teléfono (con o sin símbolos) y correo electrónico, además de la empresa y contactos secundarios vinculados.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Leads / Tabla',
+        text: 'Ordenamiento por Contacto: Se habilitó el ordenamiento de columnas para Contacto Principal, Teléfono y Email al hacer clic en las cabeceras de la tabla.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Campañas / Wizard',
+        text: 'Remitentes Comerciales Dinámicos: En el Paso 3 (Email), el selector se adapta a la estrategia seleccionada: oculta la lista para Comercial del Lead (asignación automática), restringe a un selector desplegable único para Remitente Único, y activa selección múltiple (mínimo 2) con botón rápido para Round-Robin.'
+      },
+      {
+        type: 'nuevo',
+        badge: 'Anti-Spam / Campañas',
+        text: 'Control Anti-Saturación (24h) Configurable: Se agregó el switch de protección anti-spam de 24 horas para email (habilitado por defecto para cuidar el dominio @negozona.com, con opción de apagar para envíos urgentes) y blindaje permanente para WhatsApp.'
+      },
+      {
+        type: 'arreglo',
+        badge: 'Campañas / Detalle',
+        text: 'Cola de Envíos y Actividad: Se corrigió la consulta de destinatarios (error 400 Bad Request) y se habilitó la visualización completa de la cola con buscador, filtros por estado (Enviados, Leídos, Pendientes, Fallidos, Descartados) y exportación a CSV.'
+      }
+    ]
+  },
+  {
     version: '1.6.1',
     date: 'Octubre 2026',
     title: 'Validación Corporativa de Remitentes de Mailing y Control de Errores en Campañas',

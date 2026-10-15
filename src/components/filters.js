@@ -16,7 +16,7 @@ export function renderFilters({ activeFilters, onFilterChange }) {
           type="text" 
           id="search-input" 
           value="${activeFilters.search || ''}"
-          placeholder="BÚSQUEDA POR NOMBRE, EMAIL, EMPRESA..." 
+          placeholder="BUSCAR EMPRESA, CONTACTO, TELÉFONO O EMAIL..." 
           class="w-full bg-white border border-[#d9d9dd] rounded-sm py-2 pl-3 pr-8 font-sans text-xs text-primary placeholder:text-neutral-400 focus:outline-none focus:border-form-focus transition-colors uppercase tracking-wider font-semibold"
         />
         <span class="absolute right-3 top-2.5 text-neutral-400 text-xs">🔍</span>

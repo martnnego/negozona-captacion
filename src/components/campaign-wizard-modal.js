@@ -25,7 +25,8 @@ export function openCampaignWizardModal(onSuccess) {
     options: {
       stop_on_mass_error: true,
       auto_retry: true,
-      valid_whatsapp_only: true
+      valid_whatsapp_only: true,
+      anti_saturation_24h: true
     }
   };
 
@@ -1105,7 +1106,7 @@ export function openCampaignWizardModal(onSuccess) {
             <label class="font-mono text-[10px] font-bold text-primary uppercase">Estrategia de Asignación de Remitente Comercial *</label>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <label class="p-3 border ${campaignData.sender_strategy === 'lead_owner' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
+              <label class="strategy-card p-3 border ${campaignData.sender_strategy === 'lead_owner' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
                 <div class="flex items-center gap-2">
                   <input type="radio" name="wiz_sender_strategy" value="lead_owner" ${campaignData.sender_strategy === 'lead_owner' ? 'checked' : ''} class="accent-primary" />
                   <span class="font-bold text-primary text-xs">Comercial del Lead</span>
@@ -1113,7 +1114,7 @@ export function openCampaignWizardModal(onSuccess) {
                 <span class="text-[10px] text-neutral-500">Envía desde la cuenta del comercial asignado a cada lead.</span>
               </label>
 
-              <label class="p-3 border ${campaignData.sender_strategy === 'single' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
+              <label class="strategy-card p-3 border ${campaignData.sender_strategy === 'single' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
                 <div class="flex items-center gap-2">
                   <input type="radio" name="wiz_sender_strategy" value="single" ${campaignData.sender_strategy === 'single' ? 'checked' : ''} class="accent-primary" />
                   <span class="font-bold text-primary text-xs">Remitente Único</span>
@@ -1121,7 +1122,7 @@ export function openCampaignWizardModal(onSuccess) {
                 <span class="text-[10px] text-neutral-500">Envía todos los emails de la campaña desde un único comercial.</span>
               </label>
 
-              <label class="p-3 border ${campaignData.sender_strategy === 'round_robin' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
+              <label class="strategy-card p-3 border ${campaignData.sender_strategy === 'round_robin' ? 'border-primary bg-primary/5' : 'border-neutral-200'} rounded-lg cursor-pointer flex flex-col gap-1 transition-colors">
                 <div class="flex items-center gap-2">
                   <input type="radio" name="wiz_sender_strategy" value="round_robin" ${campaignData.sender_strategy === 'round_robin' ? 'checked' : ''} class="accent-primary" />
                   <span class="font-bold text-primary text-xs">Round-Robin</span>
@@ -1130,17 +1131,9 @@ export function openCampaignWizardModal(onSuccess) {
               </label>
             </div>
 
-            <!-- Sender Profiles Selection Box -->
-            <div id="senders-selection-container" class="mt-2 flex flex-col gap-2">
-              <label class="font-mono text-[9px] font-bold text-neutral-600 uppercase">Comerciales Remitentes Autorizados:</label>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-neutral-50 p-3 rounded-lg border border-neutral-200 max-h-40 overflow-y-auto">
-                ${senderProfiles.map(p => `
-                  <label class="flex items-center gap-2 cursor-pointer text-xs">
-                    <input type="checkbox" class="wiz-sender-checkbox accent-primary" value="${p.id}" ${(!campaignData.sender_profile_ids || campaignData.sender_profile_ids.includes(p.id)) ? 'checked' : ''} />
-                    <span class="truncate">👔 ${p.full_name || p.email} (${p.mailing_email || p.email})</span>
-                  </label>
-                `).join('')}
-              </div>
+            <!-- Dynamic Sender Profiles Selection Box based on chosen strategy -->
+            <div id="senders-selection-container" class="mt-1 flex flex-col gap-2">
+              <!-- Rendered dynamically by updateSenderStrategyUI() -->
             </div>
           </div>
         </div>
@@ -1248,18 +1241,131 @@ export function openCampaignWizardModal(onSuccess) {
         updateEmailPreview(null);
       }
 
+      function updateSenderStrategyUI() {
+        const container = wizBody.querySelector('#senders-selection-container');
+        if (!container) return;
+
+        // Update cards styling
+        wizBody.querySelectorAll('.strategy-card').forEach(card => {
+          const radio = card.querySelector('input[name="wiz_sender_strategy"]');
+          if (radio && radio.value === campaignData.sender_strategy) {
+            card.className = 'strategy-card p-3 border border-primary bg-primary/5 rounded-lg cursor-pointer flex flex-col gap-1 transition-colors';
+          } else {
+            card.className = 'strategy-card p-3 border border-neutral-200 rounded-lg cursor-pointer flex flex-col gap-1 transition-colors';
+          }
+        });
+
+        if (campaignData.sender_strategy === 'lead_owner') {
+          campaignData.sender_profile_ids = [];
+          container.innerHTML = `
+            <div class="p-3.5 bg-blue-50/80 border border-blue-200 rounded-lg flex items-start gap-2.5 text-xs animate-fade-in">
+              <span class="text-blue-600 text-sm mt-0.5">👤</span>
+              <div class="flex flex-col gap-0.5">
+                <strong class="font-bold text-blue-900">Asignación Automática por Propietario del Lead</strong>
+                <p class="text-[11px] text-blue-800 leading-relaxed">
+                  Cada correo saldrá directamente desde la cuenta de Google Workspace del ejecutivo comercial asignado a cada contacto en el CRM. No es necesario seleccionar remitentes manuales.
+                </p>
+              </div>
+            </div>
+          `;
+        } else if (campaignData.sender_strategy === 'single') {
+          if (!campaignData.sender_profile_ids || campaignData.sender_profile_ids.length !== 1) {
+            campaignData.sender_profile_ids = senderProfiles.length > 0 ? [senderProfiles[0].id] : [];
+          }
+
+          container.innerHTML = `
+            <div class="flex flex-col gap-1.5 animate-fade-in">
+              <label for="select-single-sender" class="font-mono text-[9px] font-bold text-primary uppercase">Comercial Remitente Único *</label>
+              <select id="select-single-sender" class="cohere-input text-xs font-medium">
+                <option value="">-- Seleccionar Ejecutivo Remitente --</option>
+                ${senderProfiles.map(p => `
+                  <option value="${p.id}" ${campaignData.sender_profile_ids[0] === p.id ? 'selected' : ''}>
+                    👔 ${p.full_name || p.email} (${p.mailing_email || p.email})
+                  </option>
+                `).join('')}
+              </select>
+              <span class="text-[10px] text-neutral-500">Todos los correos de la campaña se enviarán exclusivamente desde la casilla de este comercial.</span>
+            </div>
+          `;
+
+          const selectSingle = container.querySelector('#select-single-sender');
+          if (selectSingle) {
+            selectSingle.addEventListener('change', (e) => {
+              campaignData.sender_profile_ids = e.target.value ? [e.target.value] : [];
+            });
+          }
+        } else if (campaignData.sender_strategy === 'round_robin') {
+          if (!campaignData.sender_profile_ids || campaignData.sender_profile_ids.length < 2) {
+            campaignData.sender_profile_ids = senderProfiles.map(p => p.id);
+          }
+
+          container.innerHTML = `
+            <div class="flex flex-col gap-2 animate-fade-in">
+              <div class="flex items-center justify-between">
+                <label class="font-mono text-[9px] font-bold text-primary uppercase">Comerciales para Rotación Round-Robin (Mínimo 2) *</label>
+                <div class="flex items-center gap-2">
+                  <span id="rr-count-badge" class="px-2 py-0.5 bg-neutral-100 text-neutral-600 font-mono font-bold text-[9px] rounded-full border border-neutral-200">
+                    ${campaignData.sender_profile_ids.length} de ${senderProfiles.length} seleccionados
+                  </span>
+                  <button type="button" id="btn-toggle-all-rr" class="text-[10px] font-mono font-bold text-primary hover:underline cursor-pointer">
+                    ${campaignData.sender_profile_ids.length === senderProfiles.length ? 'Deseleccionar Todos' : 'Seleccionar Todos'}
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-neutral-50 p-3 rounded-lg border border-neutral-200 max-h-40 overflow-y-auto">
+                ${senderProfiles.map(p => `
+                  <label class="flex items-center gap-2 cursor-pointer text-xs p-1.5 rounded hover:bg-white border border-transparent hover:border-neutral-200 transition-colors">
+                    <input type="checkbox" class="wiz-sender-checkbox accent-primary" value="${p.id}" ${campaignData.sender_profile_ids.includes(p.id) ? 'checked' : ''} />
+                    <span class="truncate">👔 ${p.full_name || p.email} <span class="text-[10px] text-neutral-400 font-mono">(${p.mailing_email || p.email})</span></span>
+                  </label>
+                `).join('')}
+              </div>
+              <span class="text-[10px] text-neutral-500">Los correos se repartirán equitativamente por turnos (1 a 1) entre los comerciales marcados.</span>
+            </div>
+          `;
+
+          const updateRRCount = () => {
+            const badge = container.querySelector('#rr-count-badge');
+            const btnToggle = container.querySelector('#btn-toggle-all-rr');
+            if (badge) badge.textContent = `${campaignData.sender_profile_ids.length} de ${senderProfiles.length} seleccionados`;
+            if (btnToggle) btnToggle.textContent = campaignData.sender_profile_ids.length === senderProfiles.length ? 'Deseleccionar Todos' : 'Seleccionar Todos';
+          };
+
+          container.querySelectorAll('.wiz-sender-checkbox').forEach(chk => {
+            chk.addEventListener('change', () => {
+              const checked = Array.from(container.querySelectorAll('.wiz-sender-checkbox:checked')).map(c => c.value);
+              campaignData.sender_profile_ids = checked;
+              updateRRCount();
+            });
+          });
+
+          const btnToggle = container.querySelector('#btn-toggle-all-rr');
+          if (btnToggle) {
+            btnToggle.addEventListener('click', () => {
+              const allSelected = campaignData.sender_profile_ids.length === senderProfiles.length;
+              if (allSelected) {
+                campaignData.sender_profile_ids = [];
+                container.querySelectorAll('.wiz-sender-checkbox').forEach(c => c.checked = false);
+              } else {
+                campaignData.sender_profile_ids = senderProfiles.map(p => p.id);
+                container.querySelectorAll('.wiz-sender-checkbox').forEach(c => c.checked = true);
+              }
+              updateRRCount();
+            });
+          }
+        }
+      }
+
       wizBody.querySelectorAll('input[name="wiz_sender_strategy"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
           campaignData.sender_strategy = e.target.value;
+          updateSenderStrategyUI();
         });
       });
 
-      wizBody.querySelectorAll('.wiz-sender-checkbox').forEach(chk => {
-        chk.addEventListener('change', () => {
-          const checked = Array.from(wizBody.querySelectorAll('.wiz-sender-checkbox:checked')).map(c => c.value);
-          campaignData.sender_profile_ids = checked;
-        });
-      });
+      // Initial invocation
+      updateSenderStrategyUI();
 
       return;
     }
@@ -1552,16 +1658,32 @@ export function openCampaignWizardModal(onSuccess) {
   // ----------------------------------------------------
   // STEP 5: Opciones Operativas
   // ----------------------------------------------------
+  // STEP 5: Opciones Operativas y Protección
+  // ----------------------------------------------------
   function renderStep5() {
     wizStepTitle.textContent = 'Opciones de Control y Protección';
 
     wizBody.innerHTML = `
       <div class="flex flex-col gap-5 max-w-xl mx-auto">
-        <h5 class="font-mono text-[10px] font-bold text-primary uppercase">Reglas de Ejecución (${campaignData.channel.toUpperCase()})</h5>
+        <h5 class="font-mono text-[10px] font-bold text-primary uppercase">Reglas de Ejecución y Protección (${campaignData.channel.toUpperCase()})</h5>
 
         ${campaignData.channel === 'whatsapp' ? `
           <div class="flex flex-col gap-3">
-            <label class="p-3 border border-neutral-200 rounded-lg flex items-center justify-between cursor-pointer hover:bg-neutral-50">
+            <!-- Permanent 24h Antispam Rule Banner -->
+            <div class="p-3.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-3 shadow-2xs">
+              <span class="text-base text-emerald-600 mt-0.5">🛡️</span>
+              <div class="flex flex-col gap-0.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold text-emerald-950">Protección Anti-Spam Activa (24 horas)</span>
+                  <span class="px-2 py-0.5 text-[9px] font-mono font-bold uppercase bg-emerald-200 text-emerald-900 rounded-full">Permanente</span>
+                </div>
+                <p class="text-[11px] text-emerald-800 leading-relaxed mt-0.5">
+                  Para resguardar la reputación de la línea ante Meta y prevenir bloqueos o reportes de spam, se omite automáticamente a los contactos que hayan recibido un mensaje de WhatsApp en las últimas 24 horas. Esta regla es fija e ineludible por seguridad.
+                </p>
+              </div>
+            </div>
+
+            <label class="p-3 border border-neutral-200 rounded-lg flex items-center justify-between cursor-pointer hover:bg-neutral-50 transition-colors">
               <div class="flex flex-col gap-0.5">
                 <span class="text-xs font-bold text-neutral-800">🛑 Detener ante Error Masivo</span>
                 <span class="text-[10px] text-neutral-500">Pausa automáticamente la campaña si el porcentaje de rechazo en un lote supera el 20%.</span>
@@ -1569,7 +1691,7 @@ export function openCampaignWizardModal(onSuccess) {
               <input type="checkbox" id="opt-mass-error" ${campaignData.options.stop_on_mass_error ? 'checked' : ''} class="w-4 h-4 accent-primary" />
             </label>
 
-            <label class="p-3 border border-neutral-200 rounded-lg flex items-center justify-between cursor-pointer hover:bg-neutral-50">
+            <label class="p-3 border border-neutral-200 rounded-lg flex items-center justify-between cursor-pointer hover:bg-neutral-50 transition-colors">
               <div class="flex flex-col gap-0.5">
                 <span class="text-xs font-bold text-neutral-800">🔄 Reintentar Automáticamente</span>
                 <span class="text-[10px] text-neutral-500">Reintenta en el siguiente ciclo los mensajes que sufrieron fallos temporales de red.</span>
@@ -1577,7 +1699,7 @@ export function openCampaignWizardModal(onSuccess) {
               <input type="checkbox" id="opt-retry" ${campaignData.options.auto_retry ? 'checked' : ''} class="w-4 h-4 accent-primary" />
             </label>
 
-            <label class="p-3 border border-neutral-200 rounded-lg flex items-center justify-between cursor-pointer hover:bg-neutral-50">
+            <label class="p-3 border border-neutral-200 rounded-lg flex items-center justify-between cursor-pointer hover:bg-neutral-50 transition-colors">
               <div class="flex flex-col gap-0.5">
                 <span class="text-xs font-bold text-neutral-800">📱 Filtrar Contactos sin WhatsApp Válido</span>
                 <span class="text-[10px] text-neutral-500">Omite de la cola de envíos aquellos teléfonos con formato inválido o incompletos.</span>
@@ -1586,7 +1708,27 @@ export function openCampaignWizardModal(onSuccess) {
             </label>
           </div>
         ` : `
-          <p class="text-xs text-neutral-500 italic">Opciones avanzadas de email disponibles próximamente.</p>
+          <div class="flex flex-col gap-3">
+            <!-- Email 24h Antispam switch (default: true) -->
+            <label class="p-3.5 border ${campaignData.options.anti_saturation_24h !== false ? 'border-primary bg-primary/5' : 'border-neutral-200 bg-white'} rounded-lg flex items-start justify-between cursor-pointer hover:bg-neutral-50 transition-colors shadow-2xs">
+              <div class="flex items-start gap-3 pr-2">
+                <span class="text-base text-primary mt-0.5">🛡️</span>
+                <div class="flex flex-col gap-0.5">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-neutral-800">Protección Anti-Saturación / Anti-Spam (24 horas)</span>
+                    <span class="px-2 py-0.5 text-[9px] font-mono font-bold uppercase bg-blue-100 text-blue-800 rounded-full">Recomendado</span>
+                  </div>
+                  <span class="text-[11px] text-neutral-600 leading-relaxed mt-0.5">
+                    Omite automáticamente a los prospectos que hayan recibido otra campaña de email en las últimas 24 horas para cuidar la entregabilidad del dominio (@negozona.com) y no saturar las casillas.
+                  </span>
+                  <span class="text-[10px] text-neutral-400 italic mt-0.5">
+                    Puedes desmarcar esta opción si necesitas enviar un comunicado urgente, recordatorio inmediato o fe de erratas el mismo día.
+                  </span>
+                </div>
+              </div>
+              <input type="checkbox" id="opt-anti-saturation-email" ${campaignData.options.anti_saturation_24h !== false ? 'checked' : ''} class="w-4 h-4 accent-primary shrink-0 mt-1 cursor-pointer" />
+            </label>
+          </div>
         `}
       </div>
     `;
@@ -1594,10 +1736,15 @@ export function openCampaignWizardModal(onSuccess) {
     const optMass = wizBody.querySelector('#opt-mass-error');
     const optRetry = wizBody.querySelector('#opt-retry');
     const optValid = wizBody.querySelector('#opt-valid-wa');
+    const optAntiSatEmail = wizBody.querySelector('#opt-anti-saturation-email');
 
     if (optMass) optMass.addEventListener('change', (e) => campaignData.options.stop_on_mass_error = e.target.checked);
     if (optRetry) optRetry.addEventListener('change', (e) => campaignData.options.auto_retry = e.target.checked);
     if (optValid) optValid.addEventListener('change', (e) => campaignData.options.valid_whatsapp_only = e.target.checked);
+    if (optAntiSatEmail) optAntiSatEmail.addEventListener('change', (e) => {
+      campaignData.options.anti_saturation_24h = e.target.checked;
+      renderStep5();
+    });
   }
 
   // ----------------------------------------------------
@@ -1651,7 +1798,11 @@ export function openCampaignWizardModal(onSuccess) {
 
               <div>
                 <span class="text-[9px] font-mono text-neutral-400 block uppercase">${campaignData.channel === 'email' ? 'Remitente' : 'Número Remitente'}</span>
-                <span class="font-mono text-neutral-700">${campaignData.channel === 'email' ? (campaignData.sender_strategy === 'lead_owner' ? 'Comercial del Lead' : (campaignData.sender_strategy === 'single' ? 'Remitente Único' : 'Round-Robin')) : selectedPhoneLabel}</span>
+                <span class="font-mono text-neutral-700">${campaignData.channel === 'email' ? (
+                  campaignData.sender_strategy === 'lead_owner' ? '👤 Comercial del Lead (Automático)' :
+                  campaignData.sender_strategy === 'single' ? `👤 Remitente Único: ${(cache.getProfiles?.() || []).find(p => p.id === campaignData.sender_profile_ids?.[0])?.full_name || '1 comercial'}` :
+                  `🔄 Round-Robin (${(campaignData.sender_profile_ids || []).length} comerciales)`
+                ) : selectedPhoneLabel}</span>
               </div>
 
               <div>
@@ -1667,6 +1818,13 @@ export function openCampaignWizardModal(onSuccess) {
               <div>
                 <span class="text-[9px] font-mono text-neutral-400 block uppercase">Momento de Envío</span>
                 <span class="font-bold text-neutral-800">${campaignData.send_type === 'immediate' ? '⚡ Inmediato' : '📅 Programado'}</span>
+              </div>
+
+              <div class="col-span-2 pt-1.5 border-t border-neutral-100 flex items-center justify-between">
+                <span class="text-[9px] font-mono text-neutral-400 uppercase">Regla Anti-Spam (24h)</span>
+                <span class="font-mono text-[10px] font-bold ${campaignData.channel === 'whatsapp' || campaignData.options.anti_saturation_24h !== false ? 'text-emerald-700' : 'text-amber-700'}">
+                  ${campaignData.channel === 'whatsapp' ? '🛡️ Activa (Permanente)' : (campaignData.options.anti_saturation_24h !== false ? '🛡️ Activada (Recomendado)' : '⚠️ Desactivada por usuario')}
+                </span>
               </div>
             </div>
           </div>
@@ -1734,6 +1892,25 @@ export function openCampaignWizardModal(onSuccess) {
       if (campaignData.channel === 'whatsapp' && !campaignData.template_name) {
         toast.show('Por favor selecciona una plantilla de WhatsApp', 'error');
         return;
+      }
+
+      if (campaignData.channel === 'email') {
+        if (!campaignData.email_template_id) {
+          toast.show('Por favor selecciona una plantilla de Email', 'error');
+          return;
+        }
+
+        if (campaignData.sender_strategy === 'single') {
+          if (!campaignData.sender_profile_ids || campaignData.sender_profile_ids.length === 0 || !campaignData.sender_profile_ids[0]) {
+            toast.show('Por favor selecciona el comercial remitente para el envío único', 'error');
+            return;
+          }
+        } else if (campaignData.sender_strategy === 'round_robin') {
+          if (!campaignData.sender_profile_ids || campaignData.sender_profile_ids.length < 2) {
+            toast.show('Para la estrategia Round-Robin debes seleccionar al menos 2 comerciales', 'error');
+            return;
+          }
+        }
       }
     }
 

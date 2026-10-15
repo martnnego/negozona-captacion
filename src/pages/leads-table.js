@@ -246,8 +246,44 @@ export function renderLeadsTable(currentUser) {
 
       // 1. Apply Filters locally
       if (activeFilters.search) {
-        const searchVal = activeFilters.search.toLowerCase();
-        filtered = filtered.filter(l => (l.company || '').toLowerCase().includes(searchVal));
+        const rawSearch = activeFilters.search.toLowerCase().trim();
+        const searchDigits = rawSearch.replace(/\D/g, '');
+
+        filtered = filtered.filter(l => {
+          // Búsqueda por Empresa
+          if ((l.company || '').toLowerCase().includes(rawSearch)) return true;
+
+          // Búsqueda por Contacto Principal
+          if (l.primary_contact_id) {
+            const pc = cache.getContact(l.primary_contact_id);
+            if (pc) {
+              const fullName = `${pc.first_name || ''} ${pc.last_name || ''}`.trim().toLowerCase();
+              if (fullName.includes(rawSearch)) return true;
+              if ((pc.email || '').toLowerCase().includes(rawSearch)) return true;
+              if (pc.phone) {
+                const phoneStr = pc.phone.toLowerCase();
+                if (phoneStr.includes(rawSearch)) return true;
+                if (searchDigits && searchDigits.length >= 3 && phoneStr.replace(/\D/g, '').includes(searchDigits)) return true;
+              }
+            }
+          }
+
+          // Búsqueda en otros contactos vinculados de la empresa
+          const contacts = cache.getLeadContacts(l.id);
+          for (const c of contacts) {
+            if (c.id === l.primary_contact_id) continue;
+            const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim().toLowerCase();
+            if (fullName.includes(rawSearch)) return true;
+            if ((c.email || '').toLowerCase().includes(rawSearch)) return true;
+            if (c.phone) {
+              const phoneStr = c.phone.toLowerCase();
+              if (phoneStr.includes(rawSearch)) return true;
+              if (searchDigits && searchDigits.length >= 3 && phoneStr.replace(/\D/g, '').includes(searchDigits)) return true;
+            }
+          }
+
+          return false;
+        });
       }
 
       if (activeFilters.stageId) {
@@ -339,6 +375,19 @@ export function renderLeadsTable(currentUser) {
           const timeA = autoA ? new Date(autoA.updated_at || autoA.created_at).getTime() : 0;
           const timeB = autoB ? new Date(autoB.updated_at || autoB.created_at).getTime() : 0;
           return sortAscending ? timeA - timeB : timeB - timeA;
+        }
+
+        // Handle contact-related column sorting
+        if (['first_name', 'email', 'phone'].includes(actualSortCol)) {
+          const pcA = a.primary_contact_id ? cache.getContact(a.primary_contact_id) : null;
+          const pcB = b.primary_contact_id ? cache.getContact(b.primary_contact_id) : null;
+          if (actualSortCol === 'first_name') {
+            valA = pcA ? `${pcA.first_name || ''} ${pcA.last_name || ''}`.trim() : '';
+            valB = pcB ? `${pcB.first_name || ''} ${pcB.last_name || ''}`.trim() : '';
+          } else {
+            valA = pcA ? (pcA[actualSortCol] || '') : '';
+            valB = pcB ? (pcB[actualSortCol] || '') : '';
+          }
         }
 
         // Default sorting
