@@ -656,6 +656,15 @@ export function renderLeadsByCompany(currentUser) {
         </select>
       </div>
 
+      <!-- Warning for contacts without company -->
+      <div id="import-warning-no-company" class="hidden p-3 bg-amber-50 border border-amber-200 rounded-sm text-amber-900 text-xs flex items-start gap-2.5">
+        <span class="text-amber-600 text-sm shrink-0">⚠️</span>
+        <div class="flex flex-col gap-0.5">
+          <span class="font-bold font-sans text-amber-950">Atención: Contactos sin empresa</span>
+          <span class="text-[11px] text-amber-800 leading-relaxed" id="import-warning-desc"></span>
+        </div>
+      </div>
+
       <!-- Preview Panel -->
       <div id="import-preview-section" class="hidden border-t border-neutral-100 pt-4">
         <h4 class="font-mono text-[9px] font-bold text-primary uppercase mb-2" id="preview-title-text">Previsualización (Primeras filas)</h4>
@@ -686,6 +695,8 @@ export function renderLeadsByCompany(currentUser) {
     const dropZone = form.querySelector('#drag-drop-zone');
     const fileInput = form.querySelector('#csv-file-input');
     const uploadStatus = form.querySelector('#upload-status-text');
+    const warningSection = form.querySelector('#import-warning-no-company');
+    const warningDesc = form.querySelector('#import-warning-desc');
     const previewSection = form.querySelector('#import-preview-section');
     const previewThead = form.querySelector('#preview-thead');
     const previewTbody = form.querySelector('#preview-tbody');
@@ -755,6 +766,30 @@ export function renderLeadsByCompany(currentUser) {
 
       previewTitle.textContent = `Previsualización (${parsedRows.length} filas encontradas)`;
       previewSection.classList.remove('hidden');
+
+      // Check for contacts without company
+      const companyIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'company' || h.toLowerCase() === 'empresa');
+      let withoutCompanyCount = 0;
+
+      if (companyIdx === -1) {
+        withoutCompanyCount = parsedRows.length;
+      } else {
+        withoutCompanyCount = parsedRows.filter(row => {
+          const val = row[companyIdx];
+          return !val || !val.trim() || val.trim().toLowerCase() === 'sin empresa';
+        }).length;
+      }
+
+      if (withoutCompanyCount > 0) {
+        warningSection.classList.remove('hidden');
+        if (withoutCompanyCount === parsedRows.length) {
+          warningDesc.textContent = `No se detectó columna de empresa (o todas las filas están vacías). Los ${withoutCompanyCount} contactos se importarán como contactos individuales sin empresa asociada y se listarán bajo "Sin empresa".`;
+        } else {
+          warningDesc.textContent = `Se detectaron ${withoutCompanyCount} de ${parsedRows.length} contactos sin empresa (o con valor "Sin empresa"). Se importarán sin empresa vinculada y se listarán bajo "Sin empresa".`;
+        }
+      } else {
+        warningSection.classList.add('hidden');
+      }
     }
 
     modal.create({
@@ -765,17 +800,17 @@ export function renderLeadsByCompany(currentUser) {
         {
           text: 'Comenzar Importación',
           primary: true,
-          onClick: async (closeImportModal, actionButtons) => {
+          onClick: async (closeImportModal, actionBtn) => {
             if (parsedRows.length === 0 || !selectedFile) {
               toast.show('Por favor, selecciona un archivo CSV válido primero', 'info');
               return;
             }
 
-            const btnCancel = actionButtons[0];
-            const btnImport = actionButtons[1];
-            btnCancel.disabled = true;
-            btnImport.disabled = true;
-            btnImport.textContent = 'Importando...';
+            const footer = actionBtn?.parentElement;
+            const actionButtons = footer ? footer.querySelectorAll('button') : (actionBtn ? [actionBtn] : []);
+            actionButtons.forEach(btn => { btn.disabled = true; });
+            const originalBtnText = actionBtn?.textContent || 'Comenzar Importación';
+            if (actionBtn) actionBtn.textContent = 'Importando...';
 
             const progressSection = form.querySelector('#import-progress-section');
             const progressBar = form.querySelector('#import-progress-bar');
@@ -784,199 +819,209 @@ export function renderLeadsByCompany(currentUser) {
             
             progressSection.classList.remove('hidden');
 
-            const behavior = dupBehavior.value;
-            const stages = cache.getStages();
-            const defaultStageId = stages.find(s => s.is_default)?.id || stages[0]?.id;
+            try {
+              const behavior = dupBehavior.value;
+              const stages = cache.getStages();
+              const defaultStageId = stages.find(s => s.is_default)?.id || stages[0]?.id;
 
-            // Header mapping indexes
-            const firstNameIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'first_name' || h.toLowerCase() === 'nombre');
-            const lastNameIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'last_name' || h.toLowerCase() === 'apellido');
-            const emailIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'email');
-            const phoneIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'phone' || h.toLowerCase() === 'telefono');
-            const companyIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'company' || h.toLowerCase() === 'empresa');
-            const positionIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'position' || h.toLowerCase() === 'cargo');
-            const linkedinIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'linkedin_url' || h.toLowerCase() === 'linkedin');
-            const medioIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'medio_contacto');
+              // Header mapping indexes
+              const firstNameIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'first_name' || h.toLowerCase() === 'nombre');
+              const lastNameIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'last_name' || h.toLowerCase() === 'apellido');
+              const emailIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'email');
+              const phoneIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'phone' || h.toLowerCase() === 'telefono');
+              const companyIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'company' || h.toLowerCase() === 'empresa');
+              const positionIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'position' || h.toLowerCase() === 'cargo');
+              const linkedinIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'linkedin_url' || h.toLowerCase() === 'linkedin');
+              const medioIdx = fileHeaders.findIndex(h => h.toLowerCase() === 'medio_contacto');
 
-            // Collect emails
-            const emailsToCheck = [];
-            if (emailIdx !== -1) {
-              parsedRows.forEach(row => {
-                const em = row[emailIdx];
-                if (em) emailsToCheck.push(em);
-              });
-            }
+              // Collect emails
+              const emailsToCheck = [];
+              if (emailIdx !== -1) {
+                parsedRows.forEach(row => {
+                  const em = row[emailIdx];
+                  if (em) emailsToCheck.push(em);
+                });
+              }
 
-            progressText.textContent = 'Buscando duplicados...';
-            const duplicateMap = await checkDuplicateEmails(emailsToCheck);
+              progressText.textContent = 'Buscando duplicados...';
+              const duplicateMap = await checkDuplicateEmails(emailsToCheck);
 
-            let okCount = 0;
-            let skippedCount = 0;
-            let errorCount = 0;
-            const errorDetails = [];
-            const total = parsedRows.length;
-            const todayStr = new Date().toISOString().split('T')[0];
+              let okCount = 0;
+              let skippedCount = 0;
+              let errorCount = 0;
+              const errorDetails = [];
+              const total = parsedRows.length;
+              const todayStr = new Date().toISOString().split('T')[0];
 
-            for (let i = 0; i < total; i++) {
-              const row = parsedRows[i];
-              
-              const percent = Math.round((i / total) * 100);
-              progressBar.style.width = `${percent}%`;
-              progressPercent.textContent = `${percent}%`;
-              progressText.textContent = `Procesando ${i + 1} de ${total}...`;
-
-              const getValue = (idx) => (idx !== -1 && row[idx]) ? row[idx].trim() : null;
-
-              const email = getValue(emailIdx);
-              const cleanEmail = email ? email.toLowerCase() : null;
-              const companyName = getValue(companyIdx);
-
-              const contactObj = {
-                first_name: getValue(firstNameIdx) || 'Sin Nombre',
-                last_name: getValue(lastNameIdx) || '',
-                email: cleanEmail,
-                phone: getValue(phoneIdx),
-                position: getValue(positionIdx),
-                linkedin_url: getValue(linkedinIdx),
-                medio_contacto: getValue(medioIdx) || 'Email',
-                fecha_carga: todayStr,
-                fecha_ultimo_contacto: todayStr,
-                is_active: true
-              };
-
-              try {
-                // 1. Resolve or create lead/company
-                let leadId = '00000000-0000-0000-0000-000000000000'; // Sin empresa by default
+              for (let i = 0; i < total; i++) {
+                const row = parsedRows[i];
                 
-                if (companyName && companyName.toLowerCase() !== 'sin empresa') {
-                  const matchedLead = leads.find(l => (l.company || '').toLowerCase() === companyName.toLowerCase());
+                const percent = Math.round((i / total) * 100);
+                progressBar.style.width = `${percent}%`;
+                progressPercent.textContent = `${percent}%`;
+                progressText.textContent = `Procesando ${i + 1} de ${total}...`;
+
+                const getValue = (idx) => (idx !== -1 && row[idx]) ? row[idx].trim() : null;
+
+                const email = getValue(emailIdx);
+                const cleanEmail = email ? email.toLowerCase() : null;
+                const companyName = getValue(companyIdx);
+
+                const contactObj = {
+                  first_name: getValue(firstNameIdx) || 'Sin Nombre',
+                  last_name: getValue(lastNameIdx) || '',
+                  email: cleanEmail,
+                  phone: getValue(phoneIdx),
+                  position: getValue(positionIdx),
+                  linkedin_url: getValue(linkedinIdx),
+                  medio_contacto: getValue(medioIdx) || 'Email',
+                  fecha_carga: todayStr,
+                  fecha_ultimo_contacto: todayStr,
+                  is_active: true
+                };
+
+                try {
+                  // 1. Resolve or create lead/company
+                  let leadId = null;
                   
-                  if (matchedLead) {
-                    leadId = matchedLead.id;
+                  if (companyName && companyName.toLowerCase() !== 'sin empresa') {
+                    const matchedLead = leads.find(l => (l.company || '').toLowerCase() === companyName.toLowerCase());
+                    
+                    if (matchedLead) {
+                      leadId = matchedLead.id;
+                    } else {
+                      const { data: newLead, error: leadErr } = await supabase
+                        .from('leads')
+                        .insert([{
+                          company: companyName,
+                          nombre_validado: false,
+                          pipeline_stage_id: defaultStageId,
+                          source: 'csv_import'
+                        }])
+                        .select()
+                        .single();
+
+                      if (leadErr) throw leadErr;
+                      
+                      leadId = newLead.id;
+                      cache.addLead(newLead);
+                      leads.push(newLead);
+                    }
+                  }
+
+                  // 2. Resolve or create contact
+                  let contactId = cleanEmail ? duplicateMap[cleanEmail] : null;
+
+                  if (contactId) {
+                    if (behavior === 'skip') {
+                      skippedCount++;
+                      continue;
+                    } else {
+                      const { error: contactErr } = await supabase
+                        .from('contacts')
+                        .update(contactObj)
+                        .eq('id', contactId);
+
+                      if (contactErr) throw contactErr;
+                      okCount++;
+                    }
                   } else {
-                    const { data: newLead, error: leadErr } = await supabase
-                      .from('leads')
-                      .insert([{
-                        company: companyName,
-                        nombre_validado: false,
-                        pipeline_stage_id: defaultStageId,
-                        source: 'csv_import'
-                      }])
+                    const { data: newContact, error: contactErr } = await supabase
+                      .from('contacts')
+                      .insert([contactObj])
                       .select()
                       .single();
 
-                    if (leadErr) throw leadErr;
-                    
-                    leadId = newLead.id;
-                    cache.addLead(newLead);
-                    leads.push(newLead);
-                  }
-                }
-
-                // 2. Resolve or create contact
-                let contactId = cleanEmail ? duplicateMap[cleanEmail] : null;
-
-                if (contactId) {
-                  if (behavior === 'skip') {
-                    skippedCount++;
-                    continue;
-                  } else {
-                    const { error: contactErr } = await supabase
-                      .from('contacts')
-                      .update(contactObj)
-                      .eq('id', contactId);
-
                     if (contactErr) throw contactErr;
+                    
+                    contactId = newContact.id;
+                    cache.addContact(newContact);
                     okCount++;
                   }
-                } else {
-                  const { data: newContact, error: contactErr } = await supabase
-                    .from('contacts')
-                    .insert([contactObj])
-                    .select()
-                    .single();
 
-                  if (contactErr) throw contactErr;
-                  
-                  contactId = newContact.id;
-                  cache.addContact(newContact);
-                  okCount++;
-                }
+                  // 3. Link contact to company (solo si pertenece a una empresa real)
+                  if (leadId && leadId !== '00000000-0000-0000-0000-000000000000') {
+                    const { error: linkErr } = await supabase
+                      .from('lead_contacts_link')
+                      .insert([{
+                        lead_id: leadId,
+                        contact_id: contactId
+                      }])
+                      .select();
+                    
+                    if (linkErr && !linkErr.message.includes('duplicate key')) {
+                      throw linkErr;
+                    }
 
-                // 3. Link contact to company
-                const { error: linkErr } = await supabase
-                  .from('lead_contacts_link')
-                  .insert([{
-                    lead_id: leadId,
-                    contact_id: contactId
-                  }])
-                  .select();
-                
-                if (linkErr && !linkErr.message.includes('duplicate key')) {
-                  throw linkErr;
-                }
+                    cache.addLink({ lead_id: leadId, contact_id: contactId });
 
-                cache.addLink({ lead_id: leadId, contact_id: contactId });
+                    // 4. Set as primary contact if company has no primary contact
+                    const currentLeadObj = leads.find(l => l.id === leadId);
+                    if (currentLeadObj && !currentLeadObj.primary_contact_id) {
+                      const { error: primaryErr } = await supabase
+                        .from('leads')
+                        .update({ primary_contact_id: contactId })
+                        .eq('id', leadId);
 
-                // 4. Set as primary contact if company has no primary contact
-                const currentLeadObj = leads.find(l => l.id === leadId);
-                if (currentLeadObj && !currentLeadObj.primary_contact_id) {
-                  const { error: primaryErr } = await supabase
-                    .from('leads')
-                    .update({ primary_contact_id: contactId })
-                    .eq('id', leadId);
-
-                  if (!primaryErr) {
-                    currentLeadObj.primary_contact_id = contactId;
-                    cache.updateLead(currentLeadObj);
+                      if (!primaryErr) {
+                        currentLeadObj.primary_contact_id = contactId;
+                        cache.updateLead(currentLeadObj);
+                      }
+                    }
                   }
+
+                } catch (err) {
+                  errorCount++;
+                  errorDetails.push({ 
+                    row: i + 2, 
+                    name: `${contactObj.first_name} ${contactObj.last_name}`, 
+                    error: err.message 
+                  });
                 }
+              }
 
+              try {
+                await supabase
+                  .from('import_logs')
+                  .insert([{
+                    file_name: selectedFile.name,
+                    total_rows: total,
+                    imported_ok: okCount,
+                    duplicates_skipped: skippedCount,
+                    errors: errorCount,
+                    error_details: errorDetails,
+                    imported_by: currentUser?.id || null
+                  }]);
               } catch (err) {
-                errorCount++;
-                errorDetails.push({ 
-                  row: i + 2, 
-                  name: `${contactObj.first_name} ${contactObj.last_name}`, 
-                  error: err.message 
-                });
+                console.error('Error saving import logs:', err);
               }
+
+              progressBar.style.width = '100%';
+              progressPercent.textContent = '100%';
+              progressText.textContent = `¡Importación completada! OK: ${okCount}, Omitidos: ${skippedCount}, Errores: ${errorCount}`;
+
+              await cache.loadAll();
+              
+              setTimeout(() => {
+                closeImportModal();
+                if (errorCount > 0) {
+                  modal.create({
+                    title: 'Errores durante la importación',
+                    content: `<div class="font-sans text-xs text-rose-600 flex flex-col gap-1.5 max-h-60 overflow-y-auto">
+                      ${errorDetails.map(e => `<p>Fila ${e.row} (${e.name}): ${e.error}</p>`).join('')}
+                    </div>`
+                  });
+                } else {
+                  toast.show(`Importación completada correctamente`, 'success');
+                }
+              }, 1000);
+
+            } catch (globalErr) {
+              console.error('Error durante la importación:', globalErr);
+              toast.show(`Error al procesar la importación: ${globalErr.message}`, 'error');
+              actionButtons.forEach(btn => { btn.disabled = false; });
+              if (actionBtn) actionBtn.textContent = originalBtnText;
             }
-
-            try {
-              await supabase
-                .from('import_logs')
-                .insert([{
-                  file_name: selectedFile.name,
-                  total_rows: total,
-                  imported_ok: okCount,
-                  duplicates_skipped: skippedCount,
-                  errors: errorCount,
-                  error_details: errorDetails,
-                  imported_by: currentUser.id
-                }]);
-            } catch (err) {
-              console.error('Error saving import logs:', err);
-            }
-
-            progressBar.style.width = '100%';
-            progressPercent.textContent = '100%';
-            progressText.textContent = `¡Importación completada! OK: ${okCount}, Omitidos: ${skippedCount}, Errores: ${errorCount}`;
-
-            await cache.loadAll();
-            
-            setTimeout(() => {
-              closeImportModal();
-              if (errorCount > 0) {
-                modal.create({
-                  title: 'Errores durante la importación',
-                  content: `<div class="font-sans text-xs text-rose-600 flex flex-col gap-1.5 max-h-60 overflow-y-auto">
-                    ${errorDetails.map(e => `<p>Fila ${e.row} (${e.name}): ${e.error}</p>`).join('')}
-                  </div>`
-                });
-              } else {
-                toast.show(`Importación completada correctamente`, 'success');
-              }
-            }, 1000);
           }
         }
       ]

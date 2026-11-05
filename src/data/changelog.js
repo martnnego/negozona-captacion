@@ -1,6 +1,30 @@
 // Historial estructurado de versiones y novedades del CRM Negozona
 export const CHANGELOG = [
   {
+    version: '1.7.1',
+    date: 'Noviembre 2026',
+    title: 'Corrección y Advertencias en Importación CSV de Contactos',
+    tag: 'Arreglos',
+    summary: 'Corregimos el bloqueo al iniciar la importación masiva de contactos desde archivos CSV y añadimos detección inteligente con panel de advertencia cuando se cargan contactos sin empresa asociada.',
+    changes: [
+      {
+        type: 'arreglo',
+        badge: 'Contactos / CSV',
+        text: 'Corrección de bloqueo al importar: Se corrigió el error TypeError al intentar deshabilitar los botones de acción del modal, permitiendo que la importación se ejecute fluidamente.'
+      },
+      {
+        type: 'mejora',
+        badge: 'Contactos / CSV',
+        text: 'Advertencia de contactos sin empresa: Ahora el modal previsualiza y advierte proactivamente al usuario si se detectan filas sin empresa o sin columna de empresa, informando que se listarán bajo "Sin empresa".'
+      },
+      {
+        type: 'mejora',
+        badge: 'Contactos / Base de Datos',
+        text: 'Blindaje de relaciones: Se omitió la inserción de claves foráneas ficticias en contactos huérfanos y se añadió manejo seguro de auditoría y captura de excepciones globales.'
+      }
+    ]
+  },
+  {
     version: '1.7.0',
     date: 'Octubre 2026',
     title: 'Búsqueda por Contacto y Teléfono en Leads, Remitentes Condicionales y Protección Anti-Spam',
